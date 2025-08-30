@@ -66,6 +66,73 @@ Mock mode if available:
 make dev:mock
 ```
 
-## Notes
-- Ensure `backend` loads persona files from `$PERSONA_DIR` and uses a public fallback when unset.
-- Do not commit real secrets or private content. Keep them in your private overlay or secrets manager.
+## Run Modes
+
+The root `package.json` forwards scripts to the `web` app via `"workspaces": ["web"]`.
+
+### Mode A: Mock frontend + mock backend (local)
+Develop the UI against the mock API at `http://localhost:8080`.
+
+Run the mock backend and frontend pointing to the mock. Choose one:
+- Fast start (uses cached build):
+  ```bash
+  make mock
+  ```
+- Clean start (force rebuild):
+  ```bash
+  make clean-all
+  make mock
+  ```
+
+Terminate with Ctrl+C in the terminal.  
+If port 3000 is stuck:
+```bash
+XXXX  kill-port
+```
+
+App: http://localhost:3000
+
+---
+
+### Mode B: Local frontend + Cloud Run backend
+Run Next.js locally but call the real Cloud Run API.
+
+1) Ensure secrets/backend.env are set in your private repository
+
+
+2) Start the dev server. Choose one:
+- Fast start (uses cached build):
+  ```bash
+  make fe-dev:mock
+  ```
+- Clean start (force rebuild):
+  ```bash
+  make fe-clean:all
+  make fe-dev:mock
+  ```
+
+App: http://localhost:3000
+
+
+---
+
+### Mode C: Production (Firebase Hosting + Cloud Run)
+Static export on Firebase Hosting. API served by Cloud Run.
+
+1) Ensure secrets/backend.env and secrets/frontend.env are set in your private repository
+
+2) Build the static export:
+```bash
+XXXX build
+```
+
+3) Optional: preview locally:
+```bash
+XXXX preview
+# serves web/out at http://localhost:4173
+```
+
+4) Deploy Hosting:
+```bash
+make fe-firebase:deploy
+```
