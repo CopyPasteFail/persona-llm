@@ -1,3 +1,35 @@
+# V4 to V5
+
+Updated on 2025-08-30 19:15:42 UTC to reflect the merged mono-repo and current code state.
+
+## Docs vs v4
+- Repos merged into a single public repo with `api/`, `jobs/`, and `web/` in one tree. Prior v4 assumed separate repos. fileciteturn0file3 fileciteturn0file1
+- Frontend now present under `web/`; previous docs marked frontend as unverified. Verified structure and environment files existence, functional details still require real backend. fileciteturn0file3
+- Environment variables list updated based on code scanning. Placeholders still disallowed by settings loader.
+- API contract remains minimal: `question` only. Real path returns 503 until retrieval and LLM are wired. fileciteturn0file3
+- Ingestion job `pack_and_push.py` confirmed to only validate, split, and package JSONL, with a printed URI. No embeddings or upsert yet. fileciteturn0file3
+
+## Areas
+### Backend
+- `api.main` remains a skeleton with `NotImplementedError` for `/chat`. Mock app is the supported path. fileciteturn0file3
+- Rate limits, API key check, and CORS allowlist remain in place.
+### Frontend
+- Next.js app under `web/`. Keep disabled input behavior and independent scroll. Confirm error handling for 503 cases.
+### Tests and tooling
+- Tests target `api.mock`. Integration test for real backend remains failing until real mode is implemented. fileciteturn0file3
+### Deployment
+- Cloud Run and Firebase steps are retained but remain unverified in code. fileciteturn0file1
+
+## Pointers to code
+- Real app: `backend/api/main.py`
+- Mock app: `backend/api/mock.py`
+- Retrieval: `backend/api/retrieval.py`
+- LLM: `backend/api/llm.py`
+- Security: `backend/api/security.py`
+- Settings: `backend/api/settings.py`
+- Schema: `backend/schema/chunk.schema.json`
+- Config example: `backend/config/settings.yaml.example`
+
 # V3 to V4
 
 Summary of changes from v3 docs to current v4. Prior versions referenced for context: fileciteturn0file0 fileciteturn0file1
