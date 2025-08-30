@@ -1,54 +1,71 @@
 # persona-llm
 
-Monorepo for the persona demo. Frontend in `web`, backend in `backend`. Persona data and secrets live in a private submodule at `private/`.
+Monorepo for the persona demo. Frontend in `web`, backend in `backend`.
+Persona data and secrets point the backend at a local/private folder using `PERSONA_DIR`.
+
+## Why not a submodule?
+- Submodules expose the private repo URL in `.gitmodules` and are awkward in GUIs.
+- VS Code revert/undo is clunky with submodules.
+- CI is simpler if we fetch the private overlay explicitly.
 
 ## Quick start
 
+1. Clone this public repo.
+2. Create a private repo from `private-template/`.
+3. Link it or point `PERSONA_DIR` to its `persona/` folder.
+
+### Option A: symlink at repo root
 ```bash
-git submodule update --init --recursive   # after you add your private repo
+# from repo root
+ln -s /abs/path/to/your-private-overlay ./private
+echo "PERSONA_DIR=private/persona" > backend/.env
+make dev
+```
+
+### Option B: no symlink, use absolute path
+```bash
+echo "PERSONA_DIR=/abs/path/to/your-private-overlay/persona" > backend/.env
+make dev
+```
+
+`backend` should read persona files from `$PERSONA_DIR`.
+
+## Repo layout
+
+- [`frontend/`](./frontend/README.md) — Next.js app, scripts and env vars
+- [`backend/`](./backend/README.md) — FastAPI app, env vars, API docs
+- `private/` (optional symlink) — points to your private overlay for local dev
+
+## CI without submodule (GitHub Actions example)
+
+```yaml
+- uses: actions/checkout@v4
+
+# Fetch the private overlay into ./private using a PAT/Deploy Key stored in secrets
+- name: Fetch private overlay
+  run: |
+    git clone "https://x-access-token:${{ secrets.PRIVATE_REPO_TOKEN }}@github.com/<your-user>/<your-private-repo>.git" private
+
+# Build backend image, copying persona files during build (optional) or mounting at runtime
+- name: Build backend
+  run: |
+    docker build -t persona-backend:ci           --build-arg PERSONA_DIR=private/persona           -f backend/Dockerfile .
+```
+
+Alternative: do not copy persona into the image. Deploy the image and mount `$PERSONA_DIR` or read from object storage.
+
+## Develop
+
+```bash
 make install
 make dev
 ```
 
-## Repo layout
-
-- [`web/`](./frontend/README.md) — Next.js app, scripts and env vars
-- [`backend/`](./backend/README.md) — FastAPI app, env vars, API docs
-- `private/` — your private submodule (not included here). See below.
-- `private-template/` — example structure for your private repo
-
-## Private submodule
-
-Create a private repo from `private-template/`, then add it:
-
+Mock mode if available:
 ```bash
-git submodule add -b main https://github.com/YOUR_USER/YOUR_PRIVATE_REPO_NAME.git private
-git submodule update --init --recursive
+make dev:mock
 ```
-
-Or use the Makefile helper:
-
-```bash
-make add-private PRIVATE_REMOTE=git@github.com:YOUR_USER/persona-llm-private.git
-```
-
-Your private repo will contain:
-- `persona/` with `persona.yaml`, `starters.json`, optional assets and seed docs
-- `secrets/` with real `.env` files or SOPS encrypted files
-
-## Develop
-
-- Run both apps: `make dev`
-- Mock mode if available: `make dev:mock`
-- Build: `make build`
-
-More:
-- Frontend scripts: [`web/README.md`](./web/README.md)
-- Backend commands and API: [`backend/README.md`](./backend/README.md)
 
 ## Notes
-
-- Update `.gitmodules` with your real private repo URL.
-- Push this monorepo to GitHub.
-- In CI, enable checkout of submodules so builds can include `private/persona` at image build time.
-- If you already load persona files via `PERSONA_DIR`, point it at `private/persona` in your backend env.
+- Ensure `backend` loads persona files from `$PERSONA_DIR` and uses a public fallback when unset.
+- Do not commit real secrets or private content. Keep them in your private overlay or secrets manager.
