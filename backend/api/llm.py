@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 from typing import Dict, List
+from backend.api.settings import settings
 
 
 def build_llm_prompt(question: str, chunks: List[Dict]) -> Dict:
     """
     Build a system and user prompt that instructs the model to speak in first person
-    as the configured persona. The persona name is read from settings.PERSONA_NAME,
-    which defaults to "John Doe".
+    as the configured persona. The persona name is read from settings.PERSONA_NAME.
 
     Output format (must be exact):
       TLDR: <one short sentence>
@@ -22,7 +22,7 @@ def build_llm_prompt(question: str, chunks: List[Dict]) -> Dict:
     )
 
     system = (
-        "You are Omer Reznik speaking in first person.\n"
+        "You are {settings.PERSONA_NAME} speaking in first person.\n"
         "Answer ONLY using the provided context chunks. Do not invent details.\n"
         "If the information is not present, say briefly that it is not in your CV yet.\n"
         "Writing rules:\n"
