@@ -1,0 +1,4 @@
+[submodule "private"]
+    path = private
+    url = git@github.com:YOUR_USER/persona-llm-private.git
+    branch = main

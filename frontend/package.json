@@ -1,0 +1,20 @@
+{
+  "name": "persona-llm-frontend-root",
+  "private": true,
+  "workspaces": ["web"],
+
+  "scripts": {
+    "dev": "npm run dev -w web",
+    "dev:mock": "npm run dev:mock -w web",
+    "dev:clean": "npm run dev:clean -w web",
+    "dev:mock:clean": "npm run dev:mock:clean -w web",
+    "build": "npm run build -w web",
+    "preview": "npm run preview -w web",
+    "clean": "npm run clean -w web",
+    "kill-port": "npm run kill-port -w web",
+    "firebase": "firebase",
+    "firebase:login": "firebase login",
+    "firebase:deploy-temp": "npm run build && firebase deploy --project omer-persona-llm-frontend",
+    "firebase:deploy": "npm run build && firebase deploy --project $FIREBASE_PROJECT_ID"
+  }
+}
