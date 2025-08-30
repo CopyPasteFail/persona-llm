@@ -1,6 +1,0 @@
-.env
-.env.*
-__pycache__/
-.pytest_cache/
-config/settings.yaml
-!.env.example
