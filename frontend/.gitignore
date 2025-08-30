@@ -1,0 +1,17 @@
+# Root helper has no deps; real app lives in web/
+web/node_modules/
+node_modules/
+
+# Next.js build artifacts (app is under web/)
+web/.next/
+web/out/
+
+# Local env (do not commit)
+web/.env.local
+
+# Mac/Editor junk
+.DS_Store
+*.log
+
+# Firebase
+.firebase/

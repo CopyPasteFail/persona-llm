@@ -1,0 +1,6 @@
+# Fill with your real values and save as config/settings.yaml
+project_id: YOUR_PROJECT
+region: europe-west1
+bucket: omer-llm-side-store
+index_endpoint_id: projects/XXX/locations/europe-west1/indexEndpoints/NNN
+deployed_index_id: omer-llm-deployed
