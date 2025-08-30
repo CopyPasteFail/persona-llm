@@ -1,7 +1,7 @@
-# Creates omer-cv-persona-rag/ with both repos and zips it to omer-cv-persona-rag.zip
+# Creates <PERSONA_NAME>-cv-persona-rag/ with both repos and zips it to <PERSONA_NAME>-cv-persona-rag.zip
 set -euo pipefail
-ROOT="omer-cv-persona-rag"
-BACK="$ROOT/omer-llm-backend"
+ROOT="<PERSONA_NAME>-cv-persona-rag"
+BACK="$ROOT/<PERSONA_NAME>-llm-backend"
 FRONT="$ROOT/persona-llm-frontend"
 mkdir -p "$BACK/api" "$BACK/tests" "$FRONT/web/pages" "$FRONT/web/components" "$FRONT/web/utils" "$FRONT/web/styles"
 
@@ -52,7 +52,7 @@ clean:
 EOF
 
 cat >"$BACK/README.md" <<'EOF'
-# omer-llm-backend
+# <PERSONA_NAME>-llm-backend
 
 FastAPI service for the persona demo. Real mode integrates with Vertex AI Matching Engine and Gemini. Mock mode returns deterministic responses and is the default for local development.
 
@@ -90,7 +90,7 @@ Single source of truth for setup and running both repos.
 - Make
 
 ## Backend
-cd omer-llm-backend
+cd <PERSONA_NAME>-llm-backend
 make install
 make run-mock  # localhost:8080
 
@@ -104,10 +104,10 @@ npm install
 npm run dev:mock  # uses http://localhost:8080
 
 ## Tests
-cd omer-llm-backend && make test
+cd <PERSONA_NAME>-llm-backend && make test
 
 ## Docs
-- Backend details: omer-llm-backend/README.md
+- Backend details: <PERSONA_NAME>-llm-backend/README.md
 - Frontend details: persona-llm-frontend/README.md
 EOF
 
@@ -690,5 +690,5 @@ web/.env.local
 EOF
 
 # Zip
-zip -rq "omer-cv-persona-rag.zip" "$ROOT"
-echo "Created omer-cv-persona-rag.zip"
+zip -rq "<PERSONA_NAME>-cv-persona-rag.zip" "$ROOT"
+echo "Created <PERSONA_NAME>-cv-persona-rag.zip"

@@ -1,4 +1,4 @@
-# omer-llm-backend
+# persona-llm-backend
 
 FastAPI service for the persona demo. Real mode integrates with Vertex AI Matching Engine and Gemini. Mock mode returns deterministic responses and is the default for local development.
 
@@ -32,7 +32,7 @@ make test-voice   # run persona voice and normalization tests
 ## Deploy to Cloud Run
 Fill placeholders with your values.
 ```bash
-gcloud run deploy ask-omer-api   --source ./api   --region $REGION   --service-account $RUNTIME_SA   --set-env-vars PROJECT_ID=$PROJECT_ID,REGION=$REGION,INDEX_ENDPOINT_ID=$INDEX_ENDPOINT_ID,DEPLOYED_INDEX_ID=$DEPLOYED_INDEX_ID,CHUNKS_URI=$CHUNKS_URI,API_KEY=$API_KEY,MAX_INPUT_TOKENS=3000,MAX_OUTPUT_TOKENS=180,REQ_TIMEOUT_MS=20000
+gcloud run deploy ask-persona-api   --source ./api   --region $REGION   --service-account $RUNTIME_SA   --set-env-vars PROJECT_ID=$PROJECT_ID,REGION=$REGION,INDEX_ENDPOINT_ID=$INDEX_ENDPOINT_ID,DEPLOYED_INDEX_ID=$DEPLOYED_INDEX_ID,CHUNKS_URI=$CHUNKS_URI,API_KEY=$API_KEY,MAX_INPUT_TOKENS=3000,MAX_OUTPUT_TOKENS=180,REQ_TIMEOUT_MS=20000
 ```
 
 ## Security notes

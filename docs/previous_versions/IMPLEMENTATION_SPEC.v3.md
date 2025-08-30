@@ -1,11 +1,11 @@
 # IMPLEMENTATION_SPEC.v3.md
 
 ## Repos
-- Private repo (omer-llm-backend): ingestion, backend, config, schema, tests
+- Private repo (<PERSONA_NAME>-llm-backend): ingestion, backend, config, schema, tests
 - Public repo (persona-llm-frontend): frontend only
 
 ```
-omer-llm-backend/
+<PERSONA_NAME>-llm-backend/
   api/
     main.py
     retrieval.py
@@ -112,9 +112,9 @@ config/settings.yaml example:
 ```yaml
 project_id: YOUR_PROJECT
 region: europe-west1
-bucket: omer-llm-side-store
+bucket: <PERSONA_NAME>-llm-side-store
 index_endpoint_id: projects/XXX/locations/europe-west1/indexEndpoints/NNN
-deployed_index_id: omer-llm-deployed
+deployed_index_id: <PERSONA_NAME>-llm-deployed
 ```
 
 ## Backend API (FastAPI)
@@ -180,7 +180,7 @@ First ingestion:
 
 Cloud Run deploy:
 ```bash
-gcloud run deploy ask-omer-api --source ./api --region $REGION --service-account $RUNTIME_SA \
+gcloud run deploy ask-<PERSONA_NAME>-api --source ./api --region $REGION --service-account $RUNTIME_SA \
   --set-env-vars PROJECT_ID=$PROJECT_ID,REGION=$REGION,INDEX_ENDPOINT_ID=$IE,DEPLOYED_INDEX_ID=$DI,CHUNKS_URI=$URI,API_KEY=$API_KEY,MAX_INPUT_TOKENS=3000,MAX_OUTPUT_TOKENS=180,REQ_TIMEOUT_MS=20000
 ```
 
