@@ -1,7 +1,7 @@
 You are a meticulous technical editor. I will attach four files:
 1) IMPLEMENTATION_SPEC.v3.md
 2) ARCHITECTURE_OVERVIEW.v3.md
-3) backend.zip  the private repo root (omer-llm-backend)
+3) backend.zip  the private repo root (<PERSONA_NAME>-llm-backend)
 4) frontend.zip the public repo root (persona-llm-frontend)
 
 Goal:

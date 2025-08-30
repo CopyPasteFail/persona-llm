@@ -5,7 +5,7 @@ A reusable public showcase where people can query a "persona" LLM representing a
 
 ## Stack
 - Repos:
-  - Private backend and ingestion: **omer-llm-backend**
+  - Private backend and ingestion: **<PERSONA_NAME>-llm-backend**
   - Public frontend showcase: **persona-llm-frontend**
 - Frontend: Next.js static export, hosted on Firebase Hosting
 - Backend: FastAPI on Cloud Run

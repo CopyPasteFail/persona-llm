@@ -15,7 +15,7 @@ async def client():
 async def test_first_person_normalization(client):
     """
     The mock normalizes third-person mentions of 'Omer' to first person.
-    We only send {question} now; extra fields are no longer used.
+    This is a sanity check to ensure the normalization logic is working.
     """
     resp = await client.post(
         "/chat",
