@@ -8,16 +8,18 @@ from pydantic import BaseModel, Field, ValidationError, field_validator
 # Simple, explicit placeholder checks so production never boots with junk values.
 PLACEHOLDERS = {
     "changeme",
+    "Elvis Aaron Kennedy Junior",
     "your-project-id",
     "your-index-id",
     "projects/.../indexEndpoints/...",  # typical pattern
     "your-deployed-id",
     "gs://bucket/chunks-<sha>.jsonl.gz",
-    "your-api-key",
+    "your-api-key"
 }
 
 
 class Settings(BaseModel):
+    PERSONA_NAME: str = Field(...)
     PROJECT_ID: str = Field(...)
     REGION: str = Field(...)
     INDEX_ENDPOINT_ID: str = Field(...)
@@ -25,17 +27,18 @@ class Settings(BaseModel):
     CHUNKS_URI: str = Field(...)
     API_KEY: str = Field(...)
 
-    MAX_INPUT_TOKENS: int = Field(3000, ge=1, le=10000)
-    MAX_OUTPUT_TOKENS: int = Field(180, ge=1, le=2000)
-    REQ_TIMEOUT_MS: int = Field(20000, ge=1000, le=60000)
+    MAX_INPUT_TOKENS: int = Field(..., ge=1, le=10000)
+    MAX_OUTPUT_TOKENS: int = Field(..., ge=1, le=2000)
+    REQ_TIMEOUT_MS: int = Field(..., ge=1000, le=60000)
 
     @field_validator(
+        "PERSONA_NAME",
         "PROJECT_ID",
         "REGION",
         "INDEX_ENDPOINT_ID",
         "DEPLOYED_INDEX_ID",
         "CHUNKS_URI",
-        "API_KEY",
+        "API_KEY"
     )
     @classmethod
     def no_placeholders(cls, v: str) -> str:
@@ -53,15 +56,16 @@ def load_settings() -> Settings:
     load_dotenv()
     try:
         return Settings(
+            PERSONA_NAME=os.getenv("PERSONA_NAME"),
             PROJECT_ID=os.getenv("PROJECT_ID"),
             REGION=os.getenv("REGION"),
             INDEX_ENDPOINT_ID=os.getenv("INDEX_ENDPOINT_ID"),
             DEPLOYED_INDEX_ID=os.getenv("DEPLOYED_INDEX_ID"),
             CHUNKS_URI=os.getenv("CHUNKS_URI"),
             API_KEY=os.getenv("API_KEY"),
-            MAX_INPUT_TOKENS=int(os.getenv("MAX_INPUT_TOKENS") or 3000),
-            MAX_OUTPUT_TOKENS=int(os.getenv("MAX_OUTPUT_TOKENS") or 180),
-            REQ_TIMEOUT_MS=int(os.getenv("REQ_TIMEOUT_MS") or 20000),
+            MAX_INPUT_TOKENS=os.getenv("MAX_INPUT_TOKENS"),
+            MAX_OUTPUT_TOKENS=os.getenv("MAX_OUTPUT_TOKENS"),
+            REQ_TIMEOUT_MS=os.getenv("REQ_TIMEOUT_MS")
         )
     except ValidationError as e:
         fields = [err["loc"][0] for err in e.errors()]

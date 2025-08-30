@@ -5,7 +5,9 @@ from typing import Dict, List
 
 def build_llm_prompt(question: str, chunks: List[Dict]) -> Dict:
     """
-    Build a strict prompt for first-person answers as Omer.
+    Build a system and user prompt that instructs the model to speak in first person
+    as the configured persona. The persona name is read from settings.PERSONA_NAME,
+    which defaults to "John Doe".
 
     Output format (must be exact):
       TLDR: <one short sentence>
