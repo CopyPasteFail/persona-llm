@@ -14,6 +14,6 @@
     "kill-port": "npm run kill-port -w web",
     "firebase": "firebase",
     "firebase:login": "firebase login",
-    "firebase:deploy": "bash -lc 'set -a; [ -f ../private/secrets/frontend.env ] && . ../private/secrets/frontend.env || true; set +a; : ${FIREBASE_PROJECT_ID:?FIREBASE_PROJECT_ID must be set}; npm run build -w web && firebase deploy --project \"$FIREBASE_PROJECT_ID\"'"
+    "firebase:deploy": "bash -lc 'set -a; : ${ENV_DIR:?ENV_DIR must be set}; [ -f \"$ENV_DIR/secrets/frontend.env\" ] && . \"$ENV_DIR/secrets/frontend.env\" || true; set +a; : ${FIREBASE_PROJECT_ID:?FIREBASE_PROJECT_ID must be set}; npm run build -w web && firebase deploy --project \"$FIREBASE_PROJECT_ID\"'"
   }
 }

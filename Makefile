@@ -1,16 +1,29 @@
-.PHONY: install dev mock build fe-% be-%
+.PHONY: install dev mock build fe-% be-% require-private
 
-# ----- Generic frontend passthrough -----
-# Usage: make fe-dev, make fe-dev:mock, make fe-build, etc.
+# ENV_DIR points to the private folder (override per run if needed)
+ENV_DIR ?= $(abspath private)
+
+# Required files
+BACKEND_ENV := $(ENV_DIR)/secrets/backend.env
+FRONTEND_ENV := $(ENV_DIR)/secrets/frontend.env
+
+export ENV_DIR
+
+require-private:
+	@test -d "$(ENV_DIR)" || { echo "Missing ENV_DIR=$(ENV_DIR)"; exit 1; }
+	@test -f "$(BACKEND_ENV)" || { echo "Missing $(BACKEND_ENV)"; exit 1; }
+	@test -f "$(FRONTEND_ENV)" || { echo "Missing $(FRONTEND_ENV)"; exit 1; }
+
+# ----- Frontend passthrough -----
 fe-%:
 	npm --prefix frontend run $*
 
 fe-install:
 	npm --prefix frontend install
 
-# ----- Generic backend passthrough -----
-# Usage: make be-dev, make be-test, etc. (delegates to backend/Makefile)
-be-%:
+# ----- Backend passthrough -----
+# We do not pass file paths here. Backend code reads ENV_DIR itself.
+be-%: require-private
 	$(MAKE) -C backend $*
 
 # ----- Orchestration -----
@@ -18,15 +31,12 @@ install:
 	$(MAKE) fe-install
 	$(MAKE) be-install
 
-# Dev: load env from private if present, else fall back
-dev:
-	@set -a; [ -f private/secrets/backend.env ] && . private/secrets/backend.env || true; set +a; \
-	PERSONA_DIR="$${PERSONA_DIR:-private/persona}" $(MAKE) be-dev & \
-	NEXT_PUBLIC_API_URL="$${NEXT_PUBLIC_API_URL:-http://localhost:8080}" $(MAKE) fe-dev
+dev: require-private
+	PERSONA_DIR="$${PERSONA_DIR:-$(ENV_DIR)/persona}" $(MAKE) be-dev & \
+	ENV_DIR="$(ENV_DIR)" $(MAKE) fe-dev
 
-# Mock: always use localhost
-mock:
-	( $(MAKE) be-mock & $(MAKE) fe-dev:mock )
+mock: require-private
+	( $(MAKE) be-mock & ENV_DIR="$(ENV_DIR)" $(MAKE) fe-dev:mock )
 
 build:
 	$(MAKE) be-docker-build
