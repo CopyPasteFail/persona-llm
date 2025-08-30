@@ -26,9 +26,13 @@ dev:
 
 # Mock: always use localhost
 mock:
-	$(MAKE) be-mock & \
-	NEXT_PUBLIC_API_URL=http://localhost:8080 $(MAKE) fe-dev:mock
+	( $(MAKE) be-mock & $(MAKE) fe-dev:mock )
+
 
 build:
 	$(MAKE) be-docker-build
 	$(MAKE) fe-build
+
+clean:
+	$(MAKE) be-clean
+	$(MAKE) fe-clean
