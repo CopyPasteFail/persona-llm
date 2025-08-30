@@ -1,66 +1,23 @@
 from __future__ import annotations
-
 import os
-import re
+from pathlib import Path
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
-# Tunables
 PERSONA_MAX_CHARS = 50
 PERSONA_MAX_WORDS = 4
 
-# Simple, explicit placeholder checks so production never boots with junk values.
-PLACEHOLDERS = {
-    "changeme",
-    "Elvis Aaron Kennedy Junior",
-    "your-project-id",
-    "your-index-id",
-    "projects/.../indexEndpoints/...",  # typical pattern
-    "your-deployed-id",
-    "gs://bucket/chunks-<sha>.jsonl.gz",
-    "your-api-key",
-}
-_PLACEHOLDERS_LOWER = {p.lower() for p in PLACEHOLDERS}
-
-
 class Settings(BaseModel):
-    PERSONA_NAME: str = Field(
-        ...,
-        min_length=1,
-        max_length=PERSONA_MAX_CHARS,
-        description=f"Persona full name, max {PERSONA_MAX_WORDS} words and {PERSONA_MAX_CHARS} chars",
-    )
+    PERSONA_NAME: str = Field(..., min_length=1, max_length=PERSONA_MAX_CHARS)
     PROJECT_ID: str = Field(...)
     REGION: str = Field(...)
     INDEX_ENDPOINT_ID: str = Field(...)
     DEPLOYED_INDEX_ID: str = Field(...)
     CHUNKS_URI: str = Field(...)
     API_KEY: str = Field(...)
-
     MAX_INPUT_TOKENS: int = Field(..., ge=1, le=10000)
     MAX_OUTPUT_TOKENS: int = Field(..., ge=1, le=2000)
     REQ_TIMEOUT_MS: int = Field(..., ge=1000, le=60000)
-
-    @field_validator(
-        "PERSONA_NAME",
-        "PROJECT_ID",
-        "REGION",
-        "INDEX_ENDPOINT_ID",
-        "DEPLOYED_INDEX_ID",
-        "CHUNKS_URI",
-        "API_KEY",
-    )
-    @classmethod
-    def no_placeholders(cls, v: str) -> str:
-        s = (v or "").strip()
-        if not s or s.lower() in _PLACEHOLDERS_LOWER:
-            raise ValueError("placeholder value")
-        # basic sanity for GCS and resource paths without being too strict
-        if "gs://" in s and not re.match(r"^gs://[^/]+/.+", s):
-            raise ValueError("invalid GCS URI")
-        if "indexEndpoints" in s and "projects/" not in s:
-            raise ValueError("invalid index endpoint resource path")
-        return s
 
     @field_validator("PERSONA_NAME")
     @classmethod
@@ -70,9 +27,17 @@ class Settings(BaseModel):
             raise ValueError(f"PERSONA_NAME must not exceed {PERSONA_MAX_WORDS} words")
         return name
 
-
 def load_settings() -> Settings:
-    load_dotenv()
+    env_dir = os.getenv("ENV_DIR")
+    if not env_dir:
+        raise RuntimeError("ENV_DIR is not set. It must point to the private folder.")
+    env_path = Path(env_dir).expanduser().resolve() / "secrets" / "backend.env"
+    if not env_path.exists():
+        raise RuntimeError(f"Missing secrets file: {env_path}")
+
+    # Load only the required file. OS env still wins.
+    load_dotenv(env_path, override=False)
+
     try:
         return Settings(
             PERSONA_NAME=os.getenv("PERSONA_NAME"),
@@ -89,6 +54,5 @@ def load_settings() -> Settings:
     except ValidationError as e:
         fields = [err["loc"][0] for err in e.errors()]
         raise RuntimeError(f"Invalid settings. Fix env vars: {sorted(set(fields))}")
-
 
 settings = load_settings()
