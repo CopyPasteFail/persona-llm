@@ -28,7 +28,6 @@ dev:
 mock:
 	( $(MAKE) be-mock & $(MAKE) fe-dev:mock )
 
-
 build:
 	$(MAKE) be-docker-build
 	$(MAKE) fe-build
