@@ -1,6 +1,5 @@
 # Node
 frontend/node_modules/
-
 frontend/web/.next/
 frontend/web/out/
 frontend/web/.turbo/
@@ -11,14 +10,6 @@ backend/.venv/
 backend/__pycache__/
 backend/.pytest_cache/
 backend/config/settings.yaml
-
-# Env files
-*.env
-*.env.local
-*.env.production
-frontend/.env*
-!frontend/.env.example
-backend/.env*
 
 # OS and editors
 .DS_Store
@@ -32,4 +23,6 @@ coverage/
 
 # Firebase
 frontend/.firebase/
+
+# Private repository link
 /private
