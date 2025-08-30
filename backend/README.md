@@ -1,43 +1,72 @@
-# persona-llm-backend
+# Backend, FastAPI apps (`api/`)
 
 FastAPI service for the persona demo. Real mode integrates with Vertex AI Matching Engine and Gemini. Mock mode returns deterministic responses and is the default for local development.
 
-For setup and run steps see **QUICKSTART.md** in this directory.
+## Overview
+- Two apps:
+  - `api.mock:app` for local development.
+  - `api.main:app` skeleton. `/chat` raises not implemented until retrieval and LLM are wired.
+- Health endpoint and minimal `/chat` contract exist.
+
+## Prerequisites
+- Python 3.13
+- `uvicorn`, `fastapi`, and deps from `pyproject.toml` or `requirements.txt`.
+
+## Setup
+```bash
+# optional: create virtualenv
+python3.13 -m venv .venv
+source .venv/bin/activate
+
+# install deps
+pip install -U pip
+pip install -e .  # adjust per your repo
+```
+
+## Run
+Mock server, default port 8080:
+```bash
+python -m uvicorn api.mock:app --reload --port 8080
+```
+
+Real server, unverified:
+```bash
+python -m uvicorn api.main:app --reload --port 8000
+# /chat will return 503 or raise NotImplemented until retrieval and LLM are wired
+```
+
+If a `Makefile` is present, common targets:
+```bash
+make BACKEND_ENV FRONTEND_ENV build clean clean-all dev fe-install install mock require-private
+```
+
+## Environment variables
+Provide these through your shell or a private folder loader. Do not commit secrets.
+
+Common placeholders:
+- `X_API_KEY` for real app requests.
+- `CHUNKS_URI` for the packaged JSONL side store.
+- Project, region, and model identifiers if using Vertex, names are placeholders only.
 
 ## API
+### `GET /health`
+- Returns readiness status.
 
-- `GET /health` readiness
-- `POST /chat` accepts and returns JSON per the schema below
-
-### Request JSON (snake_case)
-{ "question": "string", "role": "string or null", "year": 2024, "tech": ["kubernetes","terraform"] }
-
-### Response JSON
-{ "answer": "string", "citations": [{"id": "string"}], "usage": {"input_tokens": 123, "output_tokens": 120} }
-
-## Ingestion
-1. Create `data/cv_chunks.jsonl` from your CV, one JSON object per line, validated by `schema/chunk.schema.json`.
-2. Run ingestion:
-   ```bash
-   make ingest
-   ```
-   The job will output a `chunks-<sha>.jsonl.gz` and print a `CHUNKS_URI`. Put that value into your env or `config/settings.yaml`.
-
-## Run tests
-```bash
-make test         # run smoke tests (basic keyword checks)
-make test-voice   # run persona voice and normalization tests
+### `POST /chat`
+- Request JSON:
+```json
+{ "question": "your text" }
+```
+- Response JSON, mock:
+```json
+{ "answer": "text", "citations": [{"id":"mock:1"}], "usage": {"input_tokens": 0, "output_tokens": 0} }
 ```
 
-## Deploy to Cloud Run
-Fill placeholders with your values.
+Curl examples:
 ```bash
-gcloud run deploy ask-persona-api   --source ./api   --region $REGION   --service-account $RUNTIME_SA   --set-env-vars PROJECT_ID=$PROJECT_ID,REGION=$REGION,INDEX_ENDPOINT_ID=$INDEX_ENDPOINT_ID,DEPLOYED_INDEX_ID=$DEPLOYED_INDEX_ID,CHUNKS_URI=$CHUNKS_URI,API_KEY=$API_KEY,MAX_INPUT_TOKENS=3000,MAX_OUTPUT_TOKENS=180,REQ_TIMEOUT_MS=20000
+curl -s http://localhost:8080/health | jq .
+curl -s -X POST http://localhost:8080/chat -H 'content-type: application/json' -d '{"question":"demo"}' | jq .
 ```
-
-## Security notes
-- The API requires `x-api-key`. Do not put real secrets in public repos.
-- Keep `config/settings.yaml` and `.env` out of git. Only commit the `.example` files.
 
 ## CORS
 Strict allowlist. Real mode allows `http://localhost:3000` and `https://<project-id>.web.app` (set exact host before deploy). Mock mode only allows `http://localhost:3000`.
@@ -45,16 +74,14 @@ Strict allowlist. Real mode allows `http://localhost:3000` and `https://<project
 ## Rate limits (real mode)
 Per IP, 10 per minute and 100 per day on `/chat`. `/health` is never limited.
 
-## Logging
-Structured keys only: `request_id`, timings, retrieved ids, token counts. Never log raw user inputs or secrets.
+## Tests
+- Run pytest from repo root if tests are present:
+```bash
+pytest -q
+```
+Some tests target the mock app. Integration tests for real mode will fail until that path is implemented.
 
-## Repo structure
-```
-api/            # FastAPI app
-jobs/           # pack_and_push.py ingestion
-schema/         # chunk.schema.json
-config/         # settings.yaml.example
-tests/          # tests
-Makefile
-requirements.txt
-```
+## Deployment
+- Cloud Run and related steps exist in the docs but are not verified in code.
+- Configure CORS to allow your Hosting origin.
+- Set rate limits and API key on the real app.
