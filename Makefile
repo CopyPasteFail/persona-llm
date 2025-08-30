@@ -5,6 +5,9 @@
 fe-%:
 	npm --prefix frontend run $*
 
+fe-install:
+	npm --prefix frontend install
+
 # ----- Generic backend passthrough -----
 # Usage: make be-dev, make be-test, etc. (delegates to backend/Makefile)
 be-%:
