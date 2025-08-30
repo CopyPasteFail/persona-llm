@@ -17,7 +17,8 @@ help:
 	@echo "  test-int     - run integration tests against real backend (requires GCP + uvicorn)"
 	@echo "  check        - quick import check"
 	@echo "  envs         - print required env variables"
-	@echo "  clean        - remove caches and venv"
+	@echo "  clean        - remove caches"
+	@echo "  clean-all    - remove caches and venv"
 
 $(VENV)/bin/activate: requirements.txt
 	$(PYTHON) -m venv $(VENV)
@@ -49,4 +50,7 @@ envs:
 	@echo "PROJECT_ID, REGION, INDEX_ENDPOINT_ID, DEPLOYED_INDEX_ID, CHUNKS_URI, API_KEY, MAX_INPUT_TOKENS, MAX_OUTPUT_TOKENS, REQ_TIMEOUT_MS"
 
 clean:
+	rm -rf __pycache__ .pytest_cache
+
+clean-all:
 	rm -rf __pycache__ .pytest_cache .venv
