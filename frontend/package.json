@@ -11,6 +11,7 @@
     "build": "npm run build -w web",
     "preview": "npm run preview -w web",
     "clean": "npm run clean -w web",
+    "clean:all": "npm run clean -w web && rm -rf node_modules",
     "kill-port": "npm run kill-port -w web",
     "firebase": "firebase",
     "firebase:login": "firebase login",

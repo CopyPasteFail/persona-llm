@@ -45,3 +45,7 @@ build:
 clean:
 	$(MAKE) be-clean
 	$(MAKE) fe-clean
+
+clean-all:
+	$(MAKE) be-clean-all
+	$(MAKE) fe-clean:all
