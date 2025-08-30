@@ -1,3 +1,34 @@
+# V5
+
+## Backend
+- Wire retrieval in `api/retrieval.py`: implement `embed_query`, `search_vector_store`, `apply_filters_and_boosting`, and `build_context_prompt`.
+- Wire LLM call in `api/llm.py::call_gemini_flash` with limits from settings.
+- Replace `/chat` `NotImplementedError` with real response. Add structured success logs.
+- Confirm rate limits persistence if scaling beyond one instance.
+
+## Ingestion
+- Enhance `jobs/pack_and_push.py` to embed and upsert vectors to Vertex AI Matching Engine.
+- Emit a side-store manifest and checksum for `CHUNKS_URI`.
+- Add `make ingest` target.
+
+## Frontend
+- Confirm starters and input disable logic when backend is down.
+- Ensure explicit error toasts or banners on fetch failures and 503s.
+- Keep the conversation scroll independent of the main page size.
+- Remove any unused “Local backend” boxes if present.
+
+## Tests
+- Add golden tests for prompt builder and retrieval selection.
+- Add API key missing/bad tests (401) and rate limits (429).
+- Add integration tests for real backend once wired.
+
+## Deployment
+- Verify Cloud Run deployment and CORS with Hosting origin.
+- Provision Vertex resources and document teardown.
+- Keep budget alerts and logging hygiene.
+
+References to prior docs for context: fileciteturn0file2 fileciteturn0file1
+
 # V4
 
 ## Must-do to enable real mode
