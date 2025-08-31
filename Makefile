@@ -1,4 +1,4 @@
-.PHONY: install dev mock build fe-% fe-install be-% be-install require-private require-gcp-env clean clean-all gcp-create-project gcp-set-project gcp-create-bucket gcp-sa-create gcp-sa-bind-roles gcp-sa-key
+.PHONY: install dev mock build fe-% fe-install be-% be-install require-private require-gcp-env clean clean-all gcp-create-project gcp-set-project gcp-create-bucket gcp-sa-create gcp-sa-delete gcp-sa-bind-roles gcp-sa-roles gcp-sa-key
 
 # -------------------------------
 # Private directory resolution
@@ -15,11 +15,17 @@ ifeq ($(origin PRIVATE_DIR), undefined)
 endif
 export PRIVATE_DIR
 
-# Convenience: secrets paths
+# Helpers
 BACKEND_ENV  := $(PRIVATE_DIR)/secrets/backend.env
 FRONTEND_ENV := $(PRIVATE_DIR)/secrets/frontend.env
+
 -include $(BACKEND_ENV) # Ignore if doesn't exist
 -include $(FRONTEND_ENV) # Ignore if doesn't exist
+
+# (=) Deferring expansion
+SA_EMAIL = persona-llm@$(PROJECT_ID).iam.gserviceaccount.com
+SA_MEMBER = serviceAccount:$(SA_EMAIL)
+BUCKET_URI = gs://$(BUCKET_NAME)
 
 require-private:
 	@test -d "$(PRIVATE_DIR)" || { echo "Missing PRIVATE_DIR=$(PRIVATE_DIR). Set PRIVATE_DIR, create .privatedir, or add ./private symlink."; exit 1; }
@@ -66,13 +72,17 @@ clean-all:
 	$(MAKE) be-clean-all
 	$(MAKE) fe-clean:all
 
+gcp-print-env: require-private require-gcp-env
+	@echo "PROJECT_ID=$(PROJECT_ID)"
+	@echo "BUCKET_NAME=$(BUCKET_NAME)"
+	@echo "SA_EMAIL=$(SA_EMAIL)"
+
 # Create a new GCP project
 gcp-create-project: require-private require-gcp-env
 	@gcloud projects create "$(PROJECT_ID)" --name="Persona LLM"
 	@echo "⚠️ Remember to link a billing account to the project:"
 	@echo "  gcloud beta billing projects link \"$(PROJECT_ID)\" --billing-account=YOUR_BILLING_ACCOUNT_ID"
 
-# Set active GCP project and show billing info (warn if not linked)
 # Set active GCP project and show billing info (warn if not linked)
 gcp-set-project: require-gcp-env
 	@gcloud config set project "$(PROJECT_ID)"
@@ -91,17 +101,56 @@ gcp-create-bucket: require-private require-gcp-env
 gcp-sa-create: require-private require-gcp-env
 	@gcloud iam service-accounts create persona-llm --display-name="Persona LLM"
 
-# Bind roles
-gcp-sa-bind-roles: require-private require-gcp-env
-	@gcloud projects add-iam-policy-binding "$(PROJECT_ID)" \
-	  --member="serviceAccount:persona-llm@$(PROJECT_ID).iam.gserviceaccount.com" \
-	  --role="roles/aiplatform.user"
-	@gcloud projects add-iam-policy-binding "$(PROJECT_ID)" \
-	  --member="serviceAccount:persona-llm@$(PROJECT_ID).iam.gserviceaccount.com" \
-	  --role="roles/storage.objectAdmin"
-	@gcloud storage buckets add-iam-policy-binding "gs://$(BUCKET_NAME)" \
-	  --member="serviceAccount:persona-llm@$(PROJECT_ID).iam.gserviceaccount.com" \
-	  --role="roles/storage.objectViewer"
+# Delete the SA (idempotent)
+gcp-sa-delete: require-gcp-env
+	@set -e; \
+	SA_EMAIL="persona-llm@$(PROJECT_ID).iam.gserviceaccount.com"; \
+	echo "Deleting $$SA_EMAIL from $(PROJECT_ID) ..."; \
+	gcloud iam service-accounts delete "$$SA_EMAIL" --project "$(PROJECT_ID)" --quiet || true
+
+# --- revoke helpers ---
+gcp-sa-revoke-builder: require-private require-gcp-env
+	@gcloud projects remove-iam-policy-binding "$(PROJECT_ID)" --member="$(SA_MEMBER)" --role="roles/aiplatform.admin" --quiet || true
+	@gcloud storage buckets remove-iam-policy-binding "$(BUCKET_URI)" --member="$(SA_MEMBER)" --role="roles/storage.objectCreator" --quiet || true
+
+gcp-sa-revoke-runtime: require-private require-gcp-env
+	@gcloud projects remove-iam-policy-binding "$(PROJECT_ID)" --member="$(SA_MEMBER)" --role="roles/aiplatform.user" --quiet || true
+	@gcloud storage buckets remove-iam-policy-binding "$(BUCKET_URI)" --member="$(SA_MEMBER)" --role="roles/storage.objectViewer" --quiet || true
+
+# Bind roles for building stage
+gcp-sa-grant-builder: require-private require-gcp-env
+	@gcloud projects add-iam-policy-binding "$(PROJECT_ID)" --member="$(SA_MEMBER)" --role="roles/aiplatform.admin"
+	@gcloud storage buckets add-iam-policy-binding "$(BUCKET_URI)" --member="$(SA_MEMBER)" --role="roles/storage.objectCreator"
+
+# Bind roles for runtime stage
+gcp-sa-grant-runtime: require-private require-gcp-env
+	@gcloud projects add-iam-policy-binding "$(PROJECT_ID)" --member="$(SA_MEMBER)" --role="roles/aiplatform.user"
+	@gcloud storage buckets add-iam-policy-binding "$(BUCKET_URI)" --member="$(SA_MEMBER)" --role="roles/storage.objectViewer"
+
+# Show only LIVE roles for the SA (project + bucket)
+gcp-sa-roles: require-private require-gcp-env
+	@set -eu; \
+	SA_EMAIL="persona-llm@$(PROJECT_ID).iam.gserviceaccount.com"; \
+	if gcloud iam service-accounts describe "$$SA_EMAIL" --project "$(PROJECT_ID)" --format="yaml" >/dev/null 2>&1; then \
+	  echo "== SA describe ($(PROJECT_ID)) =="; \
+	  gcloud iam service-accounts describe "$$SA_EMAIL" --project "$(PROJECT_ID)" --format="yaml"; \
+	else \
+	  echo "== SA describe ($(PROJECT_ID)) =="; \
+	  echo "Service account $$SA_EMAIL does not exist in project $(PROJECT_ID)"; \
+	fi; \
+	echo; \
+	echo "== Project IAM entries (live only) =="; \
+	OUT="$$(gcloud projects get-iam-policy "$(PROJECT_ID)" \
+	  --flatten="bindings[].members" \
+	  --format="table(bindings.role, bindings.members)" \
+	  | awk '$$2 ~ /^serviceAccount:/')"; \
+	if [ -n "$$OUT" ]; then echo "$$OUT"; else echo "None"; fi; \
+	echo; \
+	echo "== Bucket IAM entries for gs://$(BUCKET_NAME) (live only) =="; \
+	OUT="$$(gcloud storage buckets get-iam-policy "gs://$(BUCKET_NAME)" \
+	  --format="table(bindings.role, bindings.members)" \
+	  | awk '$$2 ~ /^serviceAccount:/')"; \
+	if [ -n "$$OUT" ]; then echo "$$OUT"; else echo "None"; fi
 
 # Create a key in PRIVATE_DIR/key.json
 gcp-sa-key: require-private require-gcp-env

@@ -147,7 +147,7 @@ you need to link a billing account. This is **mandatory** for services such as C
 See [Billing account instructions](#billing-account) below.
 
 After linking, re-run:
-```
+```bash
 make gcp-set-project
 ```
 to verify billing is now attached.
@@ -168,7 +168,7 @@ make gcp-create-bucket
 
 ```bash
 make gcp-sa-create
-make gcp-sa-bind-roles
+make gcp-sa-grant-builder
 make gcp-sa-key
 ```
 
