@@ -1,4 +1,4 @@
-.PHONY: install dev mock build fe-% fe-install be-% be-install require-private require-gcp-env clean clean-all gcp:set-project gcp:create-bucket gcp:sa:create gcp:sa:bind-roles gcp:sa:key
+.PHONY: install dev mock build fe-% fe-install be-% be-install require-private require-gcp-env clean clean-all gcp-create-project gcp-set-project gcp-create-bucket gcp-sa-create gcp-sa-bind-roles gcp-sa-key
 
 # -------------------------------
 # Private directory resolution
@@ -64,20 +64,26 @@ clean-all:
 	$(MAKE) be-clean-all
 	$(MAKE) fe-clean:all
 
+# Create a new GCP project
+gcp-create-project: require-private require-gcp-env
+	@gcloud projects create "$(PROJECT_ID)" --name="Persona LLM"
+	@echo "⚠️ Remember to link billing manually if needed:"
+	@echo "  gcloud beta billing projects link \"$(PROJECT_ID)\" --billing-account=YOUR_BILLING_ACCOUNT_ID"
+
 # Set active GCP project
-gcp:set-project: require-private require-gcp-env
+gcp-set-project: require-private require-gcp-env
 	@gcloud config set project "$(PROJECT_ID)"
 
 # Create bucket "gs://$(BUCKET_NAME)" in REGION
-gcp:create-bucket: require-private require-gcp-env
+gcp-create-bucket: require-private require-gcp-env
 	@gcloud storage buckets create "gs://$(BUCKET_NAME)" --location="$(REGION)"
 
 # Create service account and bind roles
-gcp:sa:create: require-private require-gcp-env
+gcp-sa-create: require-private require-gcp-env
 	@gcloud iam service-accounts create persona-llm --display-name="Persona LLM"
 
 # Bind roles
-gcp:sa:bind-roles: require-private require-gcp-env
+gcp-sa-bind-roles: require-private require-gcp-env
 	@gcloud projects add-iam-policy-binding "$(PROJECT_ID)" \
 	  --member="serviceAccount:persona-llm@$(PROJECT_ID).iam.gserviceaccount.com" \
 	  --role="roles/aiplatform.user"
@@ -89,7 +95,7 @@ gcp:sa:bind-roles: require-private require-gcp-env
 	  --role="roles/aiplatform.admin"
 
 # Create a key in PRIVATE_DIR/key.json
-gcp:sa:key: require-private require-gcp-env
+gcp-sa-key: require-private require-gcp-env
 	@install -d "$(PRIVATE_DIR)"
 	@gcloud iam service-accounts keys create "$(PRIVATE_DIR)/key.json" \
 	  --iam-account "persona-llm@$(PROJECT_ID).iam.gserviceaccount.com"
