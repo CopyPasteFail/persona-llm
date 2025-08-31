@@ -45,7 +45,10 @@ At this stage you can locally run the mock backend and frontend, see [here](#mod
 ### Required environment variables
 
 Inside your private overlay pointed to by `PRIVATE_DIR`, you must include these files with the following variables.
-`FIREBASE_PROJECT_ID` and `PROJECT_ID` will be used to either create new projects with the given IDs or to reference existing ones.
+`FIREBASE_PROJECT_ID`, `PROJECT_ID`, and `BUCKET_NAME` will be used to either create new projects/bucket with the given IDs or to reference existing ones.  
+**Note:**  
+- By default, creating a project in Firebase will also create it in GCP.  
+- Only choose a different project ID if you want to manage a different GCP project separately from your Firebase project.
 
 - `secrets/frontend.env`  
   - `FIREBASE_PROJECT_ID` — the Firebase project ID used for hosting and deployment.
@@ -55,6 +58,7 @@ Inside your private overlay pointed to by `PRIVATE_DIR`, you must include these 
 - `secrets/backend.env`  
   - `PROJECT_ID` — the GCP project ID to use for backend resources. In most setups this matches the backend `FIREBASE_PROJECT_ID`.
   - `REGION` — the GCP region where resources (like Cloud Run and buckets) will be created, for example `europe-west1`.
+  - `BUCKET_NAME` — the name of the GCS bucket used for storage, for example `my-project-persona`. Do not prefix with `gs://`.
 
 ### Step 1. Install CLI tools
 
@@ -121,10 +125,8 @@ Select the project to be used by Firebase:
 make fe-firebase:use
 ```
 
-(Optional) If you want a **separate GCP project** (not tied to Firebase), create it manually:
-**Note:**  
-- By default, creating a project with `firebase projects:create` will also create it in GCP.  
-- Only use `gcloud projects create` if you want to manage a different GCP project separately from your Firebase project.
+(Optional) Create a **new GCP project** if you haven’t already, or skip if you want to reuse an existing one.
+
 ```bash
 gcloud projects create "$PROJECT_ID" --name="Persona LLM"
 # gcloud beta billing projects link "$PROJECT_ID" --billing-account=YOUR_BILLING_ACCOUNT_ID
