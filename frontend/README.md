@@ -27,21 +27,6 @@ npm install -w web
 
 `frontend/package.json` forwards scripts to the `web` app via `"workspaces": ["web"]`.
 
-```bash
-# dev against mock backend
-npm run dev:mock -w web
-
-# dev against real backend (requires real API on :8000 or configured URL)
-npm run dev -w web
-
-# build and preview
-npm run build -w web
-npm run preview -w web
-
-# clean and kill leftover ports (if provided in package.json)
-npm run clean -w web
-npm run kill-port -w web
-```
 
 ## Environment variables
 
