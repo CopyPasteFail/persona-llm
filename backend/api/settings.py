@@ -28,9 +28,9 @@ class Settings(BaseModel):
         return name
 
 def load_settings() -> Settings:
-    env_dir = os.getenv("ENV_DIR")
+    env_dir = os.getenv("PRIVATE_DIR")
     if not env_dir:
-        raise RuntimeError("ENV_DIR is not set. It must point to the private folder.")
+        raise RuntimeError("PRIVATE_DIR is not set. It must point to the private folder.")
     env_path = Path(env_dir).expanduser().resolve() / "secrets" / "backend.env"
     if not env_path.exists():
         raise RuntimeError(f"Missing secrets file: {env_path}")
