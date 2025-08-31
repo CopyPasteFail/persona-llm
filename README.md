@@ -1,34 +1,104 @@
 # persona-llm
 
 Monorepo for the persona demo. Frontend in `frontend`, backend in `backend`.
-Persona data and secrets point the backend at a local/private folder using `PERSONA_DIR`.
+Persona data and secrets point the backend at a local/private folder using `PRIVATE_DIR`.
 
 ## Why not a submodule?
 - Submodules expose the private repo URL in `.gitmodules`.
 - Workarounds like locally setting the Submodule private-url are clunky, for example VS Code revert/undo won't work.
 - CI is simpler if we fetch the private overlay explicitly.
+- in IDEs like VS Code and similar, one can still manage tracking 2 repos in one folder, without the coupling of a submodule
 
 ## Quick start
 
+### Step 1
 1. Clone this public repo.
 2. Create a private repo from `private-template/`.
-3. Link it or point `PERSONA_DIR` to its `persona/` folder.
+3. Link it or point `PRIVATE_DIR` to its `persona/` folder.
 
-### Option A: symlink at repo root
+#### Option A: symlink at repo root
 ```bash
 # from repo root
 ln -s /abs/path/to/your-private-overlay ./private
-echo "PERSONA_DIR=private/persona" > backend/.env
+echo "PRIVATE_DIR=private/persona" > backend/.env
 make dev
 ```
 
-### Option B: no symlink, use absolute path
+#### Option B: no symlink, use absolute path
 ```bash
-echo "PERSONA_DIR=/abs/path/to/your-private-overlay/persona" > backend/.env
+echo "PRIVATE_DIR=/abs/path/to/your-private-overlay/persona" > backend/.env
 make dev
 ```
 
-`backend` should read persona files from `$PERSONA_DIR`.
+`backend` should read persona files from `$PRIVATE_DIR`.
+
+### Step 2
+
+You need the [Google Cloud CLI](https://cloud.google.com/sdk/docs/install) (`gcloud`).
+
+
+If this is your first time using it:
+
+--------- CLI auth (first time) ---------
+Google Cloud CLI must be installed.
+1) Login to gcloud (user account)
+```bash
+gcloud auth login
+```
+2) Select the project
+```bash
+gcloud config set project omer-persona-llm-frontend
+```
+3) (Optional but handy for some SDKs) Application-default login for user account
+gcloud auth application-default login
+
+--------- If you DO NOT have a GCP project yet (optional) ---------
+```bash
+gcloud projects create "$PROJECT_ID" --name="Persona LLM"  # needs billing set separately
+gcloud beta billing projects link "$PROJECT_ID" --billing-account=YOUR_BILLING_ACCOUNT_ID
+```
+
+--------- Firebase CLI (optional) ----------
+npm install -g firebase-tools
+```bash
+firebase login
+```
+If you need to create a Firebase project (optional):
+```bash
+firebase projects:create "$PROJECT_ID" --display-name "Persona LLM"
+```
+If the project already exists, just select it in your local firebase state:
+```bash
+firebase use "$PROJECT_ID"
+```
+
+# --------- enable APIs you need ---------
+gcloud services enable aiplatform.googleapis.com storage.googleapis.com
+
+# --------- bucket for data/artifacts ---------
+gcloud storage buckets create "gs://${BUCKET}" --location="${REGION}"
+
+# --------- service account (for local/dev + CI) ---------
+gcloud iam service-accounts create persona-llm --display-name="Persona LLM"
+
+# Minimal roles for runtime querying + GCS access
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+  --member="serviceAccount:persona-llm@${PROJECT_ID}.iam.gserviceaccount.com" \
+  --role="roles/aiplatform.user"
+
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+  --member="serviceAccount:persona-llm@${PROJECT_ID}.iam.gserviceaccount.com" \
+  --role="roles/storage.objectAdmin"
+
+# For *index creation/management* you (or a CI SA) will also need admin during setup.
+# Easiest for now: give the same SA admin. You can tighten later.
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+  --member="serviceAccount:persona-llm@${PROJECT_ID}.iam.gserviceaccount.com" \
+  --role="roles/aiplatform.admin"
+
+# --------- create a key INSIDE the private dir ---------
+gcloud iam service-accounts keys create "$ENV_DIR/key.json" \
+  --iam-account "persona-llm@${PROJECT_ID}.iam.gserviceaccount.com"
 
 ## Repo layout
 
@@ -49,10 +119,10 @@ make dev
 # Build backend image, copying persona files during build (optional) or mounting at runtime
 - name: Build backend
   run: |
-    docker build -t persona-backend:ci           --build-arg PERSONA_DIR=private/persona           -f backend/Dockerfile .
+    docker build -t persona-backend:ci           --build-arg PRIVATE_DIR=private/persona           -f backend/Dockerfile .
 ```
 
-Alternative: do not copy persona into the image. Deploy the image and mount `$PERSONA_DIR` or read from object storage.
+Alternative: do not copy persona into the image. Deploy the image and mount `$PRIVATE_DIR` or read from object storage.
 
 ## Develop
 
