@@ -131,11 +131,26 @@ make fe-firebase:use
 make gcp-create-project
 ```
 
-Finally, set your active project:
+Set your active project:
 
 ```bash
 make gcp-set-project
 ```
+
+If you see a warning like:
+
+```
+WARNING: Project <PROJECT_ID> does not have billing linked.
+```
+
+you need to link a billing account. This is **mandatory** for services such as Cloud Run and Vertex AI. Without billing linked, the rest of the provisioning steps will fail.  
+See [Billing account instructions](#billing-account) below.
+
+After linking, re-run:
+```
+make gcp-set-project
+```
+to verify billing is now attached.
 
 ### Step 4. Enable services and create resources
 
@@ -261,3 +276,19 @@ XXXX preview
 ```bash
 make fe-firebase:deploy
 ```
+
+## Appendix
+
+### Billing account
+
+To link using the Google Cloud Console:
+
+1. Open the [Billing page](https://console.cloud.google.com/billing).
+2. If you already have a billing account:
+   - Click **My projects** in the left menu.
+   - Find your project `<PROJECT_ID>`.
+   - If it shows “No billing account”, click **Link a billing account** and select the account you want.
+3. If you don’t have a billing account yet:
+   - In the **Billing** page, click **Add billing account**.
+   - Follow the steps to create a billing profile and payment method.
+   - Once created, go back to **My projects**, find your project, and link it to the new billing account.
