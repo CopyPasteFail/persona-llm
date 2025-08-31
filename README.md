@@ -128,49 +128,33 @@ make fe-firebase:use
 (Optional) Create a **new GCP project** if you haven’t already, or skip if you want to reuse an existing one.
 
 ```bash
-gcloud projects create "$PROJECT_ID" --name="Persona LLM"
-# gcloud beta billing projects link "$PROJECT_ID" --billing-account=YOUR_BILLING_ACCOUNT_ID
+make gcp-create-project
 ```
 
 Finally, set your active project:
 
 ```bash
-gcloud config set project "$PROJECT_ID"
+make gcp-set-project
 ```
 
 ### Step 4. Enable services and create resources
 
+Enable APIs
 ```bash
-# enable APIs
 gcloud services enable aiplatform.googleapis.com storage.googleapis.com
+```
 
-# bucket for data/artifacts
-gcloud storage buckets create "gs://${PROJECT_ID}-persona" --location=${REGION}
+Create a bucket for data/artifacts
+```bash
+make gcp-create-bucket
 ```
 
 ### Step 5. Service account and keys
 
 ```bash
-# create service account
-gcloud iam service-accounts create persona-llm --display-name="Persona LLM"
-
-# grant minimal roles for querying and GCS access
-gcloud projects add-iam-policy-binding "$PROJECT_ID" \
-  --member="serviceAccount:persona-llm@${PROJECT_ID}.iam.gserviceaccount.com" \
-  --role="roles/aiplatform.user"
-
-gcloud projects add-iam-policy-binding "$PROJECT_ID" \
-  --member="serviceAccount:persona-llm@${PROJECT_ID}.iam.gserviceaccount.com" \
-  --role="roles/storage.objectAdmin"
-
-# for index creation/management during setup (tighten later)
-gcloud projects add-iam-policy-binding "$PROJECT_ID" \
-  --member="serviceAccount:persona-llm@${PROJECT_ID}.iam.gserviceaccount.com" \
-  --role="roles/aiplatform.admin"
-
-# create key inside your private dir
-gcloud iam service-accounts keys create "$PRIVATE_DIR/key.json" \
-  --iam-account "persona-llm@${PROJECT_ID}.iam.gserviceaccount.com"
+make gcp-sa-create
+make gcp-sa-bind-roles
+make gcp-sa-key
 ```
 
 ## Repo layout
