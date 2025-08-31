@@ -106,5 +106,5 @@ gcp-sa-bind-roles: require-private require-gcp-env
 # Create a key in PRIVATE_DIR/key.json
 gcp-sa-key: require-private require-gcp-env
 	@install -d "$(PRIVATE_DIR)"
-	@gcloud iam service-accounts keys create "$(PRIVATE_DIR)/key.json" \
+	@gcloud iam service-accounts keys create "$(PRIVATE_DIR)/secrets/key.json" \
 	  --iam-account "persona-llm@$(PROJECT_ID).iam.gserviceaccount.com"
