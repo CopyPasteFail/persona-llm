@@ -11,7 +11,14 @@ Next.js + Tailwind frontend for the persona LLM. It adapts snake_case API fields
 - Node 20.x
 - npm 10.x or later
 
-## Install
+### Installing Dependencies on Debian/Ubuntu
+```bash
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
+source ~/.bashrc  # or ~/.zshrc depending on your shell
+nvm install 20
+```
+
+## Development Setup
 ```bash
 npm install -w web
 ```
@@ -35,7 +42,6 @@ npm run preview -w web
 npm run clean -w web
 npm run kill-port -w web
 ```
-From `web/` folder you can run the same scripts without `-w web`.
 
 ## Environment variables
 
