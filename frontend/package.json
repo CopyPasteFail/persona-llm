@@ -5,18 +5,35 @@
 
   "scripts": {
     "dev": "npm run dev -w web",
+
     "dev:mock": "npm run dev:mock -w web",
+
     "dev:clean": "npm run dev:clean -w web",
+
     "dev:mock:clean": "npm run dev:mock:clean -w web",
+
     "build": "npm run build -w web",
+
     "preview": "npm run preview -w web",
+
     "clean": "npm run clean -w web",
+
     "clean:all": "npm run clean -w web && rm -rf node_modules",
+
     "kill-port": "npm run kill-port -w web",
-    "firebase": "firebase",
-    "firebase:login": "firebase login",
-    "firebase:use": "firebase use $FIREBASE_PROJECT_ID",
-    "firebase:create": "firebase projects:create $FIREBASE_PROJECT_ID --display-name \"$FIREBASE_PROJECT_ID\"",
-    "firebase:deploy": "bash -lc 'set -a; : ${ENV_DIR:?ENV_DIR must be set}; [ -f \"$ENV_DIR/secrets/frontend.env\" ] && . \"$ENV_DIR/secrets/frontend.env\" || true; set +a; : ${FIREBASE_PROJECT_ID:?FIREBASE_PROJECT_ID must be set}; npm run build -w web && firebase deploy --project \"$FIREBASE_PROJECT_ID\"'"
+
+    "firebase": "npm exec -w web firebase --",
+
+    "firebase:version": "npm exec -w web firebase -- --version",
+
+    "firebase:login": "npm exec -w web firebase -- login",
+
+    "firebase:use": "bash -lc 'set -a; : ${PRIVATE_DIR:?PRIVATE_DIR must be set}; [ -f \"$PRIVATE_DIR/secrets/frontend.env\" ] && . \"$PRIVATE_DIR/secrets/frontend.env\" || true; set +a; : ${FIREBASE_PROJECT_ID:?FIREBASE_PROJECT_ID must be set}; npm exec -w web firebase -- use \"$FIREBASE_PROJECT_ID\"'",
+
+    "firebase:create": "bash -lc 'set -a; : ${PRIVATE_DIR:?PRIVATE_DIR must be set}; [ -f \"$PRIVATE_DIR/secrets/frontend.env\" ] && . \"$PRIVATE_DIR/secrets/frontend.env\" || true; set +a; : ${FIREBASE_PROJECT_ID:?FIREBASE_PROJECT_ID must be set}; npm exec -w web firebase -- projects:create \"$FIREBASE_PROJECT_ID\" --display-name \"$FIREBASE_PROJECT_ID\"'",
+
+    "firebase:deploy": "bash -lc 'set -a; : ${PRIVATE_DIR:?PRIVATE_DIR must be set}; [ -f \"$PRIVATE_DIR/secrets/frontend.env\" ] && . \"$PRIVATE_DIR/secrets/frontend.env\" || true; set +a; : ${FIREBASE_PROJECT_ID:?FIREBASE_PROJECT_ID must be set}; npm run build -w web && npm exec -w web firebase -- deploy --project \"$FIREBASE_PROJECT_ID\"'",
+
+    "firebase:hosting:disable": "bash -lc 'set -a; : ${PRIVATE_DIR:?PRIVATE_DIR must be set}; [ -f \"$PRIVATE_DIR/secrets/frontend.env\" ] && . \"$PRIVATE_DIR/secrets/frontend.env\" || true; set +a; : ${FIREBASE_PROJECT_ID:?FIREBASE_PROJECT_ID must be set}; npm exec -w web firebase -- hosting:disable --project \"$FIREBASE_PROJECT_ID\"'"
   }
 }
