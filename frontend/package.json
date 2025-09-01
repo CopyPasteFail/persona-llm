@@ -18,7 +18,7 @@
 
     "clean": "npm run clean -w web",
 
-    "clean:all": "npm run clean -w web && rm -rf node_modules",
+    "clean:all": "npm run clean -w web && rm -rf node_modules .firebase",
 
     "kill-port": "npm run kill-port -w web",
 
