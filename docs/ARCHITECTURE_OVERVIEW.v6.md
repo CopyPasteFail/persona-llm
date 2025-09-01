@@ -16,6 +16,9 @@ A reusable public showcase where people can query a "persona" LLM representing a
 1. Convert CV .docx to JSONL chunks using ChatGPT with max ~450 tokens per chunk. Store in the private repo only
 2. Ingestion job (pack_and_push.py): validate, embed, upsert to Vector Search, gzip JSONL, upload to GCS
 
+Chunks are validated using [`chunk.schema.json`](../backend/schema/chunk.schema.json).  
+Field-level explanations and rationale are documented in [`SCHEMA.md`](SCHEMA.md).
+
 ## Data flow
 **Mock path (active today)**
 1. Client POSTs `/chat` with `{ "question": "..." }`.
@@ -30,22 +33,6 @@ A reusable public showcase where people can query a "persona" LLM representing a
 ## Security
 - `x-api-key` required on real app paths. Rate limits per IP: 10 per minute, 100 per day.
 - CORS allowlist: localhost and your Hosting origin built from `PROJECT_ID`.
-
-## Environments and variables
-Environment variables detected in code:
-- `API_KEY`: used in backend/api/settings.py
-- `CHUNKS_URI`: used in backend/api/settings.py
-- `DEPLOYED_INDEX_ID`: used in backend/api/settings.py
-- `PRIVATE_DIR`: used in backend/api/settings.py
-- `INDEX_ENDPOINT_ID`: used in backend/api/settings.py
-- `MAX_INPUT_TOKENS`: used in backend/api/settings.py
-- `MAX_OUTPUT_TOKENS`: used in backend/api/settings.py
-- `NEXT_PUBLIC_API_URL`: used in frontend/web/components/Layout.tsx, frontend/web/pages/index.tsx, frontend/web/utils/api.ts
-- `PERSONA_MAX_WORDS`: used in backend/api/settings.py
-- `PERSONA_NAME`: used in backend/api/settings.py
-- `PROJECT_ID`: used in backend/api/settings.py
-- `REGION`: used in backend/api/settings.py
-- `REQ_TIMEOUT_MS`: used in backend/api/settings.py
 
 ## Deployment
 - Cloud Run and Firebase Hosting instructions are kept, not verified in code.
