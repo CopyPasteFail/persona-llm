@@ -1,30 +1,82 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "PersonaChunk",
+  "$id": "https://example.com/schema/persona-chunk.v2.json",
+  "title": "PersonaChunkV2",
   "type": "object",
-  "required": ["id", "text", "metadata"],
+
+  "required": ["doc_id", "chunk_id", "position", "text", "role"],
+
   "properties": {
-    "id": {"type": "string", "minLength": 1},
-    "text": {"type": "string", "minLength": 1},
-    "metadata": {
-      "type": "object",
-      "required": ["employer", "year", "tech", "section", "type"],
-      "properties": {
-        "employer": {"type": "string"},
-        "roles": {"type": "array", "items": {"type": "string"}},
-        "role_primary": {"type": "string"},
-        "role": {"type": "string"},
-        "year": {"type": "integer"},
-        "start_year": {"type": "integer"},
-        "end_year": {"type": "integer"},
-        "tech": {"type": "array", "items": {"type": "string"}},
-        "type": {"type": "string", "enum": ["achievement", "experience"]},
-        "section": {"type": "string"}
+    "schema_version": { "type": "integer", "const": 2 },
+
+    "doc_id":   { "type": "string", "minLength": 1 },       // e.g., "cv-infra-2025"
+    "chunk_id": { "type": "string", "minLength": 1 },       // e.g., "infra-001"
+    "position": { "type": "integer", "minimum": 1 },        // order in document
+    "text":     { "type": "string", "minLength": 1 },
+
+    "role": {
+      "type": "string",
+      "enum": ["infra", "product"]                          // collapsed roles
+    },
+
+    "topics": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$" },
+      "uniqueItems": true
+    },
+
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^(role:(infra|product)|topic:[a-z0-9._-]+)$"
       },
-      "oneOf": [
-        {"required": ["role"]},
-        {"required": ["roles", "role_primary"]}
-      ]
+      "uniqueItems": true
+    },
+
+    "section": { "type": "string", "minLength": 1 },        // e.g., "Experience", "Education"
+
+    "start_year": { "type": "integer" },                    // optional (use start=end for single-year)
+    "end_year":   { "type": "integer" },                    // optional
+
+    "lang": { "type": "string", "minLength": 2 },           // e.g., "en"
+    "updated_at": { "type": "string", "format": "date-time" },
+    "source_uri": { "type": "string", "format": "uri" },
+
+    "permissions": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+
+    "extras": {
+      "type": "object",
+      "properties": {
+        "employer": { "type": "string" },
+        "tech": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "type": { "type": "string", "enum": ["achievement", "experience"] }
+      },
+      "additionalProperties": true
     }
-  }
+  },
+
+  "allOf": [
+    {
+      "if": { "required": ["tags"] },
+      "then": {
+        "properties": {
+          "tags": {
+            "type": "array",
+            "contains": { "type": "string", "enum": ["role:infra", "role:product"] }
+          }
+        }
+      }
+    }
+  ],
+
+  "additionalProperties": false
 }
