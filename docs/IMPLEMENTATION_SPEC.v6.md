@@ -1,4 +1,4 @@
-# IMPLEMENTATION_SPEC v5
+# IMPLEMENTATION_SPEC v6
 
 ## Repos
 - Public mono-repo: this zip contains both backend and frontend. The backend is in `api/` and jobs under `jobs/`. The frontend is in `web/`. A private folder for secrets may be referenced during runtime, not committed.
@@ -33,22 +33,6 @@
 │       ├── test_normalize_question_punct.py
 │       ├── test_persona_voice.py
 │       └── test_smoke.py
-├── docs
-│   ├── ARCHITECTURE_OVERVIEW.v6.md
-│   ├── CHANGELOG.md
-│   ├── GAPS_AND_TODOS.md
-│   ├── IMPLEMENTATION_SPEC.v6.md
-│   ├── RATIONALE.md
-│   ├── previous_versions
-│   │   ├── ARCHITECTURE_OVERVIEW.v3.md
-│   │   ├── ARCHITECTURE_OVERVIEW.v4.md
-│   │   ├── ARCHITECTURE_OVERVIEW.v5.md
-│   │   ├── IMPLEMENTATION_SPEC.v3.md
-│   │   ├── IMPLEMENTATION_SPEC.v4.md
-│   │   └── IMPLEMENTATION_SPEC.v5.md
-│   └── prompts
-│       ├── Allign Specs and Architechture Documents.txt
-│       └── generate.sh
 ├── frontend
 │   ├── README.md
 │   ├── firebase.json
@@ -93,20 +77,30 @@
 ```
 
 ## Environment variables
-List of variables discovered in code. Values must be provided via your private folder or environment. Placeholders should not be used in production.
-- `API_KEY`: used in backend/api/settings.py
-- `CHUNKS_URI`: used in backend/api/settings.py
-- `DEPLOYED_INDEX_ID`: used in backend/api/settings.py
-- `ENV_DIR`: used in backend/api/settings.py
-- `INDEX_ENDPOINT_ID`: used in backend/api/settings.py
-- `MAX_INPUT_TOKENS`: used in backend/api/settings.py
-- `MAX_OUTPUT_TOKENS`: used in backend/api/settings.py
-- `NEXT_PUBLIC_API_URL`: used in frontend/web/components/Layout.tsx, frontend/web/pages/index.tsx, frontend/web/utils/api.ts
-- `PERSONA_MAX_WORDS`: used in backend/api/settings.py
-- `PERSONA_NAME`: used in backend/api/settings.py
-- `PROJECT_ID`: used in backend/api/settings.py
-- `REGION`: used in backend/api/settings.py
-- `REQ_TIMEOUT_MS`: used in backend/api/settings.py
+Backend configuration is loaded from a dotenv file rather than a global `PRIVATE_DIR`.
+
+- **PRIVATE_DIR**: Base directory for private configuration.  
+  - Defaults to `./private` if not set, or can be overridden via a `.privatedir` file or an environment variable.  
+  - The backend expects secrets in `${PRIVATE_DIR}/secrets/backend.env`.  
+  - This file is not committed, but a template is provided under `private-template/`.
+
+- **Backend variables (loaded from backend.env):**
+  - `PERSONA_NAME`: Display name used in mock responses.
+  - `PROJECT_ID`: GCP project ID.
+  - `REGION`: GCP region.
+  - `INDEX_ENDPOINT_ID`: Vertex AI Index Endpoint ID.
+  - `DEPLOYED_INDEX_ID`: Deployed Index resource ID.
+  - `CHUNKS_URI`: `gs://` or `file://` URI of packed chunk data.
+  - `API_KEY`: Key for calling Vertex AI endpoints.
+  - `MAX_INPUT_TOKENS`: Input context budget for LLM calls.
+  - `MAX_OUTPUT_TOKENS`: Output budget for LLM calls.
+  - `REQ_TIMEOUT_MS`: Request timeout in milliseconds.
+
+- **Frontend variables (in `frontend/web/.env.local`):**
+  - `NEXT_PUBLIC_API_URL`: URL of the backend (e.g. `http://localhost:8080` during local dev).
+
+`settings.py` uses `python-dotenv` to load `${PRIVATE_DIR}/secrets/backend.env` into the process environment before FastAPI starts. Missing required values will raise validation errors on startup.
+
 
 ## Backend API
 ### Endpoints
@@ -131,7 +125,7 @@ curl -s -X POST http://localhost:8000/chat -H 'content-type: application/json' -
 - `api/llm.py`: `build_llm_prompt` returns the strict format. `call_gemini_flash` not implemented.
 
 ## Ingestion jobs
-- `jobs/pack_and_push.py` validates JSONL against `schema/chunk.schema.json`, splits long texts, writes `chunks-<sha>.jsonl.gz`. Prints a `gs://` URI if a bucket is configured in `config/settings.yaml`. No embedding or upsert yet.
+- `jobs/pack_and_push.py` validates JSONL against `schema/chunk.schema.json`, splits long texts (~2.2k characters, sentence-aware), and writes `chunks-<sha>.jsonl.gz`. Prints a `gs://` URI if a `bucket:` is provided in a YAML file passed with `--settings`. No embedding or upsert yet.
 
 ## Ingestion and Retrieval Design
 
@@ -188,19 +182,7 @@ curl -s -X POST http://localhost:8000/chat -H 'content-type: application/json' -
 See RATIONALE.md §3 for discussion.
 
 ## Frontend behavior
-- Frontend folder not found under `web/`.
-
-## Makefile targets (root)
-- BACKEND_ENV
-- FRONTEND_ENV
-- build
-- clean
-- clean-all
-- dev
-- fe-install
-- install
-- mock
-- require-private
+- Frontend present under `frontend/web/`.
 
 ## Tests
 - Python tests under `tests/`:
