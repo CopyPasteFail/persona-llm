@@ -127,6 +127,12 @@ curl -s -X POST http://localhost:8000/chat -H 'content-type: application/json' -
 ## Ingestion jobs
 - `jobs/pack_and_push.py` validates JSONL against `schema/chunk.schema.json`, splits long texts (~2.2k characters, sentence-aware), and writes `chunks-<sha>.jsonl.gz`. Prints a `gs://` URI if a `bucket:` is provided in a YAML file passed with `--settings`. No embedding or upsert yet.
 
+Validation is performed against the machine-readable schema:
+- [`chunk.schema.json`](../backend/schema/chunk.schema.json)
+
+For a human-readable guide explaining the meaning, use cases, benefits, and trade-offs of each field, see:
+- [`SCHEMA.md`](SCHEMA.md)
+
 ## Ingestion and Retrieval Design
 
 ### Overall scheme
@@ -197,8 +203,3 @@ See [`RATIONALE.md`](./RATIONALE.md) for discussion.
 
 ## Compatibility and tooling
 - Python 3.13 compatible, avoid optional wheels unless verified. `orjson` is optional.
-
-## Provenance
-This v5 spec updates v4 to match the merged mono-repo and current code layout. Prior v4 references two repos and unverified frontend details.
-
-References to prior docs: fileciteturn0file3 fileciteturn0file1
