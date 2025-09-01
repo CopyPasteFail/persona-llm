@@ -50,7 +50,7 @@ envs:
 	@echo "PROJECT_ID, REGION, INDEX_ENDPOINT_ID, DEPLOYED_INDEX_ID, CHUNKS_URI, API_KEY, MAX_INPUT_TOKENS, MAX_OUTPUT_TOKENS, REQ_TIMEOUT_MS"
 
 clean:
-	rm -rf __pycache__ .pytest_cache
+	rm -rf __pycache__ .pytest_cache api/__pycache__ tests/__pycache__
 
-clean-all:
-	rm -rf __pycache__ .pytest_cache .venv
+clean-all: clean
+	rm -rf .venv
