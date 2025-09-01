@@ -179,7 +179,7 @@ curl -s -X POST http://localhost:8000/chat -H 'content-type: application/json' -
 - **Sidecar store in GCS** = portable, versioned artifacts.
 - **Runtime classification** = answers stay persona-consistent but context-aware.
 
-See RATIONALE.md §3 for discussion.
+See [`RATIONALE.md`](./RATIONALE.md) for discussion.
 
 ## Frontend behavior
 - Frontend present under `frontend/web/`.
