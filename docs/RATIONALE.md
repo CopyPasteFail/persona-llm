@@ -160,3 +160,45 @@
 **Cons:** Requires stricter prompt design.  
 
 **Decision:** Stick with grounded, first-person answers. Matches product goal of a reliable persona demo.
+
+---
+
+## 11. Structured Metadata + Tags (Denormalization for Retrieval)
+
+**What:** Keep structured fields in the chunks JSONL (e.g., `role: "infra" | "product"`, `topics: [...]`) **and** also generate flattened `tags` (e.g., `["role:infra","topic:kubernetes"]`). Push **only `tags`** into the vector DB metadata for fast filtering; keep the full structured fields in the sidecar JSONL for validation, analytics, and provenance.
+
+**Alternatives considered:**
+- **Tags only** (no structured fields): keep just `["role:infra","topic:kubernetes"]`.
+- **Structured only** (no tags): keep `role`/`topics` but don’t denormalize to `tags`.
+
+**Pros:**
+- **At retrieval**: vector DBs (like Vertex AI Matching Engine) filter fastest on flat metadata. `tags` make ANN filtering simple and efficient.
+- **Data quality**: structured fields give schema guarantees (e.g., `role ∈ {infra, product}`), avoiding typos like `role:infraa`.
+- **Analytics & ops**: structured fields are easier to aggregate (“how many infra chunks?”, “topic coverage?”) and evolve (add new fields) without regexing strings.
+- **Clarity**: humans can read `role`/`topics` at a glance; `tags` are a runtime convenience.
+
+**Cons:**
+- **Duplication**: `tags` repeat information that’s already in `role`/`topics`.
+- **Slightly more ingestion logic**: must auto-generate tags from structured fields.
+
+**Decision:** **Keep both.**  
+- Generate `tags` automatically at ingestion from `role` + `topics` (deterministic, no manual maintenance).  
+- **Push only `tags`** (plus `chunk_id`) to the vector index for fast ANN filtering.  
+- Keep **structured fields** in the JSONL sidecar for validation, analytics, and future evolution.
+
+**Example (ingested chunk):**
+```json
+{
+  "doc_id": "cv-infra-2025",
+  "chunk_id": "infra-001",
+  "role": "infra",
+  "topics": ["kubernetes","terraform"],
+  "tags": ["role:infra","topic:kubernetes","topic:terraform"],
+  "text": "Ran EKS with Terraform and ArgoCD."
+}
+```
+
+**Query usage:**
+- ANN call with metadata filter: `tags CONTAINS "role:infra"`.
+- Rerank boost: `tags CONTAINS "topic:kubernetes"`.
+- Analytics (outside ANN): group by `role`, count by `topics`.
