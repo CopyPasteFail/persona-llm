@@ -1,6 +1,6 @@
 # Data Design Decisions for CV Persona LLM Retrieval Pipeline
 
-## 1. Two CVs, Two Roles (role:infra, role:product)
+## 1. One CV file per Role (role:infra, role:product)
 
 **What:** Keep the infra CV (DevOps/SRE/Platform) and the product CV (PM/TPM/PO) as separate documents. Tag all chunks from each with a single role: `role:infra` or `role:product`.  
 **Alternatives considered:**
@@ -232,3 +232,24 @@
 - At larger scale, migrate `chunk_id` to a **content hash** for stability across ingestions, while keeping `position` as the explicit order.  
 - If incremental inserts are needed without renumbering, emit `position` with **gaps** (e.g., 10, 20, 30). This lets you slip new chunks in between two existing ones (insert at 15) without reassigning every downstream position.  
 - Another option: add a separate `rank` field (float/decimal) to allow flexible ordering while keeping `position` as a simple serial.
+
+---
+
+## 13. Overlap for Retrieval Continuity
+
+**What:** Allow a small (~10%) overlap by sentence between consecutive chunks, but only inside the same role/employer block.  
+
+**Alternatives considered:**
+- No overlap at all, strictly adjacent non-overlapping chunks.
+- Larger overlaps (20–30%) to guarantee full context coverage.
+
+**Pros:**
+- Preserves continuity when an answer spans the boundary of two chunks.
+- Prevents context loss without significantly inflating storage or token usage.
+- Keeps overlaps lightweight (10% max) so the dataset does not grow excessively.
+
+**Cons:**
+- Slight duplication across chunks increases file size marginally.
+- Requires careful implementation to ensure overlaps stay inside role/employer blocks only.
+
+**Decision:** Add ~10% overlap by sentence within the same role/employer block. Never overlap across roles, employers, or across sections (e.g., Experience → Education). This improves retrieval quality by ensuring adjacent chunks share enough context for coherent answers.
