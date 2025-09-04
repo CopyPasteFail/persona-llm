@@ -202,3 +202,33 @@
 - ANN call with metadata filter: `tags CONTAINS "role:infra"`.
 - Rerank boost: `tags CONTAINS "topic:kubernetes"`.
 - Analytics (outside ANN): group by `role`, count by `topics`.
+
+---
+
+## 12. Chunk Identity vs Order (chunk_id and position)
+
+**What:** Each chunk carries both a `chunk_id` (unique identifier) and a `position` (order within a document). Today both are generated serially, but they serve different purposes.
+
+**Alternatives considered:**
+- **Serial IDs only:** let `chunk_id` imply order; drop `position`.
+- **Order only:** drop `chunk_id`, rely on `position` as the ID.
+- **Stable hash IDs:** generate `chunk_id` from a hash of the chunk text; keep `position` as order.
+
+**Pros of keeping both:**
+- `chunk_id` = identity. Required as a unique key in the vector DB, for citations, and for debugging.
+- `position` = order. Lets you reconstruct adjacency and display chunks in sequence, even if ID schemes change later.
+- Future-proof: if `chunk_id` changes to a hash or to a per-section scheme, `position` still preserves ordering.
+
+**Cons:**
+- Slight duplication when both are serial today: neighbors can be inferred from either.
+
+**Real-world incremental update cases:**
+- **Wikis/handbooks:** new paragraph inserted mid-page; hash IDs allow reusing old IDs, `position` preserves order.
+- **Release notes:** append a new section weekly; only new IDs are added.
+- **Transcripts:** stream chunks as they arrive; existing IDs untouched.
+
+**Decision:** Keep both fields.  
+- For this CV app, re-ingestion of the whole doc is simplest; serial `chunk_id` + serial `position` is fine.  
+- At larger scale, migrate `chunk_id` to a **content hash** for stability across ingestions, while keeping `position` as the explicit order.  
+- If incremental inserts are needed without renumbering, emit `position` with **gaps** (e.g., 10, 20, 30). This lets you slip new chunks in between two existing ones (insert at 15) without reassigning every downstream position.  
+- Another option: add a separate `rank` field (float/decimal) to allow flexible ordering while keeping `position` as a simple serial.
