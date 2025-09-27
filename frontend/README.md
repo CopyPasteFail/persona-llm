@@ -44,7 +44,6 @@ Notes:
 - Mock app default port: 8080.
 - Real backend path is unverified until retrieval and LLM are wired.
 
-
 ---
 
 ## Firebase config files
@@ -59,4 +58,3 @@ Notes:
 - `.env.local` is ignored. `.env.local.example` documents variables. `.env.production` has placeholders for static export.
 - Do not run `next export` directly — static export is enabled by `output: 'export'` in `web/next.config.mjs`.
 "
-

@@ -34,6 +34,11 @@ run: $(VENV)/bin/activate
 mock: $(VENV)/bin/activate
 	$(PY) -m uvicorn api.mock:app --reload --port 8080
 
+pack_and_push: $(VENV)/bin/activate
+	$(PY) jobs/pack_and_push.py \
+  		--schema backend/schema/chunk.schema.json \
+  		--input ${PRIVATE_DIR}/persona/chunks.jsonl
+
 test: $(VENV)/bin/activate
 	$(PY) -m pytest -q tests/test_smoke.py
 
