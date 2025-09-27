@@ -1,4 +1,4 @@
-import json, gzip, hashlib, argparse, pathlib, re
+import json, gzip, hashlib, argparse, pathlib, re, os
 from jsonschema import Draft202012Validator
 import yaml
 
@@ -6,7 +6,8 @@ def split_sentences(text: str, max_chars: int = 2200) -> list[str]:
     if len(text) <= max_chars:
         return [text]
     sentences = re.split(r"(?<=[.!?])\s+", text)
-    out, cur = [], ""
+    out: list[str] = []
+    cur = ""
     for s in sentences:
         if len(cur) + len(s) + 1 <= max_chars:
             cur = (cur + " " + s).strip()
@@ -23,12 +24,19 @@ def deterministic_id(text: str) -> str:
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--settings", required=True)
+    ap.add_argument("--settings")
     ap.add_argument("--schema", required=True)
-    ap.add_argument("--input", default="data/cv_chunks.jsonl")
+    ap.add_argument("--input", default="../../private/data/chunks.jsonl")
     args = ap.parse_args()
 
-    cfg = yaml.safe_load(open(args.settings))
+    cfg: dict[str, object] = {}
+    if args.settings:
+        with open(args.settings, "r", encoding="utf-8") as fh:
+            cfg_raw = yaml.safe_load(fh)
+        if isinstance(cfg_raw, dict):
+            cfg = cfg_raw
+        elif cfg_raw is not None:
+            raise ValueError("settings file must contain a YAML mapping")
     schema = json.load(open(args.schema))
 
     records = []
@@ -55,7 +63,7 @@ def main():
     with gzip.open(out_path, "wb") as gz:
         gz.write(data)
 
-    bucket = cfg.get("bucket", "")
+    bucket = (cfg.get("bucket") if cfg else None) or os.getenv("BUCKET_NAME", "")
     if bucket:
         uri = f"gs://{bucket}/{out_name}"
     else:
