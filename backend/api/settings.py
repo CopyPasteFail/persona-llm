@@ -38,6 +38,11 @@ def load_settings() -> Settings:
     # Load only the required file. OS env still wins.
     load_dotenv(env_path, override=False)
 
+    chunk_path = os.getenv("CHUNKS_PATH")
+    bucket_name = os.getenv("BUCKET_NAME")
+    chunk_uri = f"gs://{bucket_name.rstrip('/')}/{chunk_path.lstrip('/')}"
+
+
     try:
         return Settings(
             PERSONA_NAME=os.getenv("PERSONA_NAME"),
@@ -45,7 +50,7 @@ def load_settings() -> Settings:
             REGION=os.getenv("REGION"),
             INDEX_ENDPOINT_ID=os.getenv("INDEX_ENDPOINT_ID"),
             DEPLOYED_INDEX_ID=os.getenv("DEPLOYED_INDEX_ID"),
-            CHUNKS_URI=os.getenv("CHUNKS_URI"),
+            CHUNKS_URI=chunk_uri,
             API_KEY=os.getenv("API_KEY"),
             MAX_INPUT_TOKENS=os.getenv("MAX_INPUT_TOKENS"),
             MAX_OUTPUT_TOKENS=os.getenv("MAX_OUTPUT_TOKENS"),

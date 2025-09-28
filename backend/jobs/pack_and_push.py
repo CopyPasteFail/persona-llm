@@ -8,6 +8,7 @@ from pathlib import Path
 
 from dotenv import dotenv_values
 from jsonschema import Draft202012Validator
+from google.cloud import storage
 
 
 def resolve_existing_path(path_value: str, *roots: Path) -> Path:
@@ -49,6 +50,14 @@ def load_backend_env(keys: list[str]) -> dict[str, str]:
             raise RuntimeError(f"Missing required env var: {key}")
         selected[key] = value
     return selected
+
+
+def upload_to_bucket(file_path: Path, bucket_name: str, object_name: str) -> str:
+    """Upload the artifact to Cloud Storage and return its URI."""
+    client = storage.Client()
+    blob = client.bucket(bucket_name).blob(object_name)
+    blob.upload_from_filename(str(file_path))
+    return f"gs://{bucket_name}/{object_name}"
 
 def split_sentences(text: str, max_chars: int = 2200) -> list[str]:
     if len(text) <= max_chars:
@@ -115,7 +124,7 @@ def main():
         gz.write(data)
 
     bucket = env["BUCKET_NAME"]
-    uri = f"gs://{bucket}/{out_name}"
+    uri = upload_to_bucket(out_path, bucket, out_name)
     print(uri)
 
 if __name__ == "__main__":
