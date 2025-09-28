@@ -104,6 +104,18 @@ gcp-create-bucket: require-private require-gcp-env
 gcp-enable-firebase: require-gcp-env
 	@gcloud alpha firebase projects add-firebase "$(PROJECT_ID)"
 
+# Show whether billing is linked for the active project
+gcp-check-billing: require-gcp-env
+	@gcloud beta billing projects describe "$(PROJECT_ID)" --format='value(billingEnabled)'
+
+# Link billing account to the active project
+gcp-link-billing: require-gcp-env
+	@if [ -z "$(BILLING_ACCOUNT_ID)" ]; then \
+	  echo "BILLING_ACCOUNT_ID must be set"; \
+	  exit 1; \
+	fi
+	@gcloud beta billing projects link "$(PROJECT_ID)" --billing-account="$(BILLING_ACCOUNT_ID)"
+
 # Create service account and bind roles
 gcp-sa-create: require-private require-gcp-env
 	@gcloud iam service-accounts create persona-llm --display-name="Persona LLM"
