@@ -134,14 +134,16 @@ make gcp-set-project
 
 Linking a billing account is **mandatory** when using services such as Cloud Run and Vertex AI. Without billing linked, the rest of the provisioning steps will fail.  
 
-Check whether billing is linked:
+To check whether billing is linked, run:
 ```bash
-gcloud beta billing projects describe "$PROJECT_ID" --format='value(billingEnabled)'
+make gcp-check-billing
 ```
-If the command prints nothing or `False`, you need to link a billing account:
+If the command prints nothing or `False`, you need to link a billing account.
+If you don't know your **billing account ID**, you can set and/or create on by follwing the instruction in the [Billing Account](#billing-account) section.
+
+Otherwise set `BILLING_ACCOUNT_ID` and run:
 ```bash
-gcloud beta billing projects link "$PROJECT_ID" \
-  --billing-account=YOUR_BILLING_ACCOUNT_ID
+BILLING_ACCOUNT_ID=YOUR_BILLING_ACCOUNT_ID make gcp-link-billing
 ```
 Re-run `make gcp-set-project` afterwards.
 
@@ -289,7 +291,7 @@ make fe-firebase:deploy
 
 ## Appendix
 
-### Billing account
+### Billing Account
 
 To link using the Google Cloud Console:
 
