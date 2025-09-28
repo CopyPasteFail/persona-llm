@@ -100,6 +100,10 @@ gcp-set-project: require-gcp-env
 gcp-create-bucket: require-private require-gcp-env
 	@gcloud storage buckets create "gs://$(BUCKET_NAME)" --location="$(REGION)"
 
+# Enable Firebase features on the active GCP project
+gcp-enable-firebase: require-gcp-env
+	@gcloud alpha firebase projects add-firebase "$(PROJECT_ID)"
+
 # Create service account and bind roles
 gcp-sa-create: require-private require-gcp-env
 	@gcloud iam service-accounts create persona-llm --display-name="Persona LLM"
@@ -115,6 +119,8 @@ gcp-sa-delete: require-gcp-env
 gcp-sa-revoke-builder: require-private require-gcp-env
 	@gcloud projects remove-iam-policy-binding "$(PROJECT_ID)" --member="$(SA_MEMBER)" --role="roles/aiplatform.admin" --quiet || true
 	@gcloud storage buckets remove-iam-policy-binding "$(BUCKET_URI)" --member="$(SA_MEMBER)" --role="roles/storage.objectCreator" --quiet || true
+	@gcloud projects remove-iam-policy-binding "$(PROJECT_ID)" --member="$(SA_MEMBER)" --role="roles/firebasehosting.admin" --quiet || true
+	@gcloud projects remove-iam-policy-binding "$(PROJECT_ID)" --member="$(SA_MEMBER)" --role="roles/firebase.admin" --quiet || true
 
 gcp-sa-revoke-runtime: require-private require-gcp-env
 	@gcloud projects remove-iam-policy-binding "$(PROJECT_ID)" --member="$(SA_MEMBER)" --role="roles/aiplatform.user" --quiet || true
@@ -124,6 +130,8 @@ gcp-sa-revoke-runtime: require-private require-gcp-env
 gcp-sa-grant-builder: require-private require-gcp-env
 	@gcloud projects add-iam-policy-binding "$(PROJECT_ID)" --member="$(SA_MEMBER)" --role="roles/aiplatform.admin"
 	@gcloud storage buckets add-iam-policy-binding "$(BUCKET_URI)" --member="$(SA_MEMBER)" --role="roles/storage.objectCreator"
+	@gcloud projects add-iam-policy-binding "$(PROJECT_ID)" --member="$(SA_MEMBER)" --role="roles/firebasehosting.admin"
+	@gcloud projects add-iam-policy-binding "$(PROJECT_ID)" --member="$(SA_MEMBER)" --role="roles/firebase.admin"
 
 # Bind roles for runtime stage
 gcp-sa-grant-runtime: require-private require-gcp-env

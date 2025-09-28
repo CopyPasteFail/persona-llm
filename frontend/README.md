@@ -49,7 +49,10 @@ Notes:
 ## Firebase config files
 
 - **`firebase.json`**  
-  Hosting configuration. Tells Firebase to serve the static export from `web/out`:contentReference[oaicite:0]{index=0}.
+  Hosting configuration. Tells Firebase to serve the static export from `web/out`.
+
+### Authentication for deploys
+- Export `GOOGLE_APPLICATION_CREDENTIALS=$PRIVATE_DIR/secrets/key.json` before running `npm run firebase:deploy`. The Firebase CLI will use the shared service account, so no `firebase login` is required.
 
 ---
 
@@ -57,4 +60,3 @@ Notes:
 - CORS: the backend allowlists `http://localhost:3000` and your Firebase Hosting URL.
 - `.env.local` is ignored. `.env.local.example` documents variables. `.env.production` has placeholders for static export.
 - Do not run `next export` directly — static export is enabled by `output: 'export'` in `web/next.config.mjs`.
-"

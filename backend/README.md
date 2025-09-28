@@ -83,7 +83,6 @@ Strict allowlist. Real mode allows `http://localhost:3000` and `https://<project
 Per IP, 10 per minute and 100 per day on `/chat`. `/health` is never limited.
 
 ## Tests
-
 The repository includes several layers of automated tests to validate both the mock and real backend behavior, as well as the normalization logic for persona references:
 
 - **Smoke tests** (`test_smoke.py`)  
