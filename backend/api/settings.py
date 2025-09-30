@@ -32,10 +32,15 @@ def load_settings() -> Settings:
     if not env_dir:
         raise RuntimeError("PRIVATE_DIR is not set. It must point to the private folder.")
     env_path = Path(env_dir).expanduser().resolve() / "secrets" / "backend.env"
+    common_env_path = env_path.with_name("common.env")
+
+    if not common_env_path.exists():
+        raise RuntimeError(f"Missing secrets file: {common_env_path}")
     if not env_path.exists():
         raise RuntimeError(f"Missing secrets file: {env_path}")
 
-    # Load only the required file. OS env still wins.
+    # Load shared values before backend overrides. OS env still wins.
+    load_dotenv(common_env_path, override=False)
     load_dotenv(env_path, override=False)
 
     chunk_path = os.getenv("CHUNKS_PATH")

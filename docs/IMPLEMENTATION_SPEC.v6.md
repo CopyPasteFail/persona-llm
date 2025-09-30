@@ -70,6 +70,7 @@
 │   │   ├── starters.json
 │   │   └── vector-seed
 │   └── secrets
+│       ├── common.env
 │       ├── backend.env
 │       └── frontend.env
 └── scripts
@@ -84,9 +85,11 @@ Backend configuration is loaded from a dotenv file rather than a global `PRIVATE
   - The backend expects secrets in `${PRIVATE_DIR}/secrets/backend.env`.  
   - This file is not committed, but a template is provided under `private-template/`.
 
+- **Shared variables (loaded from `secrets/common.env`):**
+  - `PROJECT_ID`: Shared identifier for both Firebase and GCP resources.
+
 - **Backend variables (loaded from backend.env):**
   - `PERSONA_NAME`: Display name used in mock responses.
-  - `PROJECT_ID`: GCP project ID.
   - `REGION`: GCP region.
   - `INDEX_ENDPOINT_ID`: Vertex AI Index Endpoint ID.
   - `DEPLOYED_INDEX_ID`: Deployed Index resource ID.
@@ -99,7 +102,7 @@ Backend configuration is loaded from a dotenv file rather than a global `PRIVATE
 - **Frontend variables (in `frontend/web/.env.local`):**
   - `NEXT_PUBLIC_API_URL`: URL of the backend (e.g. `http://localhost:8080` during local dev).
 
-`settings.py` uses `python-dotenv` to load `${PRIVATE_DIR}/secrets/backend.env` into the process environment before FastAPI starts. Missing required values will raise validation errors on startup.
+`settings.py` uses `python-dotenv` to load `${PRIVATE_DIR}/secrets/common.env` followed by `${PRIVATE_DIR}/secrets/backend.env` into the process environment before FastAPI starts. Missing required values will raise validation errors on startup.
 
 
 ## Backend API
