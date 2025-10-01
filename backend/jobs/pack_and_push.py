@@ -1,4 +1,7 @@
-"""Package persona chunks and push the artifact to Google Cloud Storage."""
+"""Validate persona chunk data, bundle it into a gzipped JSONL file, and upload the artifact to Cloud Storage.
+
+The script reads persona chunk definitions, enforces the JSON schema, splits long entries
+into sentence-based fragments, writes a deterministic filename, and pushes the result to the configured GCS bucket so downstream services can consume the latest persona content."""
 
 import argparse
 import gzip
