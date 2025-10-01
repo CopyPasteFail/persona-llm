@@ -129,17 +129,6 @@ gcp-sa-delete: require-gcp-env
 	echo "Deleting $$SA_EMAIL from $(PROJECT_ID) ..."; \
 	gcloud iam service-accounts delete "$$SA_EMAIL" --project "$(PROJECT_ID)" --quiet || true
 
-# --- revoke helpers ---
-gcp-sa-revoke-builder: require-private require-gcp-env
-	@gcloud projects remove-iam-policy-binding "$(PROJECT_ID)" --member="$(SA_MEMBER)" --role="roles/aiplatform.admin" --quiet || true
-	@gcloud storage buckets remove-iam-policy-binding "$(BUCKET_URI)" --member="$(SA_MEMBER)" --role="roles/storage.objectCreator" --quiet || true
-	@gcloud projects remove-iam-policy-binding "$(PROJECT_ID)" --member="$(SA_MEMBER)" --role="roles/firebasehosting.admin" --quiet || true
-	@gcloud projects remove-iam-policy-binding "$(PROJECT_ID)" --member="$(SA_MEMBER)" --role="roles/firebase.admin" --quiet || true
-
-gcp-sa-revoke-runtime: require-private require-gcp-env
-	@gcloud projects remove-iam-policy-binding "$(PROJECT_ID)" --member="$(SA_MEMBER)" --role="roles/aiplatform.user" --quiet || true
-	@gcloud storage buckets remove-iam-policy-binding "$(BUCKET_URI)" --member="$(SA_MEMBER)" --role="roles/storage.objectViewer" --quiet || true
-
 # Bind roles for building stage
 gcp-sa-grant-builder: require-private require-gcp-env
 	@gcloud projects add-iam-policy-binding "$(PROJECT_ID)" --member="$(SA_MEMBER)" --role="roles/aiplatform.admin"
@@ -147,10 +136,22 @@ gcp-sa-grant-builder: require-private require-gcp-env
 	@gcloud projects add-iam-policy-binding "$(PROJECT_ID)" --member="$(SA_MEMBER)" --role="roles/firebasehosting.admin"
 	@gcloud projects add-iam-policy-binding "$(PROJECT_ID)" --member="$(SA_MEMBER)" --role="roles/firebase.admin"
 
+# Revoke roles for building stage
+gcp-sa-revoke-builder: require-private require-gcp-env
+	@gcloud projects remove-iam-policy-binding "$(PROJECT_ID)" --member="$(SA_MEMBER)" --role="roles/aiplatform.admin" --quiet || true
+	@gcloud storage buckets remove-iam-policy-binding "$(BUCKET_URI)" --member="$(SA_MEMBER)" --role="roles/storage.objectCreator" --quiet || true
+	@gcloud projects remove-iam-policy-binding "$(PROJECT_ID)" --member="$(SA_MEMBER)" --role="roles/firebasehosting.admin" --quiet || true
+	@gcloud projects remove-iam-policy-binding "$(PROJECT_ID)" --member="$(SA_MEMBER)" --role="roles/firebase.admin" --quiet || true
+
 # Bind roles for runtime stage
 gcp-sa-grant-runtime: require-private require-gcp-env
 	@gcloud projects add-iam-policy-binding "$(PROJECT_ID)" --member="$(SA_MEMBER)" --role="roles/aiplatform.user"
 	@gcloud storage buckets add-iam-policy-binding "$(BUCKET_URI)" --member="$(SA_MEMBER)" --role="roles/storage.objectViewer"
+
+# Revoke roles for runtime stage
+gcp-sa-revoke-runtime: require-private require-gcp-env
+	@gcloud projects remove-iam-policy-binding "$(PROJECT_ID)" --member="$(SA_MEMBER)" --role="roles/aiplatform.user" --quiet || true
+	@gcloud storage buckets remove-iam-policy-binding "$(BUCKET_URI)" --member="$(SA_MEMBER)" --role="roles/storage.objectViewer" --quiet || true
 
 # Show only LIVE roles for the SA (project + bucket)
 gcp-sa-roles: require-private require-gcp-env
