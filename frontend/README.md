@@ -52,7 +52,9 @@ Notes:
   Hosting configuration. Tells Firebase to serve the static export from `web/out`.
 
 ### Authentication for deploys
-- Export `GOOGLE_APPLICATION_CREDENTIALS=$PRIVATE_DIR/secrets/key.json` before running `npm run firebase:deploy`. The Firebase CLI will use the shared service account, so no `firebase login` is required.
+- **Personal account (default):** if you haven’t already, run `gcloud auth login` and `gcloud auth application-default login` so both the Cloud SDK and Application Default Credentials use your user identity. The Firebase CLI automatically reuses those tokens, so a separate `firebase login` is only needed if you explicitly want to switch accounts.
+
+- **Service account / automation:** export `GOOGLE_APPLICATION_CREDENTIALS=$PRIVATE_DIR/secrets/key.json` (or another ADC-compatible key path) before executing `npm run firebase:deploy`. This matches the service-account workflow described in the root README.
 
 ---
 
