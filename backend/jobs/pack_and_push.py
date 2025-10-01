@@ -1,3 +1,5 @@
+"""Package persona chunks and push the artifact to Google Cloud Storage."""
+
 import argparse
 import gzip
 import hashlib
@@ -5,6 +7,7 @@ import json
 import os
 import re
 from pathlib import Path
+from typing import Mapping, Protocol, runtime_checkable, cast
 
 from dotenv import dotenv_values
 from jsonschema import Draft202012Validator
@@ -42,7 +45,8 @@ def load_backend_env(keys: list[str]) -> dict[str, str]:
     if not env_path.exists():
         raise RuntimeError(f"Missing secrets file: {env_path}")
 
-    env_values = {k: v for k, v in dotenv_values(env_path).items() if v}
+    raw_env: Mapping[str, str | None] = cast(Mapping[str, str | None], dotenv_values(env_path))
+    env_values: dict[str, str] = {k: v for k, v in raw_env.items() if v}
     selected: dict[str, str] = {}
     for key in keys:
         value = os.getenv(key) or env_values.get(key)
@@ -52,14 +56,36 @@ def load_backend_env(keys: list[str]) -> dict[str, str]:
     return selected
 
 
+
+@runtime_checkable
+class _StorageBlob(Protocol):
+    def upload_from_filename(self, filename: str, *, timeout: int | None = None) -> None: ...
+
+
+@runtime_checkable
+class _StorageBucket(Protocol):
+    def blob(self, object_name: str) -> _StorageBlob: ...
+
+
+@runtime_checkable
+class _StorageClient(Protocol):
+    def bucket(self, bucket_name: str) -> _StorageBucket: ...
+
+
+class _JsonSchemaValidator(Protocol):
+    def validate(self, instance: object) -> None: ...
+
+
 def upload_to_bucket(file_path: Path, bucket_name: str, object_name: str) -> str:
     """Upload the artifact to Cloud Storage and return its URI."""
-    client = storage.Client()
-    blob = client.bucket(bucket_name).blob(object_name)
+    client = cast(_StorageClient, storage.Client())
+    bucket = client.bucket(bucket_name)
+    blob = bucket.blob(object_name)
     blob.upload_from_filename(str(file_path))
     return f"gs://{bucket_name}/{object_name}"
 
 def split_sentences(text: str, max_chars: int = 2200) -> list[str]:
+    """Break text into <= max_chars segments, preferring sentence boundaries."""
     if len(text) <= max_chars:
         return [text]
     sentences = re.split(r"(?<=[.!?])\s+", text)
@@ -77,9 +103,11 @@ def split_sentences(text: str, max_chars: int = 2200) -> list[str]:
     return out
 
 def deterministic_id(text: str) -> str:
+    """Generate a stable 12-character hex fragment derived from `text`."""
     return hashlib.sha1(text.encode("utf-8")).hexdigest()[:12]
 
 def main():
+    """Validate persona chunks, bundle them, and push the archive to GCS."""
     backend_root = Path(__file__).resolve().parent.parent
     repo_root = backend_root.parent
     env = load_backend_env(["BUCKET_NAME"])
@@ -96,17 +124,19 @@ def main():
     with open(schema_path, "r", encoding="utf-8") as schema_file:
         schema = json.load(schema_file)
 
-    records = []
+    records: list[dict[str, object]] = []
     input_path = resolve_existing_path(args.input, repo_root, backend_root)
+    validator = cast(_JsonSchemaValidator, Draft202012Validator(schema))
+
     with open(input_path, "r", encoding="utf-8") as f:
         for line in f:
             if not line.strip():
                 continue
             obj = json.loads(line)
-            Draft202012Validator(schema).validate(obj)
+            validator.validate(obj)
 
             base_id = obj.get("id") or f"cv:auto:{deterministic_id(obj.get('text', ''))}"
-            metadata = obj.get("metadata", {})
+            metadata = cast(dict[str, object], obj.get("metadata", {}))
 
             chunks = split_sentences(obj["text"], 2200)
             if len(chunks) == 1:
