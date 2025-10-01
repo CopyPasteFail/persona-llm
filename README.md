@@ -170,12 +170,12 @@ make gcp-enable-firebase
 
 ### Step 6. Choose your deployment identity
 
-Most teams can deploy using their personal Google account. Make sure your user has enough IAM permissions (Project Owner or the specific Vertex AI / Cloud Run / Storage / Firebase roles) and run:
+Most teams can deploy using their personal Google account. Make sure your user has enough IAM permissions (Project Owner or the specific Vertex AI / Cloud Run / Storage / Firebase roles) and then authenticate as follows:
 
-```bash
-gcloud auth login
-gcloud auth application-default login
-```
+- `gcloud auth login` — signs the Cloud SDK in as you, so `gcloud`, `gsutil`, and similar CLI commands run with your user credentials.
+- `gcloud auth application-default login` — writes Application Default Credentials (ADC) so local scripts and libraries (like `google-cloud-storage`) run with the same user identity.
+
+Run both commands if you deploy via the CLI and run helper scripts locally. If you instead use a dedicated service account, skip these and authenticate with that identity.
 
 With those credentials in place you can run `make be-pack_and_push`, `gcloud run deploy`, and `npm run firebase:deploy` without introducing any new secrets.
 
