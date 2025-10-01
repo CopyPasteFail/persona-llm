@@ -38,6 +38,24 @@ PRIVATE_DIR=/abs/path/to/your-private-overlay make run
 > - `backend/README.md` (Python version, venv, installing deps)  
 > - `frontend/README.md` (Node version, npm install, etc.)
 
+> **Node version auto-switching**  
+> The repo pins a version of Node in `.nvmrc`.
+> For bash shells, append this helper to `~/.bashrc`:
+> ```bash
+> cat <<'EOF' >> ~/.bashrc
+> load-nvmrc() {
+>   local nvmrc="$PWD/.nvmrc"
+>   if [ -f "$nvmrc" ]; then
+>     nvm use --silent >/dev/null 2>&1 || nvm install
+>   fi
+> }
+> export PROMPT_COMMAND="load-nvmrc${PROMPT_COMMAND:+;$PROMPT_COMMAND}"
+> load-nvmrc
+> EOF
+> ```
+> Restart the shell (or `source ~/.bashrc`) and bash will run `nvm use` whenever you `cd` into this repo.
+
+
 At this stage you can locally run the mock backend and frontend, see [here](#mode-a-mock-frontend--mock-backend-local).
 
 ## Preparing GCP and Firebase Environments
@@ -232,6 +250,8 @@ make install
 make dev
 ```
 
+> Tip: confirm your shell auto-loads Node 20 (see the setup note above) so these commands use the supported runtime.
+
 Mock mode if available:
 ```bash
 make dev:mock
@@ -292,12 +312,12 @@ Static export on Firebase Hosting. API served by Cloud Run.
 
 2) Build the static export:
 ```bash
-XXXX build
+make fe-build
 ```
 
 3) Optional: preview locally:
 ```bash
-XXXX preview
+make fe-preview
 # serves web/out at http://localhost:4173
 ```
 
