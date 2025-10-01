@@ -159,7 +159,8 @@ def main():
 
     bucket = env["BUCKET_NAME"]
     uri = upload_to_bucket(out_path, bucket, out_name)
-    print(uri)
+    print(f"Uploaded persona chunks to {uri}")
+    print(f"Artifact name: {out_name} (set this as CHUNKS_PATH in your backend env)")
 
 if __name__ == "__main__":
     main()
