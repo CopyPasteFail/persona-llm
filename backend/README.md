@@ -53,7 +53,7 @@ Provide these through your shell or a private folder loader. Do not commit secre
 
 Common placeholders:
 - `X_API_KEY` for real app requests.
-- `CHUNKS_URI` for the packaged JSONL side store.
+- `BUCKET_NAME` / `CHUNKS_PATH` to locate the packaged JSONL side store (full GCS URI is derived at runtime).
 - Project, region, and model identifiers if using Vertex, names are placeholders only.
 
 ## API

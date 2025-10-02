@@ -13,7 +13,8 @@ class Settings(BaseModel):
     REGION: str = Field(...)
     INDEX_ENDPOINT_ID: str = Field(...)
     DEPLOYED_INDEX_ID: str = Field(...)
-    CHUNKS_URI: str = Field(...)
+    BUCKET_NAME: str = Field(...)
+    CHUNKS_PATH: str = Field(...)
     API_KEY: str = Field(...)
     MAX_INPUT_TOKENS: int = Field(..., ge=1, le=10000)
     MAX_OUTPUT_TOKENS: int = Field(..., ge=1, le=2000)
@@ -26,6 +27,12 @@ class Settings(BaseModel):
         if len(name.split()) > PERSONA_MAX_WORDS:
             raise ValueError(f"PERSONA_NAME must not exceed {PERSONA_MAX_WORDS} words")
         return name
+
+    @property
+    def chunks_uri(self) -> str:
+        bucket = self.BUCKET_NAME.rstrip("/")
+        object_name = self.CHUNKS_PATH.lstrip("/")
+        return f"gs://{bucket}/{object_name}"
 
 def load_settings() -> Settings:
     env_dir = os.getenv("PRIVATE_DIR")
@@ -43,10 +50,13 @@ def load_settings() -> Settings:
     load_dotenv(common_env_path, override=False)
     load_dotenv(env_path, override=False)
 
-    chunk_path = os.getenv("CHUNKS_PATH")
     bucket_name = os.getenv("BUCKET_NAME")
-    chunk_uri = f"gs://{bucket_name.rstrip('/')}/{chunk_path.lstrip('/')}"
+    if not bucket_name:
+        raise RuntimeError("Missing secrets value: BUCKET_NAME")
 
+    chunk_path = os.getenv("CHUNKS_PATH")
+    if not chunk_path:
+        raise RuntimeError("Missing secrets value: CHUNKS_PATH")
 
     try:
         return Settings(
@@ -55,7 +65,8 @@ def load_settings() -> Settings:
             REGION=os.getenv("REGION"),
             INDEX_ENDPOINT_ID=os.getenv("INDEX_ENDPOINT_ID"),
             DEPLOYED_INDEX_ID=os.getenv("DEPLOYED_INDEX_ID"),
-            CHUNKS_URI=chunk_uri,
+            BUCKET_NAME=bucket_name,
+            CHUNKS_PATH=chunk_path,
             API_KEY=os.getenv("API_KEY"),
             MAX_INPUT_TOKENS=os.getenv("MAX_INPUT_TOKENS"),
             MAX_OUTPUT_TOKENS=os.getenv("MAX_OUTPUT_TOKENS"),

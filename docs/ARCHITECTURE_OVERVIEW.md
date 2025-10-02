@@ -27,7 +27,7 @@ Field-level explanations and rationale are documented in [`SCHEMA.md`](SCHEMA.md
 3. Service returns a deterministic answer with a dummy citation and usage.
 
 **Intended real path (not implemented)**
-1. Cloud Run API loads side store from `CHUNKS_URI` (GCS) at startup.
+1. Cloud Run API loads the side store object `CHUNKS_PATH` from `BUCKET_NAME` (GCS) at startup.
 2. User question goes to backend, embed query, Vector Search top K 8, apply mild boosting and filters.
 3. Query flow: , call Gemini Flash with strict grounding, return structured answer
 
