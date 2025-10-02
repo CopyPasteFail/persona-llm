@@ -78,7 +78,7 @@ Inside your private overlay pointed to by `PRIVATE_DIR`, you must include these 
   - `REGION` — the GCP region where resources (like Cloud Run and buckets) will be created, for example `europe-west1`.
   - `BUCKET_NAME` — the name of the GCS bucket used for storage, for example `my-project-persona`. Do not prefix with `gs://`.
 
-### Step 1. Install CLI tools
+### Phase 1. Install CLI tools
 
 #### Firebase CLI:
 
@@ -118,14 +118,14 @@ Verify installation:
 gcloud --version
 ```
 
-### Step 2. Authenticate once
+### Phase 2. Authenticate once
 
 ```bash
 gcloud auth login
 gcloud auth application-default login
 ```
 
-### Step 3. Choose your project workflow
+### Phase 3. Choose your project workflow
 
 - [Create a brand-new project](#workflow-new-project)
 - [Reuse an existing GCP project (no Firebase yet)](#workflow-existing-gcp)
@@ -148,7 +148,7 @@ make gcp-enable-firebase
 make gcp-set-project
 ```
 
-### Step 4. Billing Account Verification {#billing-verification}
+### Phase 4. Billing Account Verification {#billing-verification}
 
 Linking a billing account is **mandatory** when using services such as Cloud Run and Vertex AI. Without billing linked, the rest of the provisioning steps will fail.  
 
@@ -165,7 +165,7 @@ BILLING_ACCOUNT_ID=YOUR_BILLING_ACCOUNT_ID make gcp-link-billing
 ```
 Re-run `make gcp-set-project` afterwards.
 
-### Step 5. Enable services and create resources
+### Phase 5. Enable services and create resources
 
 Enable APIs
 ```bash
@@ -186,7 +186,7 @@ Enable Firebase features (safe to rerun; it’s a no-op if the project is alread
 make gcp-enable-firebase
 ```
 
-### Step 6. Choose your deployment identity
+### Phase 6. Choose your deployment identity
 
 Most teams can deploy using their personal Google account. Make sure your user has enough IAM permissions (Project Owner or the specific Vertex AI / Cloud Run / Storage / Firebase roles) and then authenticate as follows:
 
@@ -197,7 +197,38 @@ Run both commands if you deploy via the CLI and run helper scripts locally. If y
 
 With those credentials in place you can run `make be-pack_and_push`, `gcloud run deploy`, and `npm run firebase:deploy` without introducing any new secrets.
 
-#### Optional: dedicated service account for automation
+### Phase 7. Provision Vertex AI Vector Search (one-time)
+
+Set up a Matching Engine index before you embed and upsert persona chunks.
+
+1. Create the index (Tree-AH, dot product, 3,072 dimensions for `text-embedding-004`):
+   ```bash
+   make gcp-index-create
+   ```
+   - The target generates the JSON config on the fly (Tree-AH with `leafNodeEmbeddingCount=1000`, `leafNodesToSearchPercent=7`, `approximateNeighborsCount=100`, and dot-product distance; embeddings should be unit-normalized for cosine behaviour) and calls `gcloud ai indexes create` with your `PROJECT_ID`/`REGION`.
+   - Capture the printed resource name (`projects/<project>/locations/<region>/indexes/<INDEX_ID>`) and export `INDEX_ID` for later steps.
+   - Re-running the target creates an additional index (the API is not idempotent); run `make gcp-index-list` to inspect existing indexes.
+
+2. Create an index endpoint:
+   ```bash
+   make gcp-index-endpoint-create
+   ```
+   - Capture the endpoint resource (`projects/<project>/locations/<region>/indexEndpoints/<ENDPOINT_ID>`) and export `INDEX_ENDPOINT_ID`.
+   - The command creates a new endpoint each time; delete unused endpoints via `gcloud ai index-endpoints delete` if you re-run it.
+
+3. Deploy the index (requires `INDEX_ID`, `INDEX_ENDPOINT_ID`, and a chosen `DEPLOYED_INDEX_ID`; set them in your environment or `backend.env`):
+   ```bash
+   make gcp-index-deploy DEPLOYED_INDEX_ID=persona-deployment
+   ```
+
+4. After you generate embeddings, upsert datapoints into the deployed index (pass the JSONL vector file via `DATAPOINTS_FILE`):
+   ```bash
+   make gcp-index-upsert DATAPOINTS_FILE=/abs/path/to/vectors.jsonl
+   ```
+
+Record `INDEX_ENDPOINT_ID`, `INDEX_ID`, and `DEPLOYED_INDEX_ID` in `private/secrets/backend.env`. Re-run the upsert target whenever persona data changes.
+
+### Phase 8. Service account (optional)
 
 If you prefer a non-human identity (for CI pipelines or shared deploy scripts), create a service account and grant it temporary builder roles:
 
@@ -278,7 +309,7 @@ Run the mock backend and frontend pointing to the mock. Choose one:
 Terminate with Ctrl+C in the terminal.  
 If port 3000 is stuck:
 ```bash
-XXXX  kill-port
+make fe-kill-port
 ```
 
 App: http://localhost:3000
@@ -302,6 +333,8 @@ Run Next.js locally but call the real Cloud Run API.
   ```
 
 App: http://localhost:3000
+
+> To target your Cloud Run service, set `NEXT_PUBLIC_API_URL` in `private/secrets/frontend.env` (or export it in the shell) to the HTTPS URL returned by `gcloud run deploy` before running the dev command.
 
 ---
 
