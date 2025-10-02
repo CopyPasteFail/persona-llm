@@ -1,5 +1,5 @@
 # IMPLEMENTATION_SPEC
-_Version 6.02_
+_Version 6.0.03_
 
 ## Repos
 - Public mono-repo: this zip contains both backend and frontend. The backend is in `api/` and jobs under `jobs/`. The frontend is in `web/`. A private folder for secrets may be referenced during runtime, not committed.
@@ -162,6 +162,12 @@ For a human-readable guide explaining the meaning, use cases, benefits, and trad
 3. **Embedding + upsert** *(not yet wired)*
    - Embed each chunk with `text-embedding-004` (outputs 3,072-dimensional vectors).
    - Upsert `{vector, metadata}` to Vertex AI Matching Engine.
+
+### Vector search configuration (Vertex AI Matching Engine)
+- **Index type:** Tree-AH with dot-product distance; match cosine behaviour by L2-normalizing every embedding (during upsert and query).
+- **Dimensions:** 3,072 to match `text-embedding-004`.
+- **Tuning parameters:** `approximateNeighborsCount=100`, `leafNodeEmbeddingCount=1000`, and `leafNodesToSearchPercent=7`. Raise the neighbor count or search percent for higher recall (at the cost of latency), or lower them for faster, less exhaustive searches.
+- **Provisioning:** Root Makefile targets (`make gcp-index-create`, `make gcp-index-endpoint-create`, `make gcp-index-deploy`, `make gcp-index-upsert`) generate the JSON metadata and call `gcloud` using env vars from `private/secrets`. Use `make gcp-index-list` to inspect existing indexes.
 
 ### Deployment/runtime stage (every query)
 
