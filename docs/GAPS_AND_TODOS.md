@@ -8,7 +8,7 @@
 
 ## Ingestion
 - Enhance `jobs/pack_and_push.py` to embed and upsert vectors to Vertex AI Matching Engine.
-- Emit a side-store manifest and checksum for `CHUNKS_URI`.
+- Emit a side-store manifest and checksum for the `CHUNKS_PATH` artifact.
 - Add `make ingest` target.
 
 ## Frontend
@@ -40,7 +40,7 @@ References to prior docs for context: fileciteturn0file2 filecite
 - Wire LLM call:
   - `api/llm.py::call_gemini_flash` with max tokens and low temperature.
 - Startup loading:
-  - In `api.main.on_startup`, load `CHUNKS_URI` side store and initialize clients, then set `READY=True`.
+  - In `api.main.on_startup`, load the `CHUNKS_PATH` side store from `BUCKET_NAME` and initialize clients, then set `READY=True`.
 - Error handling:
   - Replace `NotImplementedError` path with proper 200 response and structured logging.
 

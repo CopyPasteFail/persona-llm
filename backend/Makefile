@@ -50,7 +50,7 @@ check: $(VENV)/bin/activate
 	$(PY) -c "import api.main, api.mock, api.retrieval, api.llm, api.settings"
 
 envs:
-	@echo "PROJECT_ID, REGION, INDEX_ENDPOINT_ID, DEPLOYED_INDEX_ID, CHUNKS_URI, API_KEY, MAX_INPUT_TOKENS, MAX_OUTPUT_TOKENS, REQ_TIMEOUT_MS"
+	@echo "PROJECT_ID, REGION, INDEX_ENDPOINT_ID, DEPLOYED_INDEX_ID, BUCKET_NAME, CHUNKS_PATH, API_KEY, MAX_INPUT_TOKENS, MAX_OUTPUT_TOKENS, REQ_TIMEOUT_MS"
 
 clean:
 	rm -rf __pycache__ .pytest_cache api/__pycache__ tests/__pycache__
