@@ -28,6 +28,10 @@ FRONTEND_ENV := $(PRIVATE_DIR)/secrets/frontend.env
 SA_EMAIL = persona-llm@$(PROJECT_ID).iam.gserviceaccount.com
 SA_MEMBER = serviceAccount:$(SA_EMAIL)
 BUCKET_URI = gs://$(BUCKET_NAME)
+# Accept either a bare endpoint ID or a full resource path
+INDEX_ENDPOINT_URI = $(if $(findstring /,$(INDEX_ENDPOINT_ID)),\
+  $(INDEX_ENDPOINT_ID),\
+  projects/$(PROJECT_ID)/locations/$(REGION)/indexEndpoints/$(INDEX_ENDPOINT_ID))
 
 require-private:
 	@test -d "$(PRIVATE_DIR)" || { echo "Missing PRIVATE_DIR=$(PRIVATE_DIR). Set PRIVATE_DIR, create .privatedir, or add ./private symlink."; exit 1; }
@@ -134,7 +138,7 @@ gcp-index-create: require-private require-gcp-env
 		--display-name="persona-index" \
 		--metadata-file="$$tmp"; \
 	rm -f "$$tmp"
-	@echo "Capture the INDEX_ENDPOINT_ID from the output (projects/.../indexes/ID) and export it before deploying."
+	@echo "Capture the INDEX_ID from the output (projects/.../indexes/ID)."
 
 gcp-index-endpoint-create: require-private require-gcp-env
 	@gcloud ai index-endpoints create \
@@ -144,7 +148,7 @@ gcp-index-endpoint-create: require-private require-gcp-env
 	@echo "Capture the INDEX_ENDPOINT_ID from the output (projects/.../indexEndpoints/ID)."
 
 gcp-index-deploy: require-private require-gcp-env require-index-ids
-	@gcloud ai index-endpoints deploy-index "$(INDEX_ENDPOINT_ID)" \
+	@gcloud ai index-endpoints deploy-index "$(INDEX_ENDPOINT_URI)" \
 		--deployed-index-id="$(DEPLOYED_INDEX_ID)" \
 		--display-name="persona-deployment" \
 		--index="$(INDEX_ID)" \
@@ -157,7 +161,7 @@ gcp-index-upsert: require-private require-gcp-env require-index-ids
 	  exit 1; \
 	fi
 	@gcloud ai index-endpoints upsert-datapoints \
-		--index-endpoint="$(INDEX_ENDPOINT_ID)" \
+		--index-endpoint="$(INDEX_ENDPOINT_URI)" \
 		--deployed-index-id="$(DEPLOYED_INDEX_ID)" \
 		--region="$(REGION)" \
 		--project="$(PROJECT_ID)" \

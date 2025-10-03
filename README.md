@@ -213,20 +213,21 @@ Set up a Matching Engine index before you embed and upsert persona chunks.
    ```bash
    make gcp-index-endpoint-create
    ```
-   - Capture the endpoint resource (`projects/<project>/locations/<region>/indexEndpoints/<ENDPOINT_ID>`) and export `INDEX_ENDPOINT_ID`.
+   - Capture the endpoint resource (`projects/<project>/locations/<region>/indexEndpoints/<INDEX_ENDPOINT_ID>`) and export `INDEX_ENDPOINT_ID` (store just `<INDEX_ENDPOINT_ID>`; the tooling derives the full path).
    - The command creates a new endpoint each time; delete unused endpoints via `gcloud ai index-endpoints delete` if you re-run it.
 
-3. Deploy the index (requires `INDEX_ID`, `INDEX_ENDPOINT_ID`, and a chosen `DEPLOYED_INDEX_ID`; set them in your environment or `backend.env`):
+3. Deploy the index (requires `INDEX_ID`, `INDEX_ENDPOINT_ID`, and `DEPLOYED_INDEX_ID`; set them in your environment or `backend.env`):
    ```bash
-   make gcp-index-deploy DEPLOYED_INDEX_ID=persona-deployment
+   make gcp-index-deploy
    ```
+   - Optional: override the configured deployment name with `make gcp-index-deploy DEPLOYED_INDEX_ID=persona-deployment`.
 
 4. After you generate embeddings, upsert datapoints into the deployed index (pass the JSONL vector file via `DATAPOINTS_FILE`):
    ```bash
    make gcp-index-upsert DATAPOINTS_FILE=/abs/path/to/vectors.jsonl
    ```
 
-Record `INDEX_ENDPOINT_ID`, `INDEX_ID`, and `DEPLOYED_INDEX_ID` in `private/secrets/backend.env`. Re-run the upsert target whenever persona data changes.
+Record `INDEX_ENDPOINT_ID` (bare endpoint ID), `INDEX_ID`, and `DEPLOYED_INDEX_ID` in `private/secrets/backend.env`. Re-run the upsert target whenever persona data changes.
 
 ### Phase 8. Service account (optional)
 

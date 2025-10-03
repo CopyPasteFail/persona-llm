@@ -34,6 +34,15 @@ class Settings(BaseModel):
         object_name = self.CHUNKS_PATH.lstrip("/")
         return f"gs://{bucket}/{object_name}"
 
+    @property
+    def index_endpoint_path(self) -> str:
+        endpoint = (self.INDEX_ENDPOINT_ID or "").strip()
+        if "/" in endpoint:
+            return endpoint
+        return (
+            f"projects/{self.PROJECT_ID}/locations/{self.REGION}/indexEndpoints/{endpoint}"
+        )
+
 def load_settings() -> Settings:
     env_dir = os.getenv("PRIVATE_DIR")
     if not env_dir:

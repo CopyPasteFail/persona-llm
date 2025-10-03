@@ -9,7 +9,7 @@ os.environ.setdefault("PROJECT_ID", "proj-test-123")
 os.environ.setdefault("REGION", "us-central1")
 os.environ.setdefault(
     "INDEX_ENDPOINT_ID",
-    "projects/proj-test-123/locations/us-central1/indexEndpoints/1234567890",
+    "1234567890",
 )
 os.environ.setdefault("DEPLOYED_INDEX_ID", "deployed-test-1")
 os.environ.setdefault("BUCKET_NAME", "test-bucket")
