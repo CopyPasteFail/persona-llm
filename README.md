@@ -229,6 +229,10 @@ Set up a Matching Engine index before you embed and upsert persona chunks.
 
 Record `INDEX_ENDPOINT_ID` (bare endpoint ID), `INDEX_ID`, and `DEPLOYED_INDEX_ID` in `private/secrets/backend.env`. Re-run the upsert target whenever persona data changes.
 
+#### Vector Search Roles and Flows
+
+See [docs/vector-search.md](docs/vector-search.md) for roles, workflows, and a diagram.
+
 ### Phase 8. Service account (optional)
 
 If you prefer a non-human identity (for CI pipelines or shared deploy scripts), create a service account and grant it temporary builder roles:
