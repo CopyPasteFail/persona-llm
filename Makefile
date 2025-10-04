@@ -30,6 +30,8 @@ SA_MEMBER = serviceAccount:$(SA_EMAIL)
 BUCKET_URI = gs://$(BUCKET_NAME)
 # Default path for generated service account key; override with `make gcp-sa-key KEY_FILE=/path/to/key.json`
 KEY_FILE ?= $(PRIVATE_DIR)/secrets/key.json
+# Default datapoints file for Matching Engine upserts (may override per call)
+DATAPOINTS_FILE ?= $(PRIVATE_DIR)/persona/data/datapoints.jsonl
 # Accept either a bare endpoint ID or a full resource path
 INDEX_ENDPOINT_URI = $(if $(findstring /,$(INDEX_ENDPOINT_ID)),\
   $(INDEX_ENDPOINT_ID),\
