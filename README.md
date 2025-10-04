@@ -218,8 +218,8 @@ For automation that needs Application Default Credentials:
 
 - Issue a key file (store it outside both repos, for example `$HOME/.config/persona-llm/vertex-ai-sa.json`):
   ```bash
-  mkdir -p $HOME/.config/persona-llm/vertex-ai-sa.json
-  make gcp-sa-key ARGS="--key-file=$HOME/.config/persona-llm/vertex-ai-sa.json"
+  mkdir -p $HOME/.config/persona-llm
+  make gcp-sa-key KEY_FILE=$HOME/.config/persona-llm/vertex-ai-sa.json
   chmod 600 $HOME/.config/persona-llm/vertex-ai-sa.json
   ```
 

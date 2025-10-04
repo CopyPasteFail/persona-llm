@@ -21,6 +21,7 @@ if str(PARENT_DIR) not in sys.path:
 from jobs.pack_and_push import (
     build_persona_records,
     load_backend_env,
+    maybe_set_service_account,
     resolve_existing_path,
 )
 
@@ -99,7 +100,9 @@ def main() -> None:
     backend_root = Path(__file__).resolve().parent.parent
     repo_root = backend_root.parent
 
-    env = load_backend_env(["PROJECT_ID", "REGION"])
+    env = load_backend_env(
+        ["PROJECT_ID", "REGION"], optional=["GOOGLE_APPLICATION_CREDENTIALS"]
+    )
     default_schema = backend_root / "schema" / "chunk.schema.json"
     default_input = repo_root / "private" / "persona" / "data" / "chunks.jsonl"
     default_output = repo_root / "private" / "persona" / "data" / "datapoints.jsonl"
@@ -128,6 +131,8 @@ def main() -> None:
     os.environ["GOOGLE_CLOUD_PROJECT"] = project_id
     os.environ["GCLOUD_PROJECT"] = project_id
     os.environ["CLOUD_ML_PROJECT_ID"] = project_id
+
+    maybe_set_service_account(env)
 
     vertexai.init(project=project_id, location=env["REGION"])
     print(f"Using Vertex project '{project_id}' in region '{env['REGION']}'")
