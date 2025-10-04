@@ -15,7 +15,8 @@ A reusable public showcase where people can query a "persona" LLM representing a
 
 ## Ingestion steps
 1. Convert CV .docx to JSONL chunks using ChatGPT with max ~450 tokens per chunk. Store in the private repo only
-2. Ingestion job (pack_and_push.py): validate, embed, upsert to Vector Search, gzip JSONL, upload to GCS
+2. Validate the JSONL against the schema, splits long entries, add metadata fragments, and upload the `chunks-<sha>.jsonl.gz` to GCS for the backend side store.
+3. Load the same chunks, call Vertex AI embedding to embed each fragment, and write a JSONL ready for Matching Engine upserts.
 
 Chunks are validated using [`chunk.schema.json`](../backend/schema/chunk.schema.json).  
 Field-level explanations and rationale are documented in [`SCHEMA.md`](SCHEMA.md).

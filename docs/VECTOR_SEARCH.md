@@ -109,4 +109,3 @@ Only create a new Deployed Index ID on the same Index Endpoint if you need a sep
   1. Deploy Index ID `I-v1` to Endpoint A with Deployed ID `staging` (e.g., 2 replicas).
   2. Deploy the exact same Index ID `I-v1` to Endpoint A with Deployed ID `production` (e.g., 10 replicas).
 - Result: Testing applications query `staging`, while live applications query `production`. The only difference is the deployment configuration, not the data itself.
-
