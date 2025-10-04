@@ -47,6 +47,12 @@ python${PY_VER} -m pip --version
 
 ## Commands
 
+- **Service account helpers**
+  - `make gcp-sa-create` – create `persona-llm@$(PROJECT_ID)`.
+  - `make gcp-sa-delete` – remove that service account if you rotate credentials.
+  - `make gcp-sa-grant-builder` / `make gcp-sa-grant-runtime` – grant build/runtime IAM roles.
+  - `make gcp-sa-key ARGS="--key-file=$HOME/.config/persona-llm/vertex-ai-sa.json"` – issue a JSON key. Store it outside the repos (e.g. `$HOME/.config/persona-llm/vertex-ai-sa.json`, `chmod 600`). Point tooling at it with `GOOGLE_APPLICATION_CREDENTIALS=$HOME/.config/persona-llm/vertex-ai-sa.json`.
+  - For temporary auth without keys: `gcloud auth application-default login` and `gcloud auth application-default set-quota-project $(PROJECT_ID)`.
 
 ## Environment variables
 Provide these through your shell or a private folder loader. Do not commit secrets.
