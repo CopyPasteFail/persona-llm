@@ -1,8 +1,6 @@
-"""Validate persona chunk data, bundle it into a gzipped JSONL file, and upload the artifact to Cloud Storage.
+"""Validate persona chunk data, bundle it into a gzipped JSONL file, and upload it to GCS."""
 
-The script reads persona chunk definitions, enforces the JSON schema, splits long entries
-into sentence-based fragments, writes a deterministic filename, and pushes the result to
-the configured GCS bucket so downstream services can consume the latest persona content."""
+from __future__ import annotations
 
 import argparse
 import gzip
@@ -11,11 +9,11 @@ import json
 import os
 import re
 from pathlib import Path
-from typing import Mapping, Protocol, runtime_checkable, cast
+from typing import Iterable, Mapping, MutableMapping, Protocol, runtime_checkable, cast
 
 from dotenv import dotenv_values
-from jsonschema import Draft202012Validator
 from google.cloud import storage
+from jsonschema import Draft202012Validator
 
 
 def resolve_existing_path(path_value: str, *roots: Path) -> Path:
@@ -45,20 +43,29 @@ def load_backend_env(keys: list[str]) -> dict[str, str]:
     if not private_dir:
         raise RuntimeError("PRIVATE_DIR is not set. It must point to the private folder.")
 
-    env_path = Path(private_dir).expanduser().resolve() / "secrets" / "backend.env"
+    secrets_dir = Path(private_dir).expanduser().resolve() / "secrets"
+    env_path = secrets_dir / "backend.env"
+    common_env_path = secrets_dir / "common.env"
+
     if not env_path.exists():
         raise RuntimeError(f"Missing secrets file: {env_path}")
 
+    env_values: dict[str, str] = {}
+    if common_env_path.exists():
+        raw_common: Mapping[str, str | None] = cast(
+            Mapping[str, str | None], dotenv_values(common_env_path)
+        )
+        env_values.update({k: v for k, v in raw_common.items() if v})
+
     raw_env: Mapping[str, str | None] = cast(Mapping[str, str | None], dotenv_values(env_path))
-    env_values: dict[str, str] = {k: v for k, v in raw_env.items() if v}
+    env_values.update({k: v for k, v in raw_env.items() if v})
     selected: dict[str, str] = {}
     for key in keys:
-        value = os.getenv(key) or env_values.get(key)
+        value = env_values.get(key) or os.getenv(key)
         if not value:
             raise RuntimeError(f"Missing required env var: {key}")
         selected[key] = value
     return selected
-
 
 
 @runtime_checkable
@@ -88,30 +95,110 @@ def upload_to_bucket(file_path: Path, bucket_name: str, object_name: str) -> str
     blob.upload_from_filename(str(file_path))
     return f"gs://{bucket_name}/{object_name}"
 
+
 def split_sentences(text: str, max_chars: int = 2200) -> list[str]:
     """Break text into <= max_chars segments, preferring sentence boundaries."""
     if len(text) <= max_chars:
         return [text]
+
     sentences = re.split(r"(?<=[.!?])\s+", text)
-    out: list[str] = []
-    cur = ""
-    for s in sentences:
-        if len(cur) + len(s) + 1 <= max_chars:
-            cur = (cur + " " + s).strip()
-        else:
-            if cur:
-                out.append(cur)
-            cur = s
-    if cur:
-        out.append(cur)
-    return out
+    fragments: list[str] = []
+    current = ""
+    for sentence in sentences:
+        candidate = f"{current} {sentence}".strip()
+        if len(candidate) <= max_chars:
+            current = candidate
+            continue
+        if current:
+            fragments.append(current)
+        current = sentence
+    if current:
+        fragments.append(current)
+    return fragments
+
 
 def deterministic_id(text: str) -> str:
     """Generate a stable 12-character hex fragment derived from `text`."""
     return hashlib.sha1(text.encode("utf-8")).hexdigest()[:12]
 
-def main():
+
+def _load_chunks(input_path: Path, schema: Mapping[str, object]) -> Iterable[dict[str, object]]:
+    validator = cast(_JsonSchemaValidator, Draft202012Validator(schema))
+    with open(input_path, "r", encoding="utf-8") as handle:
+        for line in handle:
+            if not line.strip():
+                continue
+            obj = json.loads(line)
+            validator.validate(obj)
+            yield cast(dict[str, object], obj)
+
+
+def _build_metadata(chunk: Mapping[str, object], index: int, total: int) -> MutableMapping[str, object]:
+    metadata: MutableMapping[str, object] = {}
+    for key in (
+        "doc_id",
+        "chunk_id",
+        "position",
+        "role",
+        "section",
+        "start_year",
+        "end_year",
+        "lang",
+        "updated_at",
+        "source_uri",
+    ):
+        value = chunk.get(key)
+        if value is not None:
+            metadata[key] = value
+
+    if chunk.get("topics"):
+        metadata["topics"] = list(chunk["topics"])
+    if chunk.get("tags"):
+        metadata["tags"] = list(chunk["tags"])
+    if chunk.get("permissions"):
+        metadata["permissions"] = list(chunk["permissions"])
+
+    extras = chunk.get("extras")
+    if isinstance(extras, dict) and extras:
+        metadata["extras"] = dict(extras)
+
+    metadata["fragment_index"] = index
+    metadata["fragment_count"] = total
+    return metadata
+
+
+def build_persona_records(
+    schema_path: Path,
+    input_path: Path,
+    *,
+    max_chars: int = 2200,
+) -> list[dict[str, object]]:
+    """Load JSONL chunks, split long entries, and enrich metadata."""
+
+    with open(schema_path, "r", encoding="utf-8") as schema_file:
+        schema = json.load(schema_file)
+
+    records: list[dict[str, object]] = []
+    for chunk in _load_chunks(input_path, schema):
+        text = cast(str, chunk["text"])
+        fragments = split_sentences(text, max_chars=max_chars)
+        base_id = cast(str, chunk.get("chunk_id") or chunk.get("id") or deterministic_id(text))
+        for idx, fragment in enumerate(fragments):
+            fragment_id = base_id if len(fragments) == 1 else f"{base_id}:{idx + 1:02d}"
+            metadata = _build_metadata(chunk, idx, len(fragments))
+            records.append({"id": fragment_id, "text": fragment, "metadata": metadata})
+    return records
+
+
+def _serialize_records(records: Iterable[dict[str, object]]) -> tuple[bytes, str]:
+    content = "\n".join(json.dumps(r, ensure_ascii=False) for r in records).encode("utf-8")
+    digest = hashlib.sha1(content).hexdigest()[:12]
+    return content, f"chunks-{digest}.jsonl.gz"
+
+
+def main() -> None:
     """Validate persona chunks, bundle them, and push the archive to GCS."""
+
     backend_root = Path(__file__).resolve().parent.parent
     repo_root = backend_root.parent
     env = load_backend_env(["BUCKET_NAME"])
@@ -119,48 +206,26 @@ def main():
     default_schema = backend_root / "schema" / "chunk.schema.json"
     default_input = repo_root / "private" / "persona" / "data" / "chunks.jsonl"
 
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--schema", default=str(default_schema))
-    ap.add_argument("--input", default=str(default_input))
-    args = ap.parse_args()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--schema", default=str(default_schema))
+    parser.add_argument("--input", default=str(default_input))
+    args = parser.parse_args()
 
     schema_path = resolve_existing_path(args.schema, backend_root)
-    with open(schema_path, "r", encoding="utf-8") as schema_file:
-        schema = json.load(schema_file)
-
-    records: list[dict[str, object]] = []
     input_path = resolve_existing_path(args.input, repo_root, backend_root)
-    validator = cast(_JsonSchemaValidator, Draft202012Validator(schema))
 
-    with open(input_path, "r", encoding="utf-8") as f:
-        for line in f:
-            if not line.strip():
-                continue
-            obj = json.loads(line)
-            validator.validate(obj)
+    records = build_persona_records(schema_path, input_path)
+    payload, filename = _serialize_records(records)
 
-            base_id = obj.get("id") or f"cv:auto:{deterministic_id(obj.get('text', ''))}"
-            metadata = cast(dict[str, object], obj.get("metadata", {}))
-
-            chunks = split_sentences(obj["text"], 2200)
-            if len(chunks) == 1:
-                records.append({"id": base_id, "text": obj["text"], "metadata": metadata})
-            else:
-                for i, ch in enumerate(chunks):
-                    rid = f"{base_id}:{i:02d}"
-                    records.append({"id": rid, "text": ch, "metadata": metadata})
-
-    data = "\n".join(json.dumps(r, ensure_ascii=False) for r in records).encode("utf-8")
-    sha = hashlib.sha1(data).hexdigest()[:12]
-    out_name = f"chunks-{sha}.jsonl.gz"
-    out_path = Path(out_name)
+    out_path = Path(filename)
     with gzip.open(out_path, "wb") as gz:
-        gz.write(data)
+        gz.write(payload)
 
     bucket = env["BUCKET_NAME"]
-    uri = upload_to_bucket(out_path, bucket, out_name)
+    uri = upload_to_bucket(out_path, bucket, filename)
     print(f"Uploaded persona chunks to {uri}")
-    print(f"Artifact name: {out_name} (set this as CHUNKS_PATH in your backend env)")
+    print(f"Artifact name: {filename} (set this as CHUNKS_PATH in your backend env)")
+
 
 if __name__ == "__main__":
     main()
