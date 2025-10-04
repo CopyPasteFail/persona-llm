@@ -197,7 +197,48 @@ Run both commands if you deploy via the CLI and run helper scripts locally. If y
 
 With those credentials in place you can run `make be-pack_and_push`, `gcloud run deploy`, and `npm run firebase:deploy` without introducing any new secrets.
 
-### Phase 7. Provision Vertex AI Vector Search (one-time)
+### Phase 7. Service account (optional)
+
+If you prefer a non-human identity (for CI pipelines or shared deploy scripts), create a service account and grant it temporary builder roles:
+
+```bash
+make gcp-sa-create
+make gcp-sa-grant-builder   # Vertex AI admin, Storage write, Firebase admin + hosting
+make gcp-sa-grant-runtime   # Vertex AI user, Storage read
+# Optional clean-up
+make gcp-sa-revoke-builder
+make gcp-sa-revoke-runtime
+# Delete the service account if you rotate identities
+make gcp-sa-delete
+```
+
+Run the revoke commands after deployment to drop elevated privileges before returning the service account to runtime-only access.
+
+For automation that needs Application Default Credentials:
+
+- Issue a key file (store it outside both repos, for example `$HOME/.config/persona-llm/vertex-ai-sa.json`):
+  ```bash
+  mkdir -p $HOME/.config/persona-llm/vertex-ai-sa.json
+  make gcp-sa-key ARGS="--key-file=$HOME/.config/persona-llm/vertex-ai-sa.json"
+  chmod 600 $HOME/.config/persona-llm/vertex-ai-sa.json
+  ```
+
+- Add the path to your private env (e.g. `private/secrets/backend.env`):
+  ```
+  GOOGLE_APPLICATION_CREDENTIALS=$HOME/.config/persona-llm/vertex-ai-sa.json
+  ```
+- Optional per-session override:
+  ```bash
+  export GOOGLE_APPLICATION_CREDENTIALS="$HOME/.config/persona-llm/vertex-ai-sa.json"
+  ```
+
+- Alternatively, skip keys and rely on user credentials:
+  ```bash
+  gcloud auth application-default login
+  gcloud auth application-default set-quota-project "$PROJECT_ID"
+  ```
+
+### Phase 8. Provision Vertex AI Vector Search (one-time)
 
 Set up a Matching Engine index before you embed and upsert persona chunks.
 
@@ -239,40 +280,6 @@ Record `INDEX_ENDPOINT_ID` (bare endpoint ID), `INDEX_ID`, and `DEPLOYED_INDEX_I
 #### Vector Search Roles and Flows
 
 See [docs/VECTOR_SEARCH.md](docs/VECTOR_SEARCH.md) for roles, workflows, and a diagram.
-
-### Phase 8. Service account (optional)
-
-If you prefer a non-human identity (for CI pipelines or shared deploy scripts), create a service account and grant it temporary builder roles:
-
-```bash
-make gcp-sa-create
-make gcp-sa-grant-builder   # Vertex AI admin, Storage write, Firebase admin + hosting
-make gcp-sa-grant-runtime   # Vertex AI user, Storage read
-# Optional clean-up
-make gcp-sa-revoke-builder
-make gcp-sa-revoke-runtime
-# Delete the service account if you rotate identities
-make gcp-sa-delete
-```
-
-Run the revoke commands after deployment to drop elevated privileges before returning the service account to runtime-only access.
-
-For automation that needs Application Default Credentials:
-
-- Issue a key file (store it outside both repos, for example `$HOME/.config/persona-llm/vertex-ai-sa.json`):
-  ```bash
-  make gcp-sa-key ARGS="--key-file=$HOME/.config/persona-llm/vertex-ai-sa.json"
-  chmod 600 $HOME/.config/persona-llm/vertex-ai-sa.json
-  ```
-- Point local tools at the key path:
-  ```bash
-  export GOOGLE_APPLICATION_CREDENTIALS="$HOME/.config/persona-llm/vertex-ai-sa.json"
-  ```
-- Alternatively, skip keys and rely on user credentials:
-  ```bash
-  gcloud auth application-default login
-  gcloud auth application-default set-quota-project "$PROJECT_ID"
-  ```
 
 ## Repo layout
 
