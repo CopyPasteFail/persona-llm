@@ -265,16 +265,18 @@ Set up a Matching Engine index before you embed and upsert persona chunks.
 
 4. Generate embedding datapoints for the persona chunks:
    ```bash
-   make be-datapoints
+   make be-build_datapoints
    ```
    - Produces `$PRIVATE_DIR/persona/data/datapoints.jsonl` by default with `datapointId` + `featureVector` rows ready for Matching Engine.
    - Override defaults via `ARGS="--output /tmp/foo.jsonl --model text-embedding-005"` as needed.
 
-5. Upsert (update and insert) the datapoints into the deployed index:
+5. Batch-update the index (rebuild from the new datapoints file):
    ```bash
-   make gcp-index-upsert
+   make gcp-index-upsert \
+     DATAPOINTS_FILE=$PRIVATE_DIR/persona/data/datapoints.jsonl
    ```
-   - Uses `$PRIVATE_DIR/persona/data/datapoints.jsonl` by default. Override per run with `make gcp-index-upsert DATAPOINTS_FILE=/tmp/foo.jsonl`.
+   - The target stages the datapoints as `datapoints.json` in a timestamped folder under `gs://$BUCKET_NAME/matching-engine/` (it will decompress `.jsonl.gz` automatically) and invokes `gcloud ai indexes update` with that folder URI as `contentsDeltaUri`.
+   - If you prefer manual control, run the `gsutil cp` + `gcloud ai indexes update` commands yourself; the generated metadata snippet lives at `/tmp/` and can be inspected/edited before re-running.
 
 Record `INDEX_ENDPOINT_ID` (bare endpoint ID), `INDEX_ID`, and `DEPLOYED_INDEX_ID` in `private/secrets/backend.env`. Re-run the upsert target whenever persona data changes.
 
