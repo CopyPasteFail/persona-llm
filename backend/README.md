@@ -98,6 +98,9 @@ The repository includes several layers of automated tests to validate both the m
   Run against a locally running backend (`uvicorn api.main:app`) with real GCP credentials. They check that `/chat` produces valid responses, includes the expected structure (`answer`, `citations`, `usage`), and returns first-person answers containing pronouns like *I*, *my*, or *me*:contentReference[oaicite:3]{index=3}.
   Integration tests for real mode will fail until that path is implemented.
 
+- **Live vector search test** (`make be-test-vector-live`)  
+  Hits Vertex AI Matching Engine end-to-end. Requires running from an environment that can resolve your private endpoint (for example a GCP VPC with Private Service Connect); skip locally if you do not have that network path.
+
 - **Environment setup for tests** (`conftest.py`)  
   Provides default environment variables so tests can run consistently without requiring manual configuration. These cover persona name, project and region identifiers, index endpoints, tokens, and API keys:contentReference[oaicite:4]{index=4}.
 

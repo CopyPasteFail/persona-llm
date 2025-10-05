@@ -1,28 +1,12 @@
-.PHONY: install dev mock build fe-% fe-install be-install be-% require-private require-gcp-env require-index-ids clean clean-all gcp-create-project gcp-set-project gcp-create-bucket gcp-sa-create gcp-sa-delete gcp-sa-bind-roles gcp-sa-roles gcp-sa-key gcp-index-create gcp-index-endpoint-create gcp-index-deploy gcp-index-upsert gcp-index-list
+.PHONY: install dev mock build fe-% fe-install be-install be-% require-private require-gcp-env require-index-ids require-datapoints-file clean clean-all gcp-create-project gcp-set-project gcp-create-bucket gcp-sa-create gcp-sa-delete gcp-sa-bind-roles gcp-sa-roles gcp-sa-key gcp-index-create gcp-index-endpoint-create gcp-index-deploy gcp-index-upsert gcp-index-list
 
 # -------------------------------
 # Private directory resolution
 # Precedence: ENV > .privatedir > ./private
 # -------------------------------
 
-# If PRIVATE_DIR is not provided by the environment, resolve it.
-ifeq ($(origin PRIVATE_DIR), undefined)
-  ifneq ("$(wildcard .privatedir)","")
-    PRIVATE_DIR := $(shell cat .privatedir)
-  else
-    PRIVATE_DIR := $(abspath private)
-  endif
-endif
-export PRIVATE_DIR
-
-# Helpers
-COMMON_ENV   := $(PRIVATE_DIR)/secrets/common.env
-BACKEND_ENV  := $(PRIVATE_DIR)/secrets/backend.env
-FRONTEND_ENV := $(PRIVATE_DIR)/secrets/frontend.env
-
--include $(COMMON_ENV) # Ignore if doesn't exist
--include $(BACKEND_ENV) # Ignore if doesn't exist
--include $(FRONTEND_ENV) # Ignore if doesn't exist
+# Environment bootstrap
+include make/env.mk
 
 # (=) Deferring expansion
 SA_EMAIL = persona-llm@$(PROJECT_ID).iam.gserviceaccount.com
@@ -30,8 +14,6 @@ SA_MEMBER = serviceAccount:$(SA_EMAIL)
 BUCKET_URI = gs://$(BUCKET_NAME)
 # Default path for generated service account key; override with `make gcp-sa-key KEY_FILE=/path/to/key.json`
 KEY_FILE ?= $(PRIVATE_DIR)/secrets/key.json
-# Default datapoints file for Matching Engine upserts (may override per call)
-DATAPOINTS_FILE ?= $(PRIVATE_DIR)/persona/data/datapoints.jsonl
 # Accept either a bare endpoint ID or a full resource path
 INDEX_ENDPOINT_URI = $(if $(findstring /,$(INDEX_ENDPOINT_ID)),\
   $(INDEX_ENDPOINT_ID),\
@@ -52,6 +34,10 @@ require-index-ids:
 	@[ -n "$(INDEX_ENDPOINT_ID)" ] || { echo "INDEX_ENDPOINT_ID is missing"; exit 1; }
 	@[ -n "$(INDEX_ID)" ] || { echo "INDEX_ID is missing"; exit 1; }
 	@[ -n "$(DEPLOYED_INDEX_ID)" ] || { echo "DEPLOYED_INDEX_ID is missing"; exit 1; }
+
+require-datapoints-file:
+	@[ -n "$(DATAPOINTS_FILE)" ] || { echo "DATAPOINTS_FILE must be set (configure it in $(PRIVATE_DIR)/secrets/backend.env)"; exit 1; }
+	@[ -f "$(DATAPOINTS_FILE)" ] || { echo "Missing datapoints file: $(DATAPOINTS_FILE)"; exit 1; }
 
 # ----- Frontend passthrough -----
 fe-%:
@@ -159,16 +145,8 @@ gcp-index-deploy: require-private require-gcp-env require-index-ids
 		--region="$(REGION)" \
 		--project="$(PROJECT_ID)"
 
-gcp-index-upsert: require-private require-gcp-env require-index-ids
-	@if [ -z "$(DATAPOINTS_FILE)" ]; then \
-	  echo "DATAPOINTS_FILE must point to a JSONL file with datapoints"; \
-	  exit 1; \
-	fi
+gcp-index-upsert: require-private require-gcp-env require-index-ids require-datapoints-file
 	@set -e; \
-	if [ ! -f "$(DATAPOINTS_FILE)" ]; then \
-	  echo "Missing datapoints file: $(DATAPOINTS_FILE)"; \
-	  exit 1; \
-	fi; \
 	stamp="$$(date +%Y%m%d-%H%M%S)"; \
 	tmp_dir="$$(mktemp -d)"; \
 	convert_target="$$tmp_dir/datapoints.json"; \

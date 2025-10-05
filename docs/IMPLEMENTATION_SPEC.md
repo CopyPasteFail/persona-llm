@@ -131,7 +131,7 @@ curl -s -X POST http://localhost:8000/chat -H 'content-type: application/json' -
 
 ## Ingestion jobs
 - `jobs/pack_and_push.py` validates JSONL against `schema/chunk.schema.json`, and if any bullet **or paragraph** exceeds ~2.2k characters (~450 tokens), splits it by sentence boundaries (never mid-sentence). Writes `chunks-<sha>.jsonl.gz` with enriched metadata and prints a `gs://` URI if a `bucket:` is provided in a YAML file passed with `--settings`.
-- `jobs/build_datapoints.py` loads the same chunk file, calls Vertex AI `text-embedding-004` to generate vectors, and emits a newline-delimited JSON file ready for `gcloud ai index-endpoints upsert-datapoints`. Embedding calls are batched in groups of 16 (`--batch-size`, overrideable) to minimize network round trips without risking payload limits.
+- `jobs/build_datapoints.py` loads the same chunk file, calls Vertex AI `text-embedding-004` to generate vectors, and emits a newline-delimited JSON file ready for `gcloud ai index-endpoints upsert-datapoints`. Embedding calls are batched in groups of 16 (`DATAPOINTS_BATCH_SIZE` in the env) to minimize network round trips without risking payload limits.
 
 Validation is performed against the machine-readable schema:
 - [`chunk.schema.json`](../backend/schema/chunk.schema.json)

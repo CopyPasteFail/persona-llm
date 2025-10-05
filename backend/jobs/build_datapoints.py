@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import argparse
 import gzip
 import json
 import os
@@ -24,6 +23,21 @@ from jobs.pack_and_push import (
     maybe_set_service_account,
     resolve_existing_path,
 )
+
+
+def _env_bool(name: str, default: str = "0") -> bool:
+    value = os.getenv(name, default)
+    return value.lower() in {"1", "true", "yes", "on"}
+
+
+def _env_int(name: str, default: int) -> int:
+    raw = os.getenv(name)
+    if raw is None or raw.strip() == "":
+        return default
+    try:
+        return int(raw)
+    except ValueError as exc:  # pragma: no cover - defensive guard
+        raise RuntimeError(f"Invalid integer for {name}: {raw}") from exc
 
 
 def _batched(items: Sequence[dict[str, object]], size: int) -> Iterator[Sequence[dict[str, object]]]:
@@ -106,25 +120,31 @@ def main() -> None:
     default_schema = backend_root / "schema" / "chunk.schema.json"
     private_dir = Path(os.environ.get("PRIVATE_DIR", repo_root / "private")).expanduser()
     default_input = private_dir / "persona" / "data" / "chunks.jsonl"
-    default_output = private_dir / "persona" / "data" / "datapoints.jsonl"
 
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--schema", default=str(default_schema))
-    parser.add_argument("--input", default=str(default_input))
-    parser.add_argument("--output", default=str(default_output))
-    parser.add_argument("--model", default="text-embedding-004")
-    parser.add_argument("--batch-size", type=int, default=16)
-    parser.add_argument("--max-chars", type=int, default=2200)
-    parser.add_argument("--gzip", action="store_true", help="Compress the datapoints file")
-    args = parser.parse_args()
-
-    schema_path = resolve_existing_path(args.schema, backend_root)
-    input_path = resolve_existing_path(args.input, repo_root, backend_root)
-    output_path = Path(args.output)
-    if args.gzip and not output_path.suffix.endswith(".gz"):
+    env_output = os.getenv("DATAPOINTS_FILE")
+    if not env_output:
+        raise RuntimeError(
+            "DATAPOINTS_FILE must be set in the environment (configure it in backend.env)"
+        )
+    output_path = Path(env_output).expanduser()
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    gzip_output = _env_bool("DATAPOINTS_GZIP", "0")
+    if gzip_output and not output_path.suffix.endswith(".gz"):
         output_path = output_path.with_suffix(output_path.suffix + ".gz")
 
-    records = build_persona_records(schema_path, input_path, max_chars=args.max_chars)
+    schema_override = os.getenv("DATAPOINTS_SCHEMA")
+    input_override = os.getenv("DATAPOINTS_INPUT")
+
+    schema_path = resolve_existing_path(
+        schema_override or str(default_schema), backend_root
+    )
+    input_path = resolve_existing_path(
+        input_override or str(default_input), repo_root, backend_root
+    )
+
+    max_chars = _env_int("DATAPOINTS_MAX_CHARS", 2200)
+
+    records = build_persona_records(schema_path, input_path, max_chars=max_chars)
     if not records:
         raise RuntimeError("No persona records found; check the input file")
 
@@ -137,10 +157,12 @@ def main() -> None:
 
     vertexai.init(project=project_id, location=env["REGION"])
     print(f"Using Vertex project '{project_id}' in region '{env['REGION']}'")
-    model = TextEmbeddingModel.from_pretrained(args.model)
+    model_name = os.getenv("DATAPOINTS_MODEL", "text-embedding-004")
+    model = TextEmbeddingModel.from_pretrained(model_name)
 
     embeddings: list[List[float]] = []
-    for batch in _batched(records, args.batch_size):
+    batch_size = _env_int("DATAPOINTS_BATCH_SIZE", 16)
+    for batch in _batched(records, batch_size):
         texts = [record["text"] for record in batch]
         responses = model.get_embeddings(texts)
         embeddings.extend(_embedding_values(resp) for resp in responses)
@@ -150,12 +172,12 @@ def main() -> None:
             "Embedding response count did not match records; aborting without writing datapoints"
         )
 
-    _write_datapoints(records, embeddings, output_path, gzip_output=args.gzip)
+    _write_datapoints(records, embeddings, output_path, gzip_output=gzip_output)
 
     total = len(records)
     dims = len(next(iter(embeddings))) if embeddings else 0
     print(f"Wrote {total} datapoints ({dims} dims) to {output_path}")
-    print("Ready for make gcp-index-upsert DATAPOINTS_FILE=...\n")
+    print("Ready for make gcp-index-upsert (uses DATAPOINTS_FILE from backend.env)\n")
 
 
 if __name__ == "__main__":

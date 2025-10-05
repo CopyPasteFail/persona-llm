@@ -5,7 +5,9 @@ VENV := .venv
 PY := $(VENV)/bin/python
 PIP := $(VENV)/bin/pip
 
-.PHONY: help install run mock test test-voice test-int check envs clean build_datapoints
+include ../make/env.mk
+
+.PHONY: help install run mock test test-voice test-int test-vector-live check envs clean build_datapoints
 
 help:
 	@echo "Targets:"
@@ -39,7 +41,7 @@ pack_and_push: $(VENV)/bin/activate
 	$(PY) jobs/pack_and_push.py
 
 build_datapoints: $(VENV)/bin/activate
-	$(PY) jobs/build_datapoints.py $(ARGS)
+	$(PY) jobs/build_datapoints.py
 
 test: $(VENV)/bin/activate
 	$(PY) -m pytest -q tests/test_smoke.py
@@ -50,11 +52,14 @@ test-voice: $(VENV)/bin/activate
 test-int: $(VENV)/bin/activate
 	REAL_BACKEND_URL=http://localhost:8000 $(PY) -m pytest -q -m integration tests/test_integration_real_backend.py
 
+test-vector-live: $(VENV)/bin/activate
+	embedding=`$(PY) -m scripts.emit_test_embedding` || exit 1; \
+	test -n "$$embedding" || { echo "Failed to derive embedding from $(DATAPOINTS_FILE)"; exit 1; }; \
+	RUN_VERTEX_SEARCH_TEST=1 VERTEX_TEST_EMBEDDING="$$embedding" $(PY) -m pytest -q tests/test_vector_search_integration.py
+
 check: $(VENV)/bin/activate
 	$(PY) -c "import api.main, api.mock, api.retrieval, api.llm, api.settings"
 
-envs:
-	@echo "PROJECT_ID, REGION, INDEX_ENDPOINT_ID, DEPLOYED_INDEX_ID, BUCKET_NAME, CHUNKS_PATH, API_KEY, MAX_INPUT_TOKENS, MAX_OUTPUT_TOKENS, REQ_TIMEOUT_MS"
 
 clean:
 	rm -rf __pycache__ .pytest_cache api/__pycache__ tests/__pycache__
