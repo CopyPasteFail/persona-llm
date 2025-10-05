@@ -272,9 +272,9 @@ Set up a Matching Engine index before you embed and upsert persona chunks.
 
 5. Batch-update the index (rebuild from the new datapoints file):
    ```bash
-   make gcp-index-upsert \
-     DATAPOINTS_FILE=$PRIVATE_DIR/persona/data/datapoints.jsonl
+   make gcp-index-upsert
    ```
+   - Defaults to `DATAPOINTS_FILE=$PRIVATE_DIR/persona/data/datapoints.jsonl`; override on demand with `make gcp-index-upsert DATAPOINTS_FILE=/custom/path.jsonl`.
    - The target stages the datapoints as `datapoints.json` in a timestamped folder under `gs://$BUCKET_NAME/matching-engine/` (it will decompress `.jsonl.gz` automatically) and invokes `gcloud ai indexes update` with that folder URI as `contentsDeltaUri`.
    - If you prefer manual control, run the `gsutil cp` + `gcloud ai indexes update` commands yourself; the generated metadata snippet lives at `/tmp/` and can be inspected/edited before re-running.
 
