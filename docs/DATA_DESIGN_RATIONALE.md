@@ -202,7 +202,7 @@
 
 ## 12. Embedding Batch Size
 
-**What:** Number of fragments sent per Vertex AI embeddings request (`--batch-size`, default 16).
+**What:** Number of fragments sent per Vertex AI embeddings request (`DATAPOINTS_BATCH_SIZE`, default 16).
 
 **Alternatives considered:** Larger batches (e.g., 50–250) vs. very small batches (e.g., 1–4).
 
