@@ -2,7 +2,7 @@
 _Version 6.0.03_
 
 ## Repos
-- Public mono-repo: this zip contains both backend and frontend. The backend is in `api/` and jobs under `jobs/`. The frontend is in `web/`. A private folder for secrets may be referenced during runtime, not committed.
+- Public mono-repo: Contains both backend and frontend. The backend is in `api/` and jobs under `jobs/`. The frontend is in `web/`. A private folder for secrets may be referenced during runtime, not committed.
 
 ### Current repo tree (trimmed)
 ```
@@ -84,7 +84,7 @@ Backend configuration is loaded from a dotenv file rather than a global `PRIVATE
 - **PRIVATE_DIR**: Base directory for private configuration.  
   - Defaults to `./private` if not set, or can be overridden via a `.privatedir` file or an environment variable.  
   - The backend expects secrets in `${PRIVATE_DIR}/secrets/backend.env`.  
-  - This file is not committed, but a template is provided under `private-template/`.
+  - This folder is not committed, but a template is provided under `private-template/`.
 
 - **Shared variables (loaded from `secrets/common.env`):**
   - `PROJECT_ID`: Shared identifier for both Firebase and GCP resources.
@@ -173,9 +173,9 @@ For a human-readable guide explaining the meaning, use cases, benefits, and trad
 ### Deployment/runtime stage (every query)
 
 1. **Startup (Cloud Run container)**
+   - Load env vars (`BUCKET_NAME`, `CHUNKS_PATH`, `PROJECT_ID`, `INDEX_ENDPOINT_ID`, etc.).
    - Load `chunks-<sha>.jsonl.gz` from GCS.
    - Build in-memory BM25 inverted index (tokenize chunks, compute idf, etc.).
-   - Load env vars (`BUCKET_NAME`, `CHUNKS_PATH`, `PROJECT_ID`, `INDEX_ENDPOINT_ID`, etc.).
 2. **Query flow**
    - **First-person normalization** (convert “Omer Reznik” → “I”).
    - **Role classification**: cheap heuristic/embedding sim → `role=infra` or `role=product`. Leave unclassified for mixed queries.
@@ -197,7 +197,7 @@ For a human-readable guide explaining the meaning, use cases, benefits, and trad
 - **Sidecar store in GCS** = portable, versioned artifacts.
 - **Runtime classification** = answers stay persona-consistent but context-aware.
 
-See [`RATIONALE.md`](./RATIONALE.md) for discussion.
+See [`DATA_DESIGN_RATIONALE.md`](./DATA_DESIGN_RATIONALE.md) for discussion.
 
 ## Frontend behavior
 - Frontend present under `frontend/web/`.

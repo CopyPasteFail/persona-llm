@@ -68,17 +68,17 @@
 
 ## 5. Add BM25 (Keyword Signal)
 
-**What:** Build a tiny inverted index at app startup and compute BM25 at query time.  
-**Alternatives considered:** Don’t add BM25; or stand up Elasticsearch/OpenSearch.
+**What:** Layer a lightweight BM25 scorer on top of ANN results so queries get both lexical and semantic signals.  
+**Alternatives considered:** Stay ANN-only; or outsource keyword search to Elasticsearch/OpenSearch.
 
 **Pros:**  
-- Catches acronyms, IDs, rare terms vectors may miss.  
-- Zero infra; trivial CPU at this scale.  
+- Catches acronyms, IDs, and rare terms vectors may miss.  
+- Zero extra infra when kept in-process.  
 - Example: query “experience with KEDA” → BM25 ensures chunks literally mentioning *KEDA* are promoted, even if embeddings underweight it.  
 
-**Cons:** Slightly more code to blend scores.  
+**Cons:** Slightly more code to maintain scoring/blending logic.  
 
-**Decision:** Add BM25 in-memory at startup. Chosen over prebuilding during ingestion and pulling from a bucket because the corpus is tiny, the index builds in milliseconds, and doing it at boot guarantees consistency with loaded chunks. Avoids managing another artifact, versioning, or cache invalidation. Precomputing only makes sense at large scale.
+**Decision:** Keep BM25 as a first-class retrieval signal alongside ANN (build/refresh strategy covered in Decision 8).
 
 ---
 
@@ -117,19 +117,19 @@
 
 ---
 
-## 8. Build BM25 Index at Startup
+## 8. Build BM25 Index at Startup (for now)
 
-**What:** Recompute inverted index at container boot.  
-**Alternative:** Precompute BM25 at ingestion and load from GCS.
+**What:** Recompute the inverted index during container startup right after loading the chunk file.  
+**Alternative:** Precompute BM25 artifacts during ingestion and load them from GCS at runtime.
 
 **Pros:**  
-- Always consistent with loaded chunks.  
-- Millisecond build time at this size.  
-- Avoids versioning/caching complexity.  
+- Always consistent with whatever chunk revision was just pulled.  
+- Millisecond build time at this corpus size.  
+- Eliminates artifact/version management or cache invalidation logic.  
 
-**Cons:** Startup time could grow if corpus grows.  
+**Cons:** Startup time will grow with corpus size; cold starts could lengthen if documents explode.  
 
-**Decision:** Build at startup now; precompute only if scale demands.
+**Decision:** Add BM25 at startup for now; revisit precomputing only if corpus growth makes boot time material.
 
 ---
 
