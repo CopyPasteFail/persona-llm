@@ -263,7 +263,8 @@ Set up a Matching Engine index before you embed and upsert persona chunks.
    ```bash
    make gcp-index-deploy
    ```
-   - Optional: override the configured deployment name with `make gcp-index-deploy DEPLOYED_INDEX_ID=persona-deployment`.
+   - Optional: override the configured deployment name with `make gcp-index-deploy DEPLOYED_INDEX_ID=persona_deployment`.
+   - Vertex AI requires the deployed ID to start with a letter and use only letters, numbers, or underscores (e.g. `persona_deployment`).
 
 4. Generate embedding datapoints for the persona chunks:
    ```bash

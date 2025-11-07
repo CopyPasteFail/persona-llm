@@ -15,9 +15,9 @@ BUCKET_URI = gs://$(BUCKET_NAME)
 # Default path for generated service account key; override with `make gcp-sa-key KEY_FILE=/path/to/key.json`
 KEY_FILE ?= $(PRIVATE_DIR)/secrets/key.json
 # Accept either a bare endpoint ID or a full resource path
-INDEX_ENDPOINT_URI = $(if $(findstring /,$(INDEX_ENDPOINT_ID)),\
+INDEX_ENDPOINT_URI = $(strip $(if $(findstring /,$(INDEX_ENDPOINT_ID)),\
   $(INDEX_ENDPOINT_ID),\
-  projects/$(PROJECT_ID)/locations/$(REGION)/indexEndpoints/$(INDEX_ENDPOINT_ID))
+  projects/$(PROJECT_ID)/locations/$(REGION)/indexEndpoints/$(INDEX_ENDPOINT_ID)))
 
 require-private:
 	@test -d "$(PRIVATE_DIR)" || { echo "Missing PRIVATE_DIR=$(PRIVATE_DIR). Set PRIVATE_DIR, create .privatedir, or add ./private symlink."; exit 1; }
