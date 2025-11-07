@@ -3,7 +3,7 @@
 ## Roles
 - `INDEX_ID`: The vector index asset. Needed to deploy a new/updated index. Not used for queries/upserts once deployed.
 - `INDEX_ENDPOINT_ID`: The serving endpoint. Stable “host” you deploy to and send traffic through.
-- `DEPLOYED_INDEX_ID`: Your chosen name for a specific deployment on that endpoint; used to route queries/upserts.
+- `DEPLOYED_INDEX_ID`: Your chosen name for a specific deployment on that endpoint; used to route queries/upserts. It must start with a letter and only include letters, numbers, or underscores.
 
 ## Dependency Breakdown
 
