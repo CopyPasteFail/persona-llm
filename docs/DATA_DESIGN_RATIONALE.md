@@ -1,5 +1,22 @@
 # Data Design Decisions for CV Persona LLM Retrieval Pipeline
 
+## Table of Contents
+1. [One CV file per Role (role:infra, role:product)](#1-one-cv-file-per-role-roleinfra-roleproduct)
+2. [Optional Topic Tags (not role synonyms)](#2-optional-topic-tags-not-role-synonyms)
+3. [Keep a JSONL “Chunks Sidecar” (Chosen)](#3-keep-a-jsonl-chunks-sidecar-chosen)
+4. [ANN via Vertex AI Vector Search](#4-ann-via-vertex-ai-vector-search)
+5. [Add BM25 (Keyword Signal)](#5-add-bm25-keyword-signal)
+6. [Build BM25 Index at Startup (for now)](#6-build-bm25-index-at-startup-for-now)
+7. [Hybrid Retrieval and Rerank (Wide → Narrow)](#7-hybrid-retrieval-and-rerank-wide--narrow)
+8. [Runtime Classification by Role](#8-runtime-classification-by-role)
+9. [No Elasticsearch/OpenSearch (for now)](#9-no-elasticsearchopensearch-for-now)
+10. [Strict First-Person, Grounded Answers](#10-strict-first-person-grounded-answers)
+11. [Structured Metadata + Tags (Denormalization for Retrieval)](#11-structured-metadata--tags-denormalization-for-retrieval)
+12. [Embedding Batch Size](#12-embedding-batch-size)
+13. [Chunk Identity vs Order (chunk_id and position)](#13-chunk-identity-vs-order-chunk_id-and-position)
+14. [Overlap for Retrieval Continuity](#14-overlap-for-retrieval-continuity)
+15. [Vertex Matching Engine Update Mode (Batch Update)](#15-vertex-matching-engine-update-mode-batch-update)
+
 ## 1. One CV file per Role (role:infra, role:product)
 
 **What:** Keep the infra CV (DevOps/SRE/Platform) and the product CV (PM/TPM/PO) as separate documents. Tag all chunks from each with a single role: `role:infra` or `role:product`.  
@@ -281,7 +298,7 @@
 **Alternative:** Create the index with `STREAM_UPDATE` enabled and push incremental changes with `upsert_datapoints`.
 
 **Pros:**
-- Lower steady-state cost—no streaming ingestion charges or background update jobs when the corpus is idle.
+- Lower steady-state cost: no streaming ingestion charges or background update jobs when the corpus is idle.
 - Operationally simple: each refresh is just “export datapoints, upload to GCS, kick off update” with no retry loops or live mutation code paths.
 - Matches persona cadence: CV edits happen occasionally, so a longer rebuild window is acceptable.
 
