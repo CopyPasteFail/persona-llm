@@ -1,5 +1,5 @@
 # ARCHITECTURE_OVERVIEW
-_Version 6.0.03_
+_Version 6.0.04_
 
 ## Goal
 A reusable public showcase where people can query a "persona" LLM representing a human. Answers are grounded in a provided dataset, for example a CV, using Vertex AI Vector Search. Priorities: low cost, low ops, transparent design.
@@ -27,7 +27,7 @@ Field-level explanations and rationale are documented in [`SCHEMA.md`](SCHEMA.md
 2. Question is normalized to first person.
 3. Service returns a deterministic answer with a dummy citation and usage.
 
-**Intended real path (not implemented)**
+**Real path**
 1. Cloud Run API loads the side store object `CHUNKS_PATH` from `BUCKET_NAME` (GCS) at startup.
 2. User question goes to backend, embed query, Vector Search top K 8, apply mild boosting and filters.
 3. Query flow: , call Gemini Flash with strict grounding, return structured answer
@@ -35,12 +35,6 @@ Field-level explanations and rationale are documented in [`SCHEMA.md`](SCHEMA.md
 ## Security
 - `x-api-key` required on real app paths. Rate limits per IP: 10 per minute, 100 per day.
 - CORS allowlist: localhost and your Hosting origin built from `PROJECT_ID`.
-
-## Deployment
-- Cloud Run and Firebase Hosting instructions are kept, not verified in code.
-- Real mode will not work until retrieval, vector search, and LLM calls are implemented.
-
-## Repo layout
 
 ### Components
 - **Backend**: FastAPI with two apps.
