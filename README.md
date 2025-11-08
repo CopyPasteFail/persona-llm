@@ -292,6 +292,16 @@ Set up a Matching Engine index before you embed and upsert persona chunks.
    - The target stages the datapoints as `datapoints.json` in a timestamped folder under `gs://$BUCKET_NAME/matching-engine/` (it will decompress `.jsonl.gz` automatically) and invokes `gcloud ai indexes update` with that folder URI as `contentsDeltaUri`.
    - `gcloud ai indexes update` refreshes the Vertex AI Vector Search (Matching Engine) index by ingesting the staged datapoints JSON from GCS and rebuilding the index contents.
    - If you prefer manual control, run the `gsutil cp` + `gcloud ai indexes update` commands yourself; the generated metadata snippet lives at `/tmp/` and can be inspected/edited before re-running.
+   - The update request runs asynchronously. Capture the printed operation ID (for example `projects/.../operations/<ID>`), then poll it using the Makefile helper so your configured env vars are reused:
+     ```bash
+     make gcp-index-op-describe OPERATION_ID=<ID>
+     make gcp-index-op-done OPERATION_ID=<ID>
+     ```
+     `gcp-index-op-describe` prints YAML with timestamps and any error info so you can track progress. `gcp-index-op-done` emits `True` once the update finishes.
+     Once the operation finishes without error, confirm the index picked up the new datapoints by checking the `updateTime`:
+     ```bash
+     make gcp-index-update-time
+     ```
 
 Record `INDEX_ENDPOINT_ID` (bare endpoint ID), `INDEX_ID`, and `DEPLOYED_INDEX_ID` in `private/secrets/backend.env`. Re-run the upsert target whenever persona data changes.
 
