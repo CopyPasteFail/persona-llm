@@ -28,3 +28,4 @@ frontend/.firebase/
 /private
 .privatedir
 backend/*.jsonl.gz
+backend/chunks-*.jsonl.gz.manifest.json

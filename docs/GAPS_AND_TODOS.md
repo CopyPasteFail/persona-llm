@@ -7,9 +7,9 @@
 - Confirm rate limits persistence if scaling beyond one instance.
 
 ## Ingestion
-- `jobs/build_datapoints.py` now generates embeddings, but automate the upsert flow (or integrate with `pack_and_push`) to complete the pipeline.
+- `jobs/build_datapoints.py` now generates embeddings. Optionally automate the upsert flow (or integrate with `pack_and_push`) if you want a single command to run the whole pipeline.
 - Emit a side-store manifest and checksum for the `CHUNKS_PATH` artifact.
-- Add `make ingest` target.
+- Optionally add a `make ingest` target that chains the steps above.
 
 ## Frontend
 - Confirm starters and input disable logic when backend is down.
@@ -45,11 +45,11 @@ References to prior docs for context: fileciteturn0file2 filecite
   - Replace `NotImplementedError` path with proper 200 response and structured logging.
 
 ## Ingestion
-- Extend `jobs/pack_and_push.py`:
+- Optional: extend `jobs/pack_and_push.py` to:
   - Generate embeddings and upsert to Vertex AI Matching Engine.
   - Emit a consistent side-store manifest and checksum.
-- Add `make ingest` target that runs the job with the repo’s schema and config.
-- Document the end-to-end ingestion flow in `README.md` with a concrete example.
+- Optional: add a `make ingest` target that runs the job with the repo’s schema and config.
+- Optional: document the end-to-end ingestion flow in `README.md` with a concrete example.
 
 ## Contract and schema
 - Decide whether `role`, `year`, and `tech` filters are part of the API. If yes, re-introduce them in `ChatRequest` and implement filtering.

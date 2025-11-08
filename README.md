@@ -199,7 +199,17 @@ Run both commands if you deploy via the CLI and run helper scripts locally. If y
 
 With those credentials in place you can run `make be-pack_and_push`, `gcloud run deploy`, and `npm run firebase:deploy` without introducing any new secrets.
 
-### Phase 7. Service account (optional)
+### Phase 7. Package persona chunks (side-store artifact)
+
+Generate the `CHUNKS_PATH` side-store artifact before embedding or deploying so the backend has a verified data bundle to load.
+
+```bash
+make be-pack_and_push
+```
+
+This job reads `private/persona/data/chunks.jsonl`, validates and splits the records, then writes `chunks-<sha>.jsonl.gz` plus `chunks-<sha>.jsonl.gz.manifest.json`. Both files are uploaded to `gs://$BUCKET_NAME/`, and the manifest captures the artifact URI, record count, byte size, and SHA-256 checksum. Record the printed artifact name in `private/secrets/backend.env` as `CHUNKS_PATH`; the manifest travels with the artifact so you (or automation) can verify integrity later.
+
+### Phase 8. Service account (optional)
 
 If you prefer a non-human identity (for CI pipelines or shared deploy scripts), create a service account and grant it temporary builder roles:
 
@@ -240,7 +250,7 @@ For automation that needs Application Default Credentials:
   gcloud auth application-default set-quota-project "$PROJECT_ID"
   ```
 
-### Phase 8. Provision Vertex AI Vector Search (one-time)
+### Phase 9. Provision Vertex AI Vector Search (one-time)
 
 Set up a Matching Engine index before you embed and upsert persona chunks.
 
