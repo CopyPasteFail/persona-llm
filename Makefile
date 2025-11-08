@@ -1,4 +1,4 @@
-.PHONY: install dev mock build fe-% fe-install be-install be-% require-private require-gcp-env require-index-ids require-datapoints-file clean clean-all gcp-create-project gcp-set-project gcp-create-bucket gcp-sa-create gcp-sa-delete gcp-sa-bind-roles gcp-sa-roles gcp-sa-key gcp-index-create gcp-index-endpoint-create gcp-index-deploy gcp-index-upsert gcp-index-list
+.PHONY: install dev mock build fe-% fe-install be-install be-% require-private require-gcp-env require-index-ids require-datapoints-file require-operation-id clean clean-all gcp-create-project gcp-set-project gcp-create-bucket gcp-sa-create gcp-sa-delete gcp-sa-bind-roles gcp-sa-roles gcp-sa-key gcp-index-create gcp-index-endpoint-create gcp-index-deploy gcp-index-upsert gcp-index-list gcp-index-op-describe gcp-index-op-done gcp-index-update-time
 
 # -------------------------------
 # Private directory resolution
@@ -38,6 +38,9 @@ require-index-ids:
 require-datapoints-file:
 	@[ -n "$(DATAPOINTS_FILE)" ] || { echo "DATAPOINTS_FILE must be set (configure it in $(PRIVATE_DIR)/secrets/backend.env)"; exit 1; }
 	@[ -f "$(DATAPOINTS_FILE)" ] || { echo "Missing datapoints file: $(DATAPOINTS_FILE)"; exit 1; }
+
+require-operation-id:
+	@[ -n "$(OPERATION_ID)" ] || { echo "OPERATION_ID must be set (copy it from gcloud ai indexes update output)"; exit 1; }
 
 # ----- Frontend passthrough -----
 fe-%:
@@ -186,6 +189,23 @@ gcp-index-upsert: require-private require-gcp-env require-index-ids require-data
 
 gcp-index-list: require-gcp-env
 	@gcloud ai indexes list --region="$(REGION)" --project="$(PROJECT_ID)"
+
+gcp-index-op-describe: require-gcp-env require-operation-id
+	@gcloud ai operations describe "$(OPERATION_ID)" \
+		--region="$(REGION)" \
+		--project="$(PROJECT_ID)"
+
+gcp-index-op-done: require-gcp-env require-operation-id
+	@gcloud ai operations describe "$(OPERATION_ID)" \
+		--region="$(REGION)" \
+		--project="$(PROJECT_ID)" \
+		--format='value(done)'
+
+gcp-index-update-time: require-gcp-env require-index-ids
+	@gcloud ai indexes describe "$(INDEX_ID)" \
+		--region="$(REGION)" \
+		--project="$(PROJECT_ID)" \
+		--format='value(updateTime)'
 
 # Show whether billing is linked for the active project
 gcp-check-billing: require-gcp-env
