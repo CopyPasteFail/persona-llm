@@ -8,6 +8,7 @@ import hashlib
 import json
 import os
 import re
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable, Mapping, MutableMapping, Protocol, runtime_checkable, cast
 
@@ -224,6 +225,48 @@ def _serialize_records(records: Iterable[dict[str, object]]) -> tuple[bytes, str
     return content, f"chunks-{digest}.jsonl.gz"
 
 
+def _sha256_digest(path: Path) -> str:
+    """Return the SHA-256 hex digest for the given file."""
+    hasher = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            hasher.update(chunk)
+    return hasher.hexdigest()
+
+
+def _write_manifest(
+    *,
+    artifact_path: Path,
+    artifact_uri: str,
+    schema_path: Path,
+    input_path: Path,
+    record_count: int,
+) -> Path:
+    """Emit a JSON manifest describing the generated chunk artifact."""
+    checksum = _sha256_digest(artifact_path)
+    manifest = {
+        "generated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "artifact": {
+            "name": artifact_path.name,
+            "uri": artifact_uri,
+            "size_bytes": artifact_path.stat().st_size,
+            "checksum": {
+                "algorithm": "sha256",
+                "value": checksum,
+            },
+        },
+        "records": record_count,
+        "inputs": {
+            "schema": str(schema_path.resolve()),
+            "chunks": str(input_path.resolve()),
+        },
+    }
+    manifest_name = f"{artifact_path.name}.manifest.json"
+    manifest_path = artifact_path.with_name(manifest_name)
+    manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+    return manifest_path
+
+
 def main() -> None:
     """Validate persona chunks, bundle them, and push the archive to GCS."""
 
@@ -255,6 +298,16 @@ def main() -> None:
     uri = upload_to_bucket(out_path, bucket, filename)
     print(f"Uploaded persona chunks to {uri}")
     print(f"Artifact name: {filename} (set this as CHUNKS_PATH in your backend env)")
+
+    manifest_path = _write_manifest(
+        artifact_path=out_path,
+        artifact_uri=uri,
+        schema_path=schema_path,
+        input_path=input_path,
+        record_count=len(records),
+    )
+    manifest_uri = upload_to_bucket(manifest_path, bucket, manifest_path.name)
+    print(f"Wrote side-store manifest to {manifest_uri}")
 
 
 if __name__ == "__main__":
