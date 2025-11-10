@@ -254,7 +254,7 @@ For automation that needs Application Default Credentials:
 
 Set up a Matching Engine index before you embed and upsert persona chunks.
 
-1. Create the index (Tree-AH, dot product, 3,072 dimensions for `text-embedding-004`):
+1. Create the index (Tree-AH, dot product, dimensions derived from `DATAPOINTS_DIMENSIONS`—3,072 for `gemini-embedding-001`, 768 for the `text-embedding-00x` family):
    ```bash
    make gcp-index-create
    ```
@@ -275,6 +275,7 @@ Set up a Matching Engine index before you embed and upsert persona chunks.
    ```
    - Optional: override the configured deployment name with `make gcp-index-deploy DEPLOYED_INDEX_ID=persona_deployment`.
    - Vertex AI requires the deployed ID to start with a letter and use only letters, numbers, or underscores (e.g. `persona_deployment`).
+   - Replica counts are controlled by `ME_MIN_REPLICAS`/`ME_MAX_REPLICAS` in `private/secrets/backend.env` (default 1/1). Increase `ME_MAX_REPLICAS` if you want autoscaling headroom.
    - Deployment can take minutes. While it is provisioning, `gcloud ai index-endpoints describe projects/$PROJECT_ID/locations/$REGION/indexEndpoints/$INDEX_ENDPOINT_ID --region=$REGION --format='yaml(deployedIndexes)'` returns `null`; once the operation finishes it prints the deployed index details (ID, replicas, synced index ID).
 
 4. Generate embedding datapoints for the persona chunks:
@@ -282,7 +283,7 @@ Set up a Matching Engine index before you embed and upsert persona chunks.
    make be-build_datapoints
    ```
    - Produces the path configured in `DATAPOINTS_FILE` (set in `private/secrets/backend.env`) with `datapointId` + `featureVector` rows ready for Matching Engine.
-   - Optional overrides live in the same env file, e.g. set `DATAPOINTS_MODEL=text-embedding-005`, `DATAPOINTS_DIMENSIONS=3072` (must match your Matching Engine index), `DATAPOINTS_BATCH_SIZE=32`, `DATAPOINTS_MAX_CHARS=1800`, or `DATAPOINTS_GZIP=1` to adjust behavior without command-line flags.
+   - Optional overrides live in the same env file, e.g. set `DATAPOINTS_MODEL=gemini-embedding-001` (3,072‑dim) or `text-embedding-005` (768‑dim), align `DATAPOINTS_DIMENSIONS` with the chosen model (≤3,072 for Gemini, ≤768 for the text-embedding family), bump `DATAPOINTS_BATCH_SIZE=32`, set `DATAPOINTS_MAX_CHARS=1800`, or enable `DATAPOINTS_GZIP=1` to adjust behavior without command-line flags.
 
 5. Batch-update the index (rebuild from the new datapoints file):
    ```bash

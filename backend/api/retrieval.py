@@ -145,10 +145,15 @@ def configure_embedding_client(client: Optional[_EmbeddingClient]) -> None:
 def _get_embedding_client() -> _EmbeddingClient:
     global _embedding_client
     if _embedding_client is None:
+        model_name = (
+            os.getenv("EMBEDDING_MODEL")
+            or os.getenv("DATAPOINTS_MODEL")
+            or "text-embedding-004"
+        )
         _embedding_client = _VertexEmbeddingClient(
             project=settings.PROJECT_ID,
             region=settings.REGION,
-            model_name="text-embedding-004",
+            model_name=model_name,
         )
     return _embedding_client
 

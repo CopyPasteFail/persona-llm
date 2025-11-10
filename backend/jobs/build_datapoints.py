@@ -24,6 +24,17 @@ from jobs.pack_and_push import (
     resolve_existing_path,
 )
 
+_DEFAULT_EMBEDDING_MODEL = "text-embedding-004"
+_MODEL_DEFAULT_DIMENSIONS: dict[str, int] = {
+    "text-embedding-004": 768,
+    "gemini-embedding-001": 3072,
+}
+_MODEL_MAX_OUTPUT_DIMENSIONS: dict[str, int] = {
+    "text-embedding-004": 768,
+    "gemini-embedding-001": 3072,
+}
+_GENERIC_MAX_OUTPUT_DIMENSION = 768  # Conservative limit for unknown models
+
 
 def _env_bool(name: str, default: str = "0") -> bool:
     value = os.getenv(name, default)
@@ -143,9 +154,6 @@ def main() -> None:
     )
 
     max_chars = _env_int("DATAPOINTS_MAX_CHARS", 2200)
-    dimensions = _env_int("DATAPOINTS_DIMENSIONS", 3072)
-    if dimensions <= 0:
-        raise RuntimeError("DATAPOINTS_DIMENSIONS must be a positive integer")
 
     records = build_persona_records(schema_path, input_path, max_chars=max_chars)
     if not records:
@@ -160,13 +168,40 @@ def main() -> None:
 
     vertexai.init(project=project_id, location=env["REGION"])
     print(f"Using Vertex project '{project_id}' in region '{env['REGION']}'")
-    model_name = os.getenv("DATAPOINTS_MODEL", "text-embedding-004")
+    model_name = os.getenv("DATAPOINTS_MODEL", "").strip() or _DEFAULT_EMBEDDING_MODEL
+    model_default_dim = _MODEL_DEFAULT_DIMENSIONS.get(model_name)
+    default_dimension = model_default_dim or _MODEL_DEFAULT_DIMENSIONS.get(
+        _DEFAULT_EMBEDDING_MODEL, 768
+    )
+    dimensions = _env_int("DATAPOINTS_DIMENSIONS", default_dimension)
+    if dimensions <= 0:
+        raise RuntimeError("DATAPOINTS_DIMENSIONS must be a positive integer")
     print(f"Embedding model '{model_name}' @ {dimensions} dims")
     model = TextEmbeddingModel.from_pretrained(model_name)
+    max_output_dim = _MODEL_MAX_OUTPUT_DIMENSIONS.get(
+        model_name, _GENERIC_MAX_OUTPUT_DIMENSION
+    )
 
     embeddings: list[List[float]] = []
     batch_size = _env_int("DATAPOINTS_BATCH_SIZE", 16)
-    embedding_kwargs: dict[str, object] = {"output_dimensionality": dimensions}
+    embedding_kwargs: dict[str, object] = {}
+    if dimensions == model_default_dim:
+        pass
+    elif dimensions <= max_output_dim:
+        embedding_kwargs["output_dimensionality"] = dimensions
+    else:
+        limit_msg = f"<={max_output_dim}"
+        if model_default_dim:
+            limit_msg = f"{limit_msg} or exactly {model_default_dim}"
+        raise RuntimeError(
+            "DATAPOINTS_DIMENSIONS={dim} is not supported for model '{model}'; "
+            "Vertex AI only allows output_dimensionality {limit}. "
+            "Either lower DATAPOINTS_DIMENSIONS or update the model/index configuration.".format(
+                dim=dimensions,
+                model=model_name,
+                limit=limit_msg,
+            )
+        )
     for batch in _batched(records, batch_size):
         texts = [record["text"] for record in batch]
         responses = model.get_embeddings(texts, **embedding_kwargs)
@@ -181,6 +216,11 @@ def main() -> None:
 
     total = len(records)
     dims = len(next(iter(embeddings))) if embeddings else 0
+    if dims != dimensions:
+        raise RuntimeError(
+            f"Embedding dimension mismatch: expected {dimensions}, received {dims}. "
+            "Ensure DATAPOINTS_DIMENSIONS matches the embedding model output."
+        )
     print(f"Wrote {total} datapoints ({dims} dims) to {output_path}")
     print("Ready for make gcp-index-upsert (uses DATAPOINTS_FILE from backend.env)\n")
 

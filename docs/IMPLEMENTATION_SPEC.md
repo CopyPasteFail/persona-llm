@@ -131,7 +131,7 @@ curl -s -X POST http://localhost:8000/chat -H 'content-type: application/json' -
 
 ## Ingestion jobs
 - `jobs/pack_and_push.py` validates JSONL against `schema/chunk.schema.json`, and if any bullet **or paragraph** exceeds ~2.2k characters (~450 tokens), splits it by sentence boundaries (never mid-sentence). Writes `chunks-<sha>.jsonl.gz` with enriched metadata and prints a `gs://` URI if a `bucket:` is provided in a YAML file passed with `--settings`.
-- `jobs/build_datapoints.py` loads the same chunk file, calls Vertex AI `text-embedding-004` to generate vectors, and emits a newline-delimited JSON file ready for `gcloud ai index-endpoints upsert-datapoints`. Embedding calls are batched in groups of 16 (`DATAPOINTS_BATCH_SIZE` in the env) to minimize network round trips without risking payload limits, and they explicitly request the configured dimensionality (`DATAPOINTS_DIMENSIONS`, default `3072`) so the vectors match the Matching Engine index.
+- `jobs/build_datapoints.py` loads the same chunk file, calls the configured Vertex AI embedding model (default `gemini-embedding-001` at 3,072 dims), and emits a newline-delimited JSON file ready for `gcloud ai index-endpoints upsert-datapoints`. Embedding calls are batched in groups of 16 (`DATAPOINTS_BATCH_SIZE` in the env) to minimize network round trips without risking payload limits, and the job enforces `DATAPOINTS_DIMENSIONS` so the vectors match the Matching Engine index while staying within the model’s supported dimensionality.
 
 Validation is performed against the machine-readable schema:
 - [`chunk.schema.json`](../backend/schema/chunk.schema.json)
@@ -161,14 +161,15 @@ For a human-readable guide explaining the meaning, use cases, benefits, and trad
    - Write `chunks-<sha>.jsonl.gz`.
    - Upload to GCS (sidecar store).
 3. **Embedding + upsert**
-   - `backend/jobs/build_datapoints.py` (invoked via `make be-build_datapoints`) batches persona chunks, calls Vertex `text-embedding-004`, and writes the `DATAPOINTS_FILE` artifact with ready-to-upload datapoints.
+   - `backend/jobs/build_datapoints.py` (invoked via `make be-build_datapoints`) batches persona chunks, calls the selected Vertex embedding model (default `gemini-embedding-001`), and writes the `DATAPOINTS_FILE` artifact with ready-to-upload datapoints.
    - `make gcp-index-upsert` converts that artifact if needed, uploads it to `gs://$BUCKET_NAME/matching-engine/<timestamp>/datapoints.json`, and triggers `gcloud ai indexes update` so Matching Engine serves the embeddings consumed by `embed_query` → `search_vector_store`.
 
 > Next implementation stage: deepen verification for the now-live runtime—add golden tests for retrieval + LLM prompts, cover API key/rate-limit branches, and run the end-to-end integration test against the real backend.
 
 ### Vector search configuration (Vertex AI Matching Engine)
 - **Index type:** Tree-AH with dot-product distance; match cosine behaviour by L2-normalizing every embedding (during upsert and query).
-- **Dimensions:** 3,072 to match `text-embedding-004`.
+- **Dimensions:** Match `DATAPOINTS_DIMENSIONS`/`DATAPOINTS_MODEL` (3,072 with `gemini-embedding-001`, 768 with the `text-embedding-00x` family).
+- **Replicas:** `ME_MIN_REPLICAS`/`ME_MAX_REPLICAS` control the min/max replica counts during `make gcp-index-deploy` (default 1/1); bump the max to allow autoscaling.
 - **Tuning parameters:** `approximateNeighborsCount=100`, `leafNodeEmbeddingCount=1000`, and `leafNodesToSearchPercent=7`. Raise the neighbor count or search percent for higher recall (at the cost of latency), or lower them for faster, less exhaustive searches.
 - **Provisioning:** Root Makefile targets (`make gcp-index-create`, `make gcp-index-endpoint-create`, `make gcp-index-deploy`, `make gcp-index-upsert`) generate the JSON metadata and call `gcloud` using env vars from `private/secrets`. Use `make gcp-index-list` to inspect existing indexes.
 
