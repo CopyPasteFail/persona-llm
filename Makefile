@@ -197,6 +197,13 @@ gcp-index-op-describe: require-gcp-env require-operation-id
 		--region="$(REGION)" \
 		--project="$(PROJECT_ID)"
 
+gcp-index-op-errors: require-gcp-env require-operation-id
+	@gcloud ai operations describe "$(OPERATION_ID)" \
+		--region="$(REGION)" \
+		--project="$(PROJECT_ID)" \
+		--format=json \
+		| jq 'def stripvec: if has("rawRecord") and (.rawRecord != null) then .rawRecord = ((.rawRecord | fromjson? // {} | del(.featureVector)) | tojson) else . end; .metadata.nearestNeighborSearchOperationMetadata.contentValidationStats |= (map(.partialErrors |= ((. // []) | map(stripvec)))) | {done, error, contentValidationStats: .metadata.nearestNeighborSearchOperationMetadata.contentValidationStats}'
+
 gcp-index-op-done: require-gcp-env require-operation-id
 	@gcloud ai operations describe "$(OPERATION_ID)" \
 		--region="$(REGION)" \

@@ -297,8 +297,10 @@ Set up a Matching Engine index before you embed and upsert persona chunks.
      ```bash
      make gcp-index-op-describe OPERATION_ID=<ID>
      make gcp-index-op-done OPERATION_ID=<ID>
+     make gcp-index-op-errors OPERATION_ID=<ID>
      ```
      `gcp-index-op-describe` prints YAML with timestamps and any error info so you can track progress. `gcp-index-op-done` emits `True` once the update finishes.
+     `gcp-index-op-errors` emits a JSON summary (without the huge `featureVector` arrays) so you can quickly see which datapoints failed validation.
      Once the operation finishes without error, confirm the index picked up the new datapoints by checking the `updateTime`:
      ```bash
      make gcp-index-update-time
