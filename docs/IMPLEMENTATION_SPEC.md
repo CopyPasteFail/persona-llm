@@ -164,7 +164,7 @@ For a human-readable guide explaining the meaning, use cases, benefits, and trad
    - `backend/jobs/build_datapoints.py` (invoked via `make be-build_datapoints`) batches persona chunks, calls Vertex `text-embedding-004`, and writes the `DATAPOINTS_FILE` artifact with ready-to-upload datapoints.
    - `make gcp-index-upsert` converts that artifact if needed, uploads it to `gs://$BUCKET_NAME/matching-engine/<timestamp>/datapoints.json`, and triggers `gcloud ai indexes update` so Matching Engine serves the embeddings consumed by `embed_query` → `search_vector_store`.
 
-> Next implementation stage: finish the deployment/runtime wiring so `api.main.chat` can return real answers (load the chunk side store on startup, then wire `llm.call_gemini_flash` instead of raising `NotImplementedError`).
+> Next implementation stage: deepen verification for the now-live runtime—add golden tests for retrieval + LLM prompts, cover API key/rate-limit branches, and run the end-to-end integration test against the real backend.
 
 ### Vector search configuration (Vertex AI Matching Engine)
 - **Index type:** Tree-AH with dot-product distance; match cosine behaviour by L2-normalizing every embedding (during upsert and query).
