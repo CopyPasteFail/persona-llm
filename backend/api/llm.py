@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from typing import Dict, List
+import threading
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Protocol, runtime_checkable
+
 from .settings import settings
 
 
@@ -22,7 +24,7 @@ def build_llm_prompt(question: str, chunks: List[Dict]) -> Dict:
     )
 
     system = (
-        "You are {settings.PERSONA_NAME} speaking in first person.\n"
+        f"You are {settings.PERSONA_NAME} speaking in first person.\n"
         "Answer ONLY using the provided context chunks. Do not invent details.\n"
         "If the information is not present, say briefly that it is not in your CV yet.\n"
         "Writing rules:\n"
@@ -55,9 +57,211 @@ def build_llm_prompt(question: str, chunks: List[Dict]) -> Dict:
     }
 
 
-def call_gemini_flash(payload: Dict, max_output_tokens: int):
+@runtime_checkable
+class _GeminiClient(Protocol):
+    def generate(
+        self,
+        *,
+        system_prompt: str,
+        user_messages: Sequence[str],
+        max_output_tokens: int,
+    ) -> Tuple[str, Dict[str, int]]:
+        ...
+
+
+_llm_client: Optional[_GeminiClient] = None
+
+
+def configure_llm_client(client: Optional[_GeminiClient]) -> None:
+    """Allow tests to stub the Gemini client."""
+    global _llm_client
+    _llm_client = client
+
+
+def _get_llm_client() -> _GeminiClient:
+    global _llm_client
+    if _llm_client is None:
+        _llm_client = _GeminiFlashClient(
+            project=settings.PROJECT_ID,
+            region=settings.REGION,
+            model_name="gemini-2.0-flash",
+        )
+    return _llm_client
+
+
+def call_gemini_flash(payload: Dict, max_output_tokens: int) -> Tuple[str, Dict[str, int]]:
     """
-    Wire this to the real Gemini Flash client in production.
-    Keep temperature low and enforce max_output_tokens at the client side.
+    Call Gemini Flash via the Vertex AI Python SDK.
+    Returns the answer text plus token usage metadata (if provided by the API).
     """
-    raise NotImplementedError("call_gemini_flash not implemented")
+    messages = payload.get("messages") or []
+    system_parts: List[str] = []
+    user_messages: List[str] = []
+
+    for message in messages:
+        if not isinstance(message, dict):
+            continue
+        role = str(message.get("role") or "").lower()
+        content = str(message.get("content") or "").strip()
+        if not content:
+            continue
+        if role == "system":
+            system_parts.append(content)
+        else:
+            user_messages.append(content)
+
+    if not user_messages:
+        raise RuntimeError("LLM payload is missing user content")
+
+    client = _get_llm_client()
+    system_prompt = "\n\n".join(system_parts)
+    return client.generate(
+        system_prompt=system_prompt,
+        user_messages=user_messages,
+        max_output_tokens=max_output_tokens,
+    )
+
+
+class _GeminiFlashClient:
+    """Lazy Vertex Gemini Flash wrapper with simple safety + usage extraction."""
+
+    def __init__(self, *, project: str, region: str, model_name: str) -> None:
+        self._project = project
+        self._region = region
+        self._model_name = model_name
+        self._vertex_ready = False
+        self._lock = threading.Lock()
+
+    def _ensure_vertex_init(self) -> None:
+        if self._vertex_ready:
+            return
+        with self._lock:
+            if self._vertex_ready:
+                return
+            from vertexai import init as vertexai_init  # type: ignore[import-not-found]
+
+            vertexai_init(project=self._project, location=self._region)
+            self._vertex_ready = True
+
+    def generate(
+        self,
+        *,
+        system_prompt: str,
+        user_messages: Sequence[str],
+        max_output_tokens: int,
+    ) -> Tuple[str, Dict[str, int]]:
+        self._ensure_vertex_init()
+        if not user_messages:
+            raise RuntimeError("Gemini client requires at least one user message")
+
+        from vertexai.preview.generative_models import (  # type: ignore[import-not-found]
+            Content,
+            GenerativeModel,
+            GenerationConfig,
+            HarmBlockThreshold,
+            HarmCategory,
+            Part,
+            SafetySetting,
+        )
+
+        model = GenerativeModel(
+            self._model_name,
+            system_instruction=system_prompt or None,
+        )
+
+        contents = [
+            Content(role="user", parts=[Part.from_text(text.strip())])
+            for text in user_messages
+            if text and text.strip()
+        ]
+        if not contents:
+            raise RuntimeError("Gemini client received only empty user messages")
+
+        config = GenerationConfig(
+            max_output_tokens=max_output_tokens,
+            temperature=0.2,
+            top_p=0.9,
+        )
+
+        safety_settings = [
+            SafetySetting(
+                category=HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+                threshold=HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
+            ),
+            SafetySetting(
+                category=HarmCategory.HARM_CATEGORY_HARASSMENT,
+                threshold=HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
+            ),
+            SafetySetting(
+                category=HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+                threshold=HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
+            ),
+            SafetySetting(
+                category=HarmCategory.HARM_CATEGORY_SEXUAL_CONTENT,
+                threshold=HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
+            ),
+        ]
+
+        response = model.generate_content(
+            contents,
+            generation_config=config,
+            safety_settings=safety_settings,
+        )
+
+        return _extract_response_text(response), _extract_usage(response)
+
+
+def _extract_response_text(response: Any) -> str:
+    text = getattr(response, "text", None)
+    if isinstance(text, str) and text.strip():
+        return text.strip()
+
+    candidates = getattr(response, "candidates", None) or []
+    parts: List[str] = []
+    for candidate in candidates:
+        content = getattr(candidate, "content", None)
+        if content is None:
+            continue
+        for part in getattr(content, "parts", []) or []:
+            part_text = getattr(part, "text", None)
+            if isinstance(part_text, str) and part_text.strip():
+                parts.append(part_text.strip())
+
+    if parts:
+        return "\n".join(parts).strip()
+    raise RuntimeError("Gemini response did not contain text")
+
+
+def _extract_usage(response: Any) -> Dict[str, int]:
+    usage_meta = getattr(response, "usage_metadata", None)
+    usage: Dict[str, int] = {}
+
+    if usage_meta is None and isinstance(response, dict):
+        usage_meta = response.get("usage_metadata")
+
+    if usage_meta:
+        prompt_tokens = _usage_value(
+            usage_meta, ["prompt_token_count", "prompt_tokens"]
+        )
+        candidate_tokens = _usage_value(
+            usage_meta, ["candidates_token_count", "candidates_tokens"]
+        )
+        if prompt_tokens is not None:
+            usage["input_tokens"] = prompt_tokens
+        if candidate_tokens is not None:
+            usage["output_tokens"] = candidate_tokens
+
+    return usage
+
+
+def _usage_value(source: Any, keys: Sequence[str]) -> Optional[int]:
+    for key in keys:
+        value = getattr(source, key, None)
+        if value is None and isinstance(source, dict):
+            value = source.get(key)
+        if value is not None:
+            try:
+                return int(value)
+            except (TypeError, ValueError):
+                continue
+    return None
