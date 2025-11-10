@@ -143,6 +143,9 @@ def main() -> None:
     )
 
     max_chars = _env_int("DATAPOINTS_MAX_CHARS", 2200)
+    dimensions = _env_int("DATAPOINTS_DIMENSIONS", 3072)
+    if dimensions <= 0:
+        raise RuntimeError("DATAPOINTS_DIMENSIONS must be a positive integer")
 
     records = build_persona_records(schema_path, input_path, max_chars=max_chars)
     if not records:
@@ -158,13 +161,15 @@ def main() -> None:
     vertexai.init(project=project_id, location=env["REGION"])
     print(f"Using Vertex project '{project_id}' in region '{env['REGION']}'")
     model_name = os.getenv("DATAPOINTS_MODEL", "text-embedding-004")
+    print(f"Embedding model '{model_name}' @ {dimensions} dims")
     model = TextEmbeddingModel.from_pretrained(model_name)
 
     embeddings: list[List[float]] = []
     batch_size = _env_int("DATAPOINTS_BATCH_SIZE", 16)
+    embedding_kwargs: dict[str, object] = {"output_dimensionality": dimensions}
     for batch in _batched(records, batch_size):
         texts = [record["text"] for record in batch]
-        responses = model.get_embeddings(texts)
+        responses = model.get_embeddings(texts, **embedding_kwargs)
         embeddings.extend(_embedding_values(resp) for resp in responses)
 
     if len(embeddings) != len(records):

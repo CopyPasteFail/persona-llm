@@ -282,7 +282,7 @@ Set up a Matching Engine index before you embed and upsert persona chunks.
    make be-build_datapoints
    ```
    - Produces the path configured in `DATAPOINTS_FILE` (set in `private/secrets/backend.env`) with `datapointId` + `featureVector` rows ready for Matching Engine.
-   - Optional overrides live in the same env file, e.g. set `DATAPOINTS_MODEL=text-embedding-005`, `DATAPOINTS_BATCH_SIZE=32`, `DATAPOINTS_MAX_CHARS=1800`, or `DATAPOINTS_GZIP=1` to adjust behavior without command-line flags.
+   - Optional overrides live in the same env file, e.g. set `DATAPOINTS_MODEL=text-embedding-005`, `DATAPOINTS_DIMENSIONS=3072` (must match your Matching Engine index), `DATAPOINTS_BATCH_SIZE=32`, `DATAPOINTS_MAX_CHARS=1800`, or `DATAPOINTS_GZIP=1` to adjust behavior without command-line flags.
 
 5. Batch-update the index (rebuild from the new datapoints file):
    ```bash
