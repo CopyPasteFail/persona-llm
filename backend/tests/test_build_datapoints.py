@@ -64,6 +64,7 @@ def test_write_datapoints_emits_expected_json_lines(tmp_path):
     assert len(serialized) == 1
     datapoint = serialized[0]
     assert datapoint["datapointId"] == "chunk-1"
+    assert datapoint["id"] == "chunk-1"
     assert datapoint["featureVector"] == [0.5, 0.5, 0.707106]
     assert datapoint["crowdingTag"] == "profile"
     assert datapoint["restricts"] == [
@@ -94,5 +95,6 @@ def test_write_datapoints_handles_gzip_output(tmp_path):
     datapoint = serialized[0]
     assert datapoint == {
         "datapointId": "chunk-2",
+        "id": "chunk-2",
         "featureVector": [0.1, 0.2],
     }

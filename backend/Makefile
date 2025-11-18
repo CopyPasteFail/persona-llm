@@ -7,7 +7,7 @@ PIP := $(VENV)/bin/pip
 
 include ../make/env.mk
 
-.PHONY: help install run run-debug mock test test-voice test-int test-vector-live check envs clean build_datapoints
+.PHONY: help install run run-debug mock test test-voice test-int test-vector-live test-build_datapoints check envs clean build_datapoints
 
 help:
 	@echo "Targets:"
@@ -19,6 +19,7 @@ help:
 	@echo "  test-int     - run integration tests against real backend (requires GCP + uvicorn)"
 	@echo "  check        - quick import check"
 	@echo "  build_datapoints - build embedding datapoints JSONL for upsert"
+	@echo "  test-build_datapoints - run datapoint helper unit tests"
 	@echo "  test-retrieval-vector - run vector adapter unit tests"
 	@echo "  envs         - print required env variables"
 	@echo "  clean        - remove caches"
@@ -46,6 +47,9 @@ pack_and_push: $(VENV)/bin/activate
 
 build_datapoints: $(VENV)/bin/activate
 	$(PY) jobs/build_datapoints.py
+
+test-build_datapoints: $(VENV)/bin/activate
+	$(PY) -m pytest -q tests/test_build_datapoints.py
 
 test: $(VENV)/bin/activate
 	$(PY) -m pytest -q tests/test_smoke.py
