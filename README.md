@@ -277,6 +277,8 @@ Set up a Matching Engine index before you embed and upsert persona chunks.
    - Vertex AI requires the deployed ID to start with a letter and use only letters, numbers, or underscores (e.g. `persona_deployment`).
    - Replica counts are controlled by `ME_MIN_REPLICAS`/`ME_MAX_REPLICAS` in `private/secrets/backend.env` (default 1/1). Increase `ME_MAX_REPLICAS` if you want autoscaling headroom.
    - Deployment can take minutes. While it is provisioning, `gcloud ai index-endpoints describe projects/$PROJECT_ID/locations/$REGION/indexEndpoints/$INDEX_ENDPOINT_ID --region=$REGION --format='yaml(deployedIndexes)'` returns `null`; once the operation finishes it prints the deployed index details (ID, replicas, synced index ID).
+   - **Cost to keep in mind:** Vertex AI Vector Search serving bills by node hour (SKU `DAB1-0292-8330`). A single `e2-standard-16` replica in `europe-west3` is roughly `$0.6165/hr` (~`$443.88` per month) *even when idle*, and the charge scales linearly with each additional replica you keep Ready.
+   - **Cost control tips:** undeploy the index when you are not actively testing/serving to stop charges instantly, choose the smallest machine type that meets latency goals, and keep `ME_MIN_REPLICAS`/`ME_MAX_REPLICAS` at the minimum that satisfies your QPS requirements so you do not pay for unused capacity.
 
 4. Generate embedding datapoints for the persona chunks:
    ```bash
@@ -284,6 +286,11 @@ Set up a Matching Engine index before you embed and upsert persona chunks.
    ```
    - Produces the path configured in `DATAPOINTS_FILE` (set in `private/secrets/backend.env`) with `datapointId` + `featureVector` rows ready for Matching Engine.
    - Optional overrides live in the same env file, e.g. set `DATAPOINTS_MODEL=gemini-embedding-001` (3,072‑dim) or `text-embedding-005` (768‑dim), align `DATAPOINTS_DIMENSIONS` with the chosen model (≤3,072 for Gemini, ≤768 for the text-embedding family), bump `DATAPOINTS_BATCH_SIZE=32`, set `DATAPOINTS_MAX_CHARS=1800`, or enable `DATAPOINTS_GZIP=1` to adjust behavior without command-line flags.
+   - Each datapoint emits both `id` and `datapointId`; Vertex’s batch rebuild requires `id`, while our runtime retrieval still reads `datapointId`, so the job keeps them identical.
+   - To sanity-check the datapoint writer helpers after any changes, run the focused unit tests:
+     ```bash
+     make be-test_build_datapoints
+     ```
 
 5. Batch-update the index (rebuild from the new datapoints file):
    ```bash

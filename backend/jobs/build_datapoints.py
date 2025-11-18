@@ -108,8 +108,12 @@ def _write_datapoints(
                 metadata_dict = {}
 
             restricts = _build_restricts(metadata_dict)
+            datapoint_id = str(record["id"])
+            # Vertex AI batch updates require `id`, while the retrieval path still
+            # reads `datapointId`; emit both and keep them identical.
             datapoint: dict[str, object] = {
-                "datapointId": str(record["id"]),
+                "datapointId": datapoint_id,
+                "id": datapoint_id,
                 "featureVector": list(vector),
             }
             section = metadata_dict.get("section")
