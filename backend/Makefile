@@ -14,6 +14,8 @@ help:
 	@echo "  install      - create venv and install deps"
 	@echo "  run          - start real API skeleton on :8000 (requires envs)"
 	@echo "  mock         - start mock API on :8080"
+	@echo "  docker-build - build local backend image"
+	@echo "  docker-run   - run local backend image with mounted secrets"
 	@echo "  test         - run pytest smoke tests against mock app"
 	@echo "  test-voice   - run persona voice + normalization tests (mock)"
 	@echo "  test-int     - run integration tests against real backend (requires GCP + uvicorn)"
@@ -38,6 +40,27 @@ run: $(VENV)/bin/activate
 
 run-debug: RUN_ENV=RETRIEVAL_DEBUG=1 UVICORN_LOG_LEVEL=debug
 run-debug: run
+
+docker-build:
+	# Use backend/ as the build context so Dockerfile paths (requirements.txt, etc.) resolve correctly
+	docker build -t $(LOCAL_IMAGE) -f $(DOCKERFILE) $(BACKEND_DIR)
+
+docker-run:
+	docker run --rm -p 8080:8080 \
+		--env-file "$(COMMON_ENV)" \
+		--env-file "$(BACKEND_ENV)" \
+		-e PRIVATE_DIR=/private \
+		-v "$(PRIVATE_DIR)":/private \
+		$(LOCAL_IMAGE)
+
+docker-run-mock:
+	docker run --rm -p 8080:8080 \
+		--env-file "$(COMMON_ENV)" \
+		--env-file "$(BACKEND_ENV)" \
+		-e PRIVATE_DIR=/private \
+		-v "$(PRIVATE_DIR)":/private \
+		$(LOCAL_IMAGE) \
+		uvicorn api.mock:app --host 0.0.0.0 --port 8080
 
 mock: $(VENV)/bin/activate
 	$(PY) -m uvicorn api.mock:app --reload --port 8080
@@ -70,7 +93,6 @@ test-retrieval-vector: $(VENV)/bin/activate
 
 check: $(VENV)/bin/activate
 	$(PY) -c "import api.main, api.mock, api.retrieval, api.llm, api.settings"
-
 
 clean:
 	rm -rf __pycache__ .pytest_cache api/__pycache__ tests/__pycache__
