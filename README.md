@@ -278,6 +278,7 @@ Set up a Matching Engine index before you embed and upsert persona chunks.
    - Replica counts are controlled by `ME_MIN_REPLICAS`/`ME_MAX_REPLICAS` in `private/secrets/backend.env` (default 1/1). Increase `ME_MAX_REPLICAS` if you want autoscaling headroom.
    - Deployment can take minutes. While it is provisioning, `gcloud ai index-endpoints describe projects/$PROJECT_ID/locations/$REGION/indexEndpoints/$INDEX_ENDPOINT_ID --region=$REGION --format='yaml(deployedIndexes)'` returns `null`; once the operation finishes it prints the deployed index details (ID, replicas, synced index ID).
    - **Cost to keep in mind:** Vertex AI Vector Search serving bills by node hour (SKU `DAB1-0292-8330`). A single `e2-standard-16` replica in `europe-west3` is roughly `$0.6165/hr` (~`$443.88` per month) *even when idle*, and the charge scales linearly with each additional replica you keep Ready.
+   Billing is fractional: the deployed duration is rounded up to the nearest 30-second increment and counted toward node-hours (e.g., 45 minutes = 0.75 node-hours). See the pricing table for your region: https://cloud.google.com/vertex-ai/pricing?hl=en.
    - **Cost control tips:** undeploy the index when you are not actively testing/serving to stop charges instantly, choose the smallest machine type that meets latency goals, and keep `ME_MIN_REPLICAS`/`ME_MAX_REPLICAS` at the minimum that satisfies your QPS requirements so you do not pay for unused capacity.
 
 4. Generate embedding datapoints for the persona chunks:
