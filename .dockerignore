@@ -1,0 +1,19 @@
+# Python caches and venv
+**/__pycache__/
+**/*.pyc
+backend/.venv/
+backend/.pytest_cache/
+
+# Tests, dev configs, and local artifacts not needed at runtime
+backend/tests/
+backend/scripts/
+backend/.coverage
+backend/pytest.ini
+backend/Dockerfile
+backend/Makefile
+backend/README.md
+backend/chunks-*.jsonl.gz
+backend/chunks-*.jsonl.gz.manifest.json
+backend/scripts/
+backend/schema/
+backend/jobs/

@@ -1,4 +1,4 @@
-.PHONY: install dev mock build fe-% fe-install be-install be-% require-private require-gcp-env require-index-ids require-datapoints-file require-operation-id clean clean-all gcp-create-project gcp-set-project gcp-create-bucket gcp-sa-create gcp-sa-delete gcp-sa-bind-roles gcp-sa-roles gcp-sa-key gcp-index-create gcp-index-endpoint-create gcp-index-deploy gcp-index-upsert gcp-index-list gcp-index-op-describe gcp-index-op-done gcp-index-update-time
+.PHONY: install dev mock build fe-% fe-install be-install be-% require-private require-gcp-env require-index-ids require-datapoints-file require-operation-id clean clean-all gcp-create-project gcp-set-project gcp-create-bucket gcp-create-artifact-registry gcp-sa-create gcp-sa-delete gcp-sa-bind-roles gcp-sa-roles gcp-sa-key gcp-index-create gcp-index-endpoint-create gcp-index-deploy gcp-index-upsert gcp-index-list gcp-index-op-describe gcp-index-op-done gcp-index-update-time
 
 # -------------------------------
 # Private directory resolution
@@ -48,6 +48,18 @@ fe-%:
 
 fe-install:
 	npm --prefix frontend install
+
+gcp-cloud-build: require-private require-gcp-env
+	@gcloud builds submit "$(BACKEND_DIR)" --tag "$(IMAGE_URI)"
+	@echo "Built image: $(IMAGE_URI)"
+
+gcp-cloud-run-deploy: require-private require-gcp-env
+	@gcloud run deploy persona-backend \
+		--image "$(IMAGE_URI)" \
+		--region "$(REGION)" \
+		--project "$(PROJECT_ID)" \
+		--allow-unauthenticated
+	@echo "Deployed Cloud Run service persona-backend in $(REGION)"
 
 # ----- Backend passthrough -----
 be-%: require-private
@@ -103,6 +115,18 @@ gcp-set-project: require-gcp-env
 # Create bucket "gs://$(BUCKET_NAME)" in REGION
 gcp-create-bucket: require-private require-gcp-env
 	@gcloud storage buckets create "gs://$(BUCKET_NAME)" --location="$(REGION)"
+
+gcp-create-artifact-registry: require-gcp-env
+	@repo="$(AR_REPO)"; \
+	if gcloud artifacts repositories describe "$$repo" --location="$(REGION)" --project="$(PROJECT_ID)" >/dev/null 2>&1; then \
+	  echo "Artifact Registry $$repo already exists in $(REGION)"; \
+	else \
+	  echo "Creating Artifact Registry $$repo in $(REGION)..."; \
+	  gcloud artifacts repositories create "$$repo" \
+	    --repository-format=docker \
+	    --location="$(REGION)" \
+	    --project="$(PROJECT_ID)"; \
+	fi
 
 # Enable Firebase features on the active GCP project
 gcp-enable-firebase: require-gcp-env

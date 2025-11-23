@@ -46,7 +46,9 @@ python${PY_VER} -m pip --version
 
 
 ## Commands
-
+```bash
+make help
+```
 
 ## Environment variables
 Provide these through your shell or a private folder loader. Do not commit secrets.
@@ -105,8 +107,3 @@ The repository includes several layers of automated tests to validate both the m
   Provides default environment variables so tests can run consistently without requiring manual configuration. These cover persona name, project and region identifiers, index endpoints, tokens, and API keys:contentReference[oaicite:4]{index=4}.
 
 Together, these tests ensure that both the mock and real backends return well-structured responses, and that persona normalization logic behaves correctly under a variety of input forms.
-
-## Deployment
-- Cloud Run and related steps exist in the docs but are not verified in code.
-- Configure CORS to allow your Hosting origin.
-- Set rate limits and API key on the real app.
