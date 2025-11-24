@@ -53,11 +53,20 @@ gcp-cloud-build: require-private require-gcp-env
 	@gcloud builds submit "$(BACKEND_DIR)" --tag "$(IMAGE_URI)"
 	@echo "Built image: $(IMAGE_URI)"
 
+gcp-auth-registry: require-gcp-env
+	@gcloud auth configure-docker "$(REGION)-docker.pkg.dev"
+
+gcp-push-backend: require-private require-gcp-env
+	@docker tag $(LOCAL_IMAGE) "$(IMAGE_URI)"
+	@docker push "$(IMAGE_URI)"
+
 gcp-cloud-run-deploy: require-private require-gcp-env
-	@gcloud run deploy persona-backend \
+	@env_vars="PERSONA_NAME=$(PERSONA_NAME),PROJECT_ID=$(PROJECT_ID),REGION=$(REGION),INDEX_ENDPOINT_ID=$(INDEX_ENDPOINT_ID),DEPLOYED_INDEX_ID=$(DEPLOYED_INDEX_ID),BUCKET_NAME=$(BUCKET_NAME),CHUNKS_PATH=$(CHUNKS_PATH),API_KEY=$(API_KEY),MAX_INPUT_TOKENS=$(MAX_INPUT_TOKENS),MAX_OUTPUT_TOKENS=$(MAX_OUTPUT_TOKENS),REQ_TIMEOUT_MS=$(REQ_TIMEOUT_MS)"; \
+	gcloud run deploy persona-backend \
 		--image "$(IMAGE_URI)" \
 		--region "$(REGION)" \
 		--project "$(PROJECT_ID)" \
+		--set-env-vars "$$env_vars" \
 		--allow-unauthenticated
 	@echo "Deployed Cloud Run service persona-backend in $(REGION)"
 
