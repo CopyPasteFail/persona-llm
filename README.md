@@ -419,18 +419,21 @@ Static export on Firebase Hosting. API served by Cloud Run.
    make gcp-create-artifact-registry
    ```
 
-2) Build and push the backend image (choose one):
-   - Cloud Build (no local Docker needed):
+2) Build and push the backend image (pick one path only):
+   - Option A — Cloud Build (no local Docker):
      ```bash
      make gcp-cloud-build
      ```
-   - Local Docker, then push to Artifact Registry (requires Docker and AR auth):
-     ```bash
-     make be-docker-build
-     gcloud auth configure-docker "$(REGION)-docker.pkg.dev"  # once per machine
-     docker tag persona-backend:local "$(IMAGE_URI)"
-     docker push "$(IMAGE_URI)"
-     ```
+   - Option B — Local Docker + push (Docker needed):
+     - One-time per machine: auth to Artifact Registry
+       ```bash
+       make gcp-auth-registry
+       ```
+     - Per build: build locally and push
+       ```bash
+       make be-docker-build
+       make gcp-push-backend
+       ```
 
 3) Deploy to Cloud Run and note the service URL:
    ```bash
