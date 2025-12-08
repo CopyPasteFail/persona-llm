@@ -392,7 +392,22 @@ Run Next.js locally but call the real Cloud Run API.
 
 1) Ensure secrets/backend.env are set in your private repository
 
-2) Start the dev server. Choose one:
+2) Deploy backend to Cloud Run (pick one):
+- Real backend:
+  ```bash
+  make gcp-cloud-run-deploy
+  ```
+- Mock backend:
+  ```bash
+  make gcp-cloud-run-deploy-mock
+  ```
+
+3) Verify the deployed API (point at the Cloud Run URL from deploy):
+  ```bash
+  PYTEST_ADDOPTS="-s" make be-test-int
+  ```
+
+4) Start the dev server. Choose one:
 - Fast start (uses cached build):
   ```bash
   make fe-dev:mock
