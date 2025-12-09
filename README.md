@@ -169,12 +169,7 @@ Re-run `make gcp-set-project` afterwards.
 
 Enable APIs
 ```bash
-gcloud services enable \
-  aiplatform.googleapis.com \
-  run.googleapis.com \
-  storage.googleapis.com \
-  firebase.googleapis.com \
-  cloudbuild.googleapis.com
+make gcp-enable-apis
 ```
 
 ### Phase 5.B Create resources
@@ -187,6 +182,11 @@ make gcp-create-bucket
 Enable Firebase features (safe to rerun; it’s a no-op if the project is already linked):
 ```bash
 make gcp-enable-firebase
+```
+
+Create Firestore database (run once per project)
+```bash
+make gcp-firestore-init
 ```
 
 ### Phase 6. Choose your deployment identity
