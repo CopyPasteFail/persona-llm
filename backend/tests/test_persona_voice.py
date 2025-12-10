@@ -3,9 +3,12 @@ import pytest_asyncio
 from httpx import AsyncClient, ASGITransport
 from api.mock import app as mock_app
 
+TEST_KEY = "persona-voice-key"
+
 
 @pytest_asyncio.fixture
-async def client():
+async def client(access_key_store):
+    access_key_store.add_plain_key(TEST_KEY)
     transport = ASGITransport(app=mock_app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
@@ -17,9 +20,14 @@ async def test_first_person_normalization(client):
     The mock normalizes third-person mentions of 'Omer' to first person.
     This is a sanity check to ensure the normalization logic is working.
     """
+    login = await client.post("/auth/key-login", json={"key": TEST_KEY})
+    assert login.status_code == 200, login.text
+    token = login.json()["access_token"]
+
     resp = await client.post(
         "/chat",
         json={"question": "What did Omer do with Kubernetes at Nexyte in 2024?"},
+        headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 200, resp.text
     data = resp.json()

@@ -1,5 +1,4 @@
 # ARCHITECTURE_OVERVIEW
-_Version 6.0.05_
 
 ## Goal
 A reusable public showcase where people can query a "persona" LLM representing a human. Answers are grounded in a provided dataset, for example a CV, using Vertex AI Vector Search. Priorities: low cost, low ops, transparent design.
@@ -39,7 +38,9 @@ Field-level explanations and rationale are documented in [`SCHEMA.md`](SCHEMA.md
 3. Query flow: , call Gemini Flash with strict grounding, return structured answer
 
 ## Security
-- `x-api-key` required on real app paths. Rate limits per IP: 10 per minute, 100 per day.
+- Access keys live in Firestore collection `access_keys` with `key_hash` (bcrypt), `key_fingerprint` (SHA-256), `expires_at`, `revoked`, and optional labels/usage caps.
+- `/auth/key-login` enforces rate limits before bcrypt: 10 attempts per 10 minutes per IP and 5 per fingerprint (in-memory today; `/chat` requires the bearer token issued by key-login).
+- `/chat` keeps existing per-IP limits: 10 per minute and 100 per day.
 - CORS allowlist: localhost and your Hosting origin built from `PROJECT_ID`.
 
 ### Components

@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import time
 import uuid
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .types import ChatRequest, ChatResponse, Usage, Citation
+from .auth import router as auth_router
+from .security import get_current_session
 from .retrieval import normalize_question_for_first_person
 
 app = FastAPI(title="Persona LLM API (mock)", version="0.0.0-mock")
@@ -23,14 +25,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth_router)
 
 @app.get("/health")
 def health():
-    return {"ready": True}
+    return {"status": "ok"}
 
 
 @app.post("/chat")
-def chat(req: ChatRequest) -> ChatResponse:
+def chat(req: ChatRequest, _session=Depends(get_current_session)) -> ChatResponse:
     """
     Deterministic mock that:
       - Accepts only { question } (extra fields ignored by pydantic Config).

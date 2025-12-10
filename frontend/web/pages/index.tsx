@@ -1,27 +1,37 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { ChatResponse } from "../utils/api";
+import { ApiError, getSessionToken, isCookieMode, keyLogin, logout, postChat } from "../utils/api";
 
-type Citation = { id: string };
-type Usage = { input_tokens: number; output_tokens: number };
-interface ChatResponse {
-  answer: string;
-  citations?: Citation[];
-  usage?: Usage;
-}
+type Usage = NonNullable<ChatResponse["usage"]>;
 
 const API = process.env.NEXT_PUBLIC_API_URL as string | undefined;
 
 export default function IndexPage() {
   const [ready, setReady] = useState(true);
   const [loading, setLoading] = useState(false);
+  const [authLoading, setAuthLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [authError, setAuthError] = useState<string | null>(null);
 
   const [question, setQuestion] = useState("");
+  const [accessKey, setAccessKey] = useState("");
+  const [sessionToken, setSessionToken] = useState<string | null>(null);
+  const [cookieSessionActive, setCookieSessionActive] = useState(false);
   const [messages, setMessages] = useState<
     Array<{ role: "user" | "assistant"; content: string; usage?: Usage }>
   >([]);
 
+  const isCookieSession = isCookieMode();
   const isLocal = useMemo(() => API?.startsWith("http://localhost"), []);
   const streamRef = useRef<HTMLDivElement>(null);
+  const hasSession = isCookieSession ? cookieSessionActive : Boolean(sessionToken);
+  const bannerMessage = error ?? authError ?? (!ready ? "Warming up the API… usually a few seconds." : null);
+
+  useEffect(() => {
+    if (isCookieSession) return;
+    const existing = getSessionToken();
+    if (existing) setSessionToken(existing);
+  }, [isCookieSession]);
 
   // Auto-scroll to bottom when messages update
   useEffect(() => {
@@ -50,23 +60,33 @@ export default function IndexPage() {
     return () => { stop = true; clearInterval(id); };
   }, []);
 
+  function clearSession(message?: string) {
+    if (!isCookieSession && typeof window !== "undefined") {
+      window.localStorage.removeItem("sessionToken");
+    }
+    setSessionToken(null);
+    setCookieSessionActive(false);
+    setError(null);
+    setMessages([]);
+    setQuestion("");
+    if (isCookieSession) {
+      logout().catch(() => {});
+    }
+    if (message) setAuthError(message);
+  }
+
   async function ask() {
     if (!API) { setError("API URL is not configured"); return; }
+    if (!hasSession) { setAuthError("Enter your access key to start."); return; }
     if (!question.trim()) return;
     setLoading(true);
     setError(null);
+    setAuthError(null);
 
     setMessages(prev => [...prev, { role: "user", content: question.trim() }]);
 
     try {
-      const body = { question: question.trim() };
-      const resp = await fetch(`${API}/chat`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      if (!resp.ok) throw new Error(`Request failed: ${resp.status}`);
-      const data: ChatResponse = await resp.json();
+      const data = await postChat({ question: question.trim() });
       if (!data?.answer) throw new Error("Backend returned no answer");
       setMessages(prev => [...prev, {
         role: "assistant",
@@ -75,9 +95,37 @@ export default function IndexPage() {
       }]);
       setQuestion("");
     } catch (err: any) {
-      setError(err?.message || "Something went wrong");
+      const message = err?.message || "Something went wrong";
+      setError(message);
+      if (err instanceof ApiError && err.status === 401) {
+        clearSession("Session expired. Enter a new access key.");
+      }
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleKeySubmit(e: any) {
+    e.preventDefault();
+    if (!API) { setAuthError("API URL is not configured"); return; }
+    if (!accessKey.trim()) { setAuthError("Enter an access key"); return; }
+    setAuthLoading(true);
+    setAuthError(null);
+    setError(null);
+    try {
+      const res = await keyLogin(accessKey.trim());
+      if (isCookieSession) {
+        setCookieSessionActive(true);
+      } else if (typeof window !== "undefined") {
+        window.localStorage.setItem("sessionToken", res.access_token);
+        setSessionToken(res.access_token);
+      }
+      setAccessKey("");
+    } catch (err: any) {
+      const message = err instanceof ApiError ? err.message : "Invalid access key";
+      clearSession(message);
+    } finally {
+      setAuthLoading(false);
     }
   }
 
@@ -100,77 +148,127 @@ export default function IndexPage() {
             <div className="text-xs text-zinc-400">Grounded answers from your profile</div>
           </div>
         </div>
-        {isLocal && (
-          <span className="rounded-full border border-zinc-700 px-2 py-1 text-[11px] text-zinc-400 leading-none">
-            Local backend
-          </span>
-        )}
+        <div className="flex items-center gap-2">
+          {isLocal && (
+            <span className="rounded-full border border-zinc-700 px-2 py-1 text-[11px] text-zinc-400 leading-none">
+              Local backend
+            </span>
+          )}
+          {hasSession && (
+            <button
+              type="button"
+              onClick={() => clearSession()}
+              className="rounded-full border border-zinc-700 px-3 py-1 text-[11px] text-zinc-200 hover:border-zinc-500"
+            >
+              Reset session
+            </button>
+          )}
+        </div>
       </header>
 
       {/* Banner area */}
-      {(!ready || error) && (
+      {bannerMessage && (
         <div className="px-4 pt-3">
           <div className="rounded-xl border border-amber-700 bg-amber-950/40 px-4 py-2 text-amber-300 text-sm">
-            {error ?? "Warming up the API… usually a few seconds."}
+            {bannerMessage}
           </div>
         </div>
       )}
 
       {/* Main area */}
       <div className="flex-1 flex flex-col mx-auto w-full max-w-4xl px-4 py-4 overflow-hidden">
-        {/* Conversation box */}
-        <div
-          ref={streamRef}
-          className="flex-1 overflow-y-auto rounded-2xl border border-zinc-800 bg-zinc-900/30 p-4 space-y-4"
-        >
-          {messages.length === 0 && (
-            <div className="text-sm text-zinc-400">
-              Try a starter:
-              <div className="mt-2 flex flex-wrap gap-2">
-                {buildSuggestions().map((s) => (
-                  <button
-                    key={s}
-                    onClick={() => { if (ready && !loading) setQuestion(s); }}
-                    disabled={!ready || loading}
-                    className="rounded-full border border-zinc-700/80 px-3 py-1 text-[12px] hover:bg-zinc-800/60 disabled:opacity-40"
-                  >
-                    {s}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-          {messages.map((m, i) => (
-            <Bubble key={i} role={m.role} usage={m.usage}>
-              {m.content}
-            </Bubble>
-          ))}
-          {loading && <AssistantSkeleton />}
-        </div>
-
-        {/* Input bar */}
-        <form
-          onSubmit={(e) => { e.preventDefault(); if (!loading && ready) ask(); }}
-          className="mt-3 border-t border-zinc-800/80 bg-zinc-950/50 p-3"
-        >
-          <div className="flex items-end gap-2">
-            <textarea
-              value={question}
-              onChange={(e) => setQuestion(e.target.value)}
-              placeholder="Ask me anything…"
-              className="flex-1 rounded-xl bg-zinc-950/60 border border-zinc-800 px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-zinc-600"
-              rows={3}
-              disabled={!ready || loading}
-            />
-            <button
-              type="submit"
-              disabled={loading || !ready || !question.trim()}
-              className="shrink-0 rounded-xl bg-white text-zinc-900 px-4 py-2.5 font-medium hover:bg-white/90 disabled:opacity-50"
+        {!hasSession ? (
+          <div className="flex-1 flex items-center justify-center">
+            <form
+              onSubmit={handleKeySubmit}
+              className="w-full max-w-md space-y-3 rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6 shadow-lg"
             >
-              {loading ? "Asking…" : "Send"}
-            </button>
+              <div className="space-y-1 text-center">
+                <div className="text-lg font-semibold">Enter access key</div>
+                <p className="text-sm text-zinc-400">Access keys are temporary. A session lasts about an hour.</p>
+              </div>
+              <input
+                type="password"
+                value={accessKey}
+                onChange={(e) => setAccessKey(e.target.value)}
+                placeholder="Paste your temporary key"
+                className="w-full rounded-xl bg-zinc-950/60 border border-zinc-800 px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-zinc-600"
+                disabled={authLoading || !ready}
+              />
+              {authError && (
+                <div className="rounded-lg border border-amber-700 bg-amber-950/40 px-3 py-2 text-sm text-amber-300">
+                  {authError}
+                </div>
+              )}
+              <button
+                type="submit"
+                disabled={authLoading || !ready || !accessKey.trim()}
+                className="w-full rounded-xl bg-white text-zinc-900 px-4 py-2.5 font-medium hover:bg-white/90 disabled:opacity-50"
+              >
+                {authLoading ? "Checking…" : "Start session"}
+              </button>
+              <div className="text-xs text-zinc-500 text-center">
+                {isCookieSession ? "Session uses a secure HttpOnly cookie in this browser." : "Session tokens are stored locally in your browser."}
+              </div>
+            </form>
           </div>
-        </form>
+        ) : (
+          <>
+            {/* Conversation box */}
+            <div
+              ref={streamRef}
+              className="flex-1 overflow-y-auto rounded-2xl border border-zinc-800 bg-zinc-900/30 p-4 space-y-4"
+            >
+              {messages.length === 0 && (
+                <div className="text-sm text-zinc-400">
+                  Try a starter:
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {buildSuggestions().map((s) => (
+                      <button
+                        key={s}
+                        onClick={() => { if (ready && !loading) setQuestion(s); }}
+                        disabled={!ready || loading}
+                        className="rounded-full border border-zinc-700/80 px-3 py-1 text-[12px] hover:bg-zinc-800/60 disabled:opacity-40"
+                      >
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {messages.map((m, i) => (
+                <Bubble key={i} role={m.role} usage={m.usage}>
+                  {m.content}
+                </Bubble>
+              ))}
+              {loading && <AssistantSkeleton />}
+            </div>
+
+            {/* Input bar */}
+            <form
+              onSubmit={(e) => { e.preventDefault(); if (!loading && ready) ask(); }}
+              className="mt-3 border-t border-zinc-800/80 bg-zinc-950/50 p-3"
+            >
+              <div className="flex items-end gap-2">
+                <textarea
+                  value={question}
+                  onChange={(e) => setQuestion(e.target.value)}
+                  placeholder="Ask me anything…"
+                  className="flex-1 rounded-xl bg-zinc-950/60 border border-zinc-800 px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-zinc-600"
+                  rows={3}
+                  disabled={!ready || loading}
+                />
+                <button
+                  type="submit"
+                  disabled={loading || !ready || !question.trim()}
+                  className="shrink-0 rounded-xl bg-white text-zinc-900 px-4 py-2.5 font-medium hover:bg-white/90 disabled:opacity-50"
+                >
+                  {loading ? "Asking…" : "Send"}
+                </button>
+              </div>
+            </form>
+          </>
+        )}
       </div>
     </div>
   );
