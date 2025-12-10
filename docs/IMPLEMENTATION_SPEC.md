@@ -1,5 +1,4 @@
 # IMPLEMENTATION_SPEC
-_Version 6.0.03_
 
 ## Repos
 - Public mono-repo: Contains both backend and frontend. The backend is in `api/` and jobs under `jobs/`. The frontend is in `web/`. A private folder for secrets may be referenced during runtime, not committed.
@@ -96,10 +95,14 @@ Backend configuration is loaded from a dotenv file rather than a global `PRIVATE
   - `DEPLOYED_INDEX_ID`: Deployed Index resource ID.
   - `BUCKET_NAME`: GCS bucket used for persona artifacts.
   - `CHUNKS_PATH`: Object name of the packed chunk data.
-  - `API_KEY`: Key for calling Vertex AI endpoints.
+  - `API_KEY`: Shared secret for JWT signing fallback and any internal calls; **not** an access key.
   - `MAX_INPUT_TOKENS`: Input context budget for LLM calls.
   - `MAX_OUTPUT_TOKENS`: Output budget for LLM calls.
   - `REQ_TIMEOUT_MS`: Request timeout in milliseconds.
+
+- **Access keys (Firestore):**
+  - Stored in collection `access_keys` with fields: `key_hash` (bcrypt), `key_fingerprint` (SHA-256), `expires_at`, `revoked`, optional `label`, `created_at`, `created_by`, `used_count`, `max_uses`.
+  - Create a key via `python backend/scripts/create_access_key.py --label demo --expires-in 7d [--max-uses 10]`. Plaintext keys are only printed once by the script.
 
 - **Frontend variables (in `frontend/web/.env.local`):**
   - `NEXT_PUBLIC_API_URL`: URL of the backend (e.g. `http://localhost:8080` during local dev).

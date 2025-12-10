@@ -9,8 +9,9 @@ from fastapi import FastAPI, Depends, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from .types import ChatRequest, ChatResponse, Citation, Usage
-from .security import verify_api_key, check_rate_limit_dependency
+from .security import get_current_session, check_rate_limit_dependency
 from .settings import settings
+from .auth import router as auth_router
 from . import retrieval, llm
 
 READY = False
@@ -34,6 +35,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth_router)
+
 @app.on_event("startup")
 def on_startup():
     global READY
@@ -47,13 +50,13 @@ def on_startup():
 
 @app.get("/health")
 def health():
-    return {"ready": READY}
+    return {"status": "ok"}
 
 @app.post("/chat")
 async def chat(
     req: ChatRequest,
     request: Request,
-    _auth=Depends(verify_api_key),
+    session=Depends(get_current_session),
     _rl=Depends(check_rate_limit_dependency),
 ) -> ChatResponse:
     if not READY:
@@ -90,6 +93,7 @@ async def chat(
                     "request_id": request_id,
                     "elapsed_ms": int((time.time() - t0) * 1000),
                     "ip": getattr(request.client, "host", None),
+                    "key_id": getattr(session, "key_id", None),
                 }
             )
             return ChatResponse(answer=answer, citations=[], usage=usage)
@@ -116,6 +120,7 @@ async def chat(
                 "ip": getattr(request.client, "host", None),
                 "chunks": [c.id for c in citations],
                 "usage": usage.model_dump(),
+                "key_id": session.key_id,
             }
         )
 
@@ -130,6 +135,7 @@ async def chat(
                 "request_id": request_id,
                 "elapsed_ms": int((time.time() - t0) * 1000),
                 "ip": getattr(request.client, "host", None),
+                "key_id": getattr(session, "key_id", None),
             },
         )
         raise HTTPException(status_code=503, detail="chat_unavailable") from exc

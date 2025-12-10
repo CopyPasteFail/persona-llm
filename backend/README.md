@@ -54,7 +54,12 @@ make help
 Provide these through your shell or a private folder loader. Do not commit secrets.
 
 Common placeholders:
-- `X_API_KEY` for real app requests.
+- Access keys live in Firestore collection `access_keys`; manage them with the admin CLI:
+  - Create: `python scripts/create_access_key.py create --label demo --expires-in 7d [--max-uses 10] [--print-json]`
+  - Explicit expiry: `python scripts/create_access_key.py create --expires-at 2024-12-31T23:59:00Z`
+  - Revoke: `python scripts/create_access_key.py revoke --key-id <doc-id> [--project <PROJECT>] [--revoked-by you]`
+  Keys are not derived from `API_KEY`.
+- `API_KEY` remains the server secret (JWT signing fallback) and optional header for protected admin endpoints.
 - `BUCKET_NAME` / `CHUNKS_PATH` to locate the packaged JSONL side store (full GCS URI is derived at runtime).
 - Project, region, and model identifiers if using Vertex, names are placeholders only.
 
