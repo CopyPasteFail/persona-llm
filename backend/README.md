@@ -63,6 +63,25 @@ Common placeholders:
 - `BUCKET_NAME` / `CHUNKS_PATH` to locate the packaged JSONL side store (full GCS URI is derived at runtime).
 - Project, region, and model identifiers if using Vertex, names are placeholders only.
 
+## Mock auth
+For local testing with `api.mock:app`, you can use a lightweight JSON key store with plaintext access keys.
+The mock app will use `backend/mock_access_keys.json` if it exists, or you can override with `MOCK_ACCESS_KEYS_PATH`.
+
+Example JSON (see `backend/mock_access_keys.json`):
+```json
+{
+  "keys": [
+    {
+      "id": "demo-1",
+      "label": "local dev",
+      "key": "test-key-123",
+      "expires_at": "2030-01-01T00:00:00Z",
+      "revoked": false
+    }
+  ]
+}
+```
+
 ## API
 ### `GET /health`
 - Returns readiness status.
