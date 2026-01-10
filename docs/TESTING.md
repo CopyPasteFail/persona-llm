@@ -120,6 +120,20 @@ make be-test-voice
   make be-test-build_datapoints
   ```
 
+- `backend/tests/test_load_backend_env.py`  
+  Validates `load_backend_env` handling for required keys, overrides, and environment variable expansion.
+  Command:
+  ```bash
+  make be-test-load-backend-env
+  ```
+
+- `backend/tests/test_pack_and_push_processing.py`  
+  Exercises pack-and-push processing helpers, including chunk loading, record serialization, and manifest writing.
+  Command:
+  ```bash
+  make be-test-pack-and-push-processing
+  ```
+
 - `backend/tests/test_retrieval_vector.py`  
   Tests vector search adapter logic. It confirms normalization of embeddings, guard rails (empty vectors, zero `top_k`), and that configuring the client swaps the active implementation.
   Command:

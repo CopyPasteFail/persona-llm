@@ -7,7 +7,7 @@ PIP := $(VENV)/bin/pip
 
 include ../make/env.mk
 
-.PHONY: help install run run-debug mock test-smoke test-core test-voice test-int test-vector-live test-build_datapoints test-auth-key-login test-create-access-key-cli test-keys-store test-llm-prompt test-security-session check envs clean build_datapoints
+.PHONY: help install run run-debug mock test-smoke test-core test-voice test-int test-vector-live test-build_datapoints test-auth-key-login test-create-access-key-cli test-keys-store test-llm-prompt test-security-session test-load-backend-env test-pack-and-push-processing check envs clean build_datapoints
 
 help:
 	@echo "Targets:"
@@ -25,6 +25,8 @@ help:
 	@echo "  test-keys-store - run key store tests"
 	@echo "  test-llm-prompt - run LLM prompt construction tests"
 	@echo "  test-security-session - run session security tests"
+	@echo "  test-load-backend-env - run load_backend_env tests"
+	@echo "  test-pack-and-push-processing - run pack_and_push processing tests"
 	@echo "  check        - quick import check"
 	@echo "  build_datapoints - build embedding datapoints JSONL for upsert"
 	@echo "  test-build_datapoints - run datapoint helper unit tests"
@@ -83,7 +85,7 @@ test-build_datapoints: $(VENV)/bin/activate
 test-smoke: $(VENV)/bin/activate
 	$(PY) -m pytest -q tests/test_smoke.py
 
-test-core: test-smoke test-voice test-auth-key-login test-security-session test-keys-store test-llm-prompt test-create-access-key-cli test-build_datapoints test-retrieval-vector
+test-core: test-smoke test-voice test-auth-key-login test-security-session test-keys-store test-llm-prompt test-create-access-key-cli test-build_datapoints test-retrieval-vector test-load-backend-env test-pack-and-push-processing
 
 test-voice: $(VENV)/bin/activate
 	$(PY) -m pytest -q tests/test_persona_voice.py tests/test_normalize_question_punct.py
@@ -113,6 +115,12 @@ test-llm-prompt: $(VENV)/bin/activate
 
 test-security-session: $(VENV)/bin/activate
 	$(PY) -m pytest -q tests/test_security_session.py
+
+test-load-backend-env: $(VENV)/bin/activate
+	$(PY) -m pytest -q tests/test_load_backend_env.py
+
+test-pack-and-push-processing: $(VENV)/bin/activate
+	$(PY) -m pytest -q tests/test_pack_and_push_processing.py
 
 check: $(VENV)/bin/activate
 	$(PY) -c "import api.main, api.mock, api.retrieval, api.llm, api.settings"
