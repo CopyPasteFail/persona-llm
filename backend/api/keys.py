@@ -32,13 +32,6 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def _coerce_int(value) -> Optional[int]:
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return None
-
-
 def compute_key_fingerprint(plain_key: str) -> str:
     """Return a SHA-256 fingerprint for lookup without storing the plaintext."""
     return hashlib.sha256((plain_key or "").encode("utf-8")).hexdigest()
@@ -144,12 +137,6 @@ class FirestoreKeyStore:
             if _now() >= expires_at:
                 raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="key_expired")
 
-            max_uses = _coerce_int(payload.get("max_uses"))
-            used_count = _coerce_int(payload.get("used_count") or 0) or 0
-            if max_uses is not None and used_count >= max_uses:
-                raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="key_exhausted")
-
-            self._transaction_update(transaction, doc_ref, {"used_count": firestore.Increment(1)})
             return KeyRecord(id=doc_id, expires_at=expires_at, label=payload.get("label"))
 
         try:

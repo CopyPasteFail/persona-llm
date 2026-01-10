@@ -24,9 +24,6 @@ def test_get_record_valid(access_key_store):
     assert record.id == doc_id
     assert record.label == "demo"
 
-    payload = access_key_store._docs_by_fp[keys.compute_key_fingerprint(plain)][0].to_dict()
-    assert payload["used_count"] == 1
-
 
 def test_get_record_expired(access_key_store):
     access_key_store.add_plain_key(
@@ -45,14 +42,6 @@ def test_get_record_revoked(access_key_store):
         access_key_store.get_record_by_plain_key("revoked-key")
     assert exc.value.status_code == 401
     assert exc.value.detail == "key_revoked"
-
-
-def test_get_record_exhausted(access_key_store):
-    access_key_store.add_plain_key("limited-key", used_count=3, max_uses=3)
-    with pytest.raises(HTTPException) as exc:
-        access_key_store.get_record_by_plain_key("limited-key")
-    assert exc.value.status_code == 401
-    assert exc.value.detail == "key_exhausted"
 
 
 def test_get_record_missing_key(access_key_store):
@@ -74,26 +63,6 @@ def test_duplicate_fingerprint_hard_fail(access_key_store):
     assert exc.value.detail["code"] == "duplicate_fingerprint"
     assert exc.value.detail["message"] == "Multiple access keys share the same fingerprint"
     assert access_key_store.last_transaction_used is False
-
-
-def test_used_count_atomic_increment_and_max_uses(access_key_store):
-    plain = "limited-key"
-    access_key_store.add_plain_key(plain, used_count=0, max_uses=2)
-
-    record1 = access_key_store.get_record_by_plain_key(plain)
-    assert record1.id.startswith("doc-")
-    payload = access_key_store._docs_by_fp[keys.compute_key_fingerprint(plain)][0].to_dict()
-    assert payload["used_count"] == 1
-
-    record2 = access_key_store.get_record_by_plain_key(plain)
-    assert record2.id == record1.id
-    assert payload["used_count"] == 2
-
-    with pytest.raises(HTTPException) as exc:
-        access_key_store.get_record_by_plain_key(plain)
-    assert exc.value.status_code == 401
-    assert exc.value.detail == "key_exhausted"
-    assert access_key_store.last_transaction_used is True
 
 
 def test_expiry_uses_timezone_aware_datetime(access_key_store):
