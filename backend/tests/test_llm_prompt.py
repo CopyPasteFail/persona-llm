@@ -24,8 +24,8 @@ Test cases covered:
 from typing import TypedDict, cast
 
 from api.llm import (
-    _estimate_tokens,
-    _trim_chunks_to_budget,
+    _estimate_tokens, # pyright: ignore[reportPrivateUsage]
+    _trim_chunks_to_budget, # pyright: ignore[reportPrivateUsage]
     build_llm_prompt,
 )
 

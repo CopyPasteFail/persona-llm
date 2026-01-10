@@ -60,7 +60,7 @@ def test_build_restricts_includes_all_supported_namespaces() -> None:
         TAG_FIELD: [PROD_TAG, HIGHLIGHTS_TAG],
     }
 
-    restricts = build_datapoints._build_restricts(metadata)
+    restricts = build_datapoints._build_restricts(metadata) # pyright: ignore[reportPrivateUsage]
 
     assert restricts == [
         {NAMESPACE_FIELD: ROLE_FIELD, ALLOW_TOKENS_FIELD: [ROLE_VALUE]},
@@ -96,7 +96,7 @@ def test_write_datapoints_emits_expected_json_lines(tmp_path: Path) -> None:
     ]
     embeddings = EMBEDDINGS_FOR_SINGLE_RECORD
 
-    build_datapoints._write_datapoints(
+    build_datapoints._write_datapoints( # pyright: ignore[reportPrivateUsage]
         records,
         embeddings,
         output_path,
@@ -135,7 +135,7 @@ def test_write_datapoints_handles_gzip_output(tmp_path: Path) -> None:
     records: list[Record] = [{ID_FIELD: CHUNK_ID_TWO, METADATA_FIELD: {}}]
     embeddings = GZIP_EMBEDDINGS
 
-    build_datapoints._write_datapoints(
+    build_datapoints._write_datapoints( # pyright: ignore[reportPrivateUsage]
         records,
         embeddings,
         output_path,
