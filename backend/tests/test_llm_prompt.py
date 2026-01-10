@@ -21,86 +21,120 @@ Test cases covered:
   first block and no more chunks can fit.
 """
 
-from api.llm import build_llm_prompt, _estimate_tokens, _trim_chunks_to_budget
+from typing import TypedDict, cast
+
+from api.llm import (
+    _estimate_tokens,
+    _trim_chunks_to_budget,
+    build_llm_prompt,
+)
+
+class PromptMessage(TypedDict):
+    role: str
+    content: str
+
+
+class PromptPayload(TypedDict):
+    messages: list[PromptMessage]
+
+BASE_INSTRUCTION = "Only use facts that appear in Context."
+PERSONA_NAME = "Avery"
+QUESTION_TEXT = "What did you build?"
+SYSTEM_PROMPT_PLACEHOLDER = "S"
+QUESTION_PLACEHOLDER = "Q"
+FIRST_CHUNK_ID = "c1"
+SECOND_CHUNK_ID = "c2"
+LONG_CHUNK_LENGTH = 100
+SHORT_CHUNK_LENGTH = 20
+ESTIMATED_CHARS_PER_TOKEN = 4
 
 
 def test_build_llm_prompt_contract_includes_persona_and_context():
     """Ensure the prompt payload includes persona name and context chunks."""
-    chunks = [
-        {"id": "c1", "text": "Worked on distributed systems."},
-        {"id": "c2", "text": "Shipped data pipelines."},
+    context_chunks: list[dict[str, str]] = [
+        {"id": FIRST_CHUNK_ID, "text": "Worked on distributed systems."},
+        {"id": SECOND_CHUNK_ID, "text": "Shipped data pipelines."},
     ]
 
-    payload = build_llm_prompt(
-        "What did you build?",
-        chunks,
-        persona_name="Avery",
-        max_input_tokens=500,
+    payload = cast(
+        PromptPayload,
+        build_llm_prompt(
+            QUESTION_TEXT,
+            context_chunks,
+            persona_name=PERSONA_NAME,
+            max_input_tokens=500,
+        ),
     )
 
     assert isinstance(payload, dict)
     assert "messages" in payload
     assert len(payload["messages"]) == 2
 
-    system = payload["messages"][0]["content"]
-    user = payload["messages"][1]["content"]
+    system_message = payload["messages"][0]["content"]
+    user_message = payload["messages"][1]["content"]
 
-    assert "You are Avery speaking in first person." in system
-    assert "Question: What did you build?" in user
-    assert "[1] Worked on distributed systems." in user
-    assert "[2] Shipped data pipelines." in user
-    assert "Only use facts that appear in Context." in user
+    assert "You are Avery speaking in first person." in system_message
+    assert "Question: What did you build?" in user_message
+    assert "[1] Worked on distributed systems." in user_message
+    assert "[2] Shipped data pipelines." in user_message
+    assert BASE_INSTRUCTION in user_message
 
 
 def test_trim_chunks_to_budget_truncates_first_chunk_when_tight():
     """Verify tight budgets truncate the first chunk to remaining capacity."""
-    system_prompt = "S"
-    question = "Q"
-    chunks = [
-        {"id": "c1", "text": "A" * 100},
-        {"id": "c2", "text": "B" * 100},
+    system_prompt = SYSTEM_PROMPT_PLACEHOLDER
+    question = QUESTION_PLACEHOLDER
+    context_chunks: list[dict[str, str]] = [
+        {"id": FIRST_CHUNK_ID, "text": "A" * LONG_CHUNK_LENGTH},
+        {"id": SECOND_CHUNK_ID, "text": "B" * LONG_CHUNK_LENGTH},
     ]
 
     base_user = (
-        f"Question: {question}\n\nContext:\n\nOnly use facts that appear in Context."
+        f"Question: {question}\n\nContext:\n\n{BASE_INSTRUCTION}"
     )
     base_tokens = _estimate_tokens(system_prompt) + _estimate_tokens(base_user)
     max_input_tokens = base_tokens + 1
 
-    trimmed = _trim_chunks_to_budget(
-        chunks,
-        max_input_tokens=max_input_tokens,
-        system_prompt=system_prompt,
-        question=question,
+    trimmed = cast(
+        list[dict[str, str]],
+        _trim_chunks_to_budget(
+            context_chunks,
+            max_input_tokens=max_input_tokens,
+            system_prompt=system_prompt,
+            question=question,
+        ),
     )
 
     assert len(trimmed) == 1
-    assert trimmed[0]["id"] == "c1"
-    assert trimmed[0]["text"] == "A" * 4
+    assert trimmed[0]["id"] == FIRST_CHUNK_ID
+    assert trimmed[0]["text"] == "A" * ESTIMATED_CHARS_PER_TOKEN
 
 
 def test_trim_chunks_to_budget_keeps_first_full_chunk_when_budget_exact():
     """Confirm exact budgets allow the first full chunk without truncation."""
-    system_prompt = "S"
-    question = "Q"
-    chunks = [
-        {"id": "c1", "text": "A" * 20},
-        {"id": "c2", "text": "B" * 20},
+    system_prompt = SYSTEM_PROMPT_PLACEHOLDER
+    question = QUESTION_PLACEHOLDER
+    context_chunks: list[dict[str, str]] = [
+        {"id": FIRST_CHUNK_ID, "text": "A" * SHORT_CHUNK_LENGTH},
+        {"id": SECOND_CHUNK_ID, "text": "B" * SHORT_CHUNK_LENGTH},
     ]
 
     base_user = (
-        f"Question: {question}\n\nContext:\n\nOnly use facts that appear in Context."
+        f"Question: {question}\n\nContext:\n\n{BASE_INSTRUCTION}"
     )
     base_tokens = _estimate_tokens(system_prompt) + _estimate_tokens(base_user)
-    first_block_tokens = _estimate_tokens(f"[1] {chunks[0]['text']}")
+    first_block_tokens = _estimate_tokens(f"[1] {context_chunks[0]['text']}")
     max_input_tokens = base_tokens + first_block_tokens
 
-    trimmed = _trim_chunks_to_budget(
-        chunks,
-        max_input_tokens=max_input_tokens,
-        system_prompt=system_prompt,
-        question=question,
+    trimmed = cast(
+        list[dict[str, str]],
+        _trim_chunks_to_budget(
+            context_chunks,
+            max_input_tokens=max_input_tokens,
+            system_prompt=system_prompt,
+            question=question,
+        ),
     )
 
     assert len(trimmed) == 1
-    assert trimmed[0]["text"] == chunks[0]["text"]
+    assert trimmed[0]["text"] == context_chunks[0]["text"]
