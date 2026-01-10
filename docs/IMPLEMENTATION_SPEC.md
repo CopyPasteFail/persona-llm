@@ -28,8 +28,16 @@ Backend configuration is loaded from a dotenv file rather than a global `PRIVATE
   - Applied to outbound calls that accept timeouts (GCS chunk download, Matching Engine queries, Gemini generation). Some SDK calls may ignore this if they lack timeout support.
 
 - **Access keys (Firestore):**
-  - Stored in collection `access_keys` with fields: `key_hash` (bcrypt), `key_fingerprint` (SHA-256), `expires_at`, `revoked`, optional `label`, `created_at`, `created_by`, `used_count`, `max_uses`.
-  - Create a key via `python backend/scripts/create_access_key.py --label demo --expires-in 7d [--max-uses 10]`. Plaintext keys are only printed once by the script.
+  - Stored in collection `access_keys` with fields: `key_hash` (bcrypt), `key_fingerprint` (SHA-256), `expires_at`, `revoked`, optional `label`, `created_at`, `created_by`.
+  - Field meanings:
+    - `key_hash`: bcrypt hash of the plaintext access key (plaintext is never stored).
+    - `key_fingerprint`: SHA-256 fingerprint used for lookup without storing the key.
+    - `expires_at`: absolute expiration time for the key (UTC).
+    - `revoked`: explicit kill switch; true rejects the key even if unexpired.
+    - `label`: optional human-readable label for admin tracking.
+    - `created_at`: time the key was created (UTC).
+    - `created_by`: identifier for who/what created the key.
+  - Create a key via `python backend/scripts/create_access_key.py --label demo --expires-in 7d`. Plaintext keys are only printed once by the script.
 
 - **Frontend variables (in `frontend/web/.env.local`):**
   - `NEXT_PUBLIC_API_URL`: URL of the backend (e.g. `http://localhost:8080` during local dev).

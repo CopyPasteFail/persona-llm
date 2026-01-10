@@ -60,7 +60,6 @@ def _build_parser() -> argparse.ArgumentParser:
         "--expires-at",
         help="Explicit UTC expiry timestamp (ISO8601). If set, --expires-in is ignored.",
     )
-    create_cmd.add_argument("--max-uses", type=int, help="Optional maximum number of uses before lockout")
     create_cmd.add_argument(
         "--print-json",
         action="store_true",
@@ -126,12 +125,7 @@ def run_create(args: argparse.Namespace, *, client=None, now: datetime | None = 
         "label": args.label,
         "created_at": created_at,
         "created_by": os.getenv("USER") or os.getenv("LOGNAME"),
-        "used_count": 0,
     }
-    if args.max_uses is not None:
-        if args.max_uses <= 0:
-            raise ValueError("max-uses must be greater than zero")
-        doc["max_uses"] = int(args.max_uses)
 
     doc_ref.set({k: v for k, v in doc.items() if v is not None})
 
@@ -143,8 +137,6 @@ def run_create(args: argparse.Namespace, *, client=None, now: datetime | None = 
             "key_fingerprint": fingerprint,
             "key_plaintext": plain_key,
         }
-        if doc.get("max_uses") is not None:
-            output["max_uses"] = doc["max_uses"]
         print(json.dumps(output))
     else:
         print("Access key created:")

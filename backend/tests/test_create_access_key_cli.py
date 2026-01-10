@@ -62,7 +62,6 @@ def _make_args(command: str, **kwargs):
         "label": None,
         "expires_in": "7d",
         "expires_at": None,
-        "max_uses": None,
         "print_json": False,
         "project": None,
         "key_id": None,
@@ -79,7 +78,7 @@ def test_create_prints_json(monkeypatch, capsys):
 
     monkeypatch.setattr(create_access_key, "secrets", SimpleNamespace(token_urlsafe=lambda n: "fixed-secret"))
 
-    args = _make_args("create", label="demo", expires_in="1d", print_json=True, max_uses=5)
+    args = _make_args("create", label="demo", expires_in="1d", print_json=True)
     code = create_access_key.run_create(args, client=fake_client, now=now)
     assert code == 0
 
@@ -88,13 +87,11 @@ def test_create_prints_json(monkeypatch, capsys):
     assert payload["key_id"].startswith("auto-")
     assert payload["label"] == "demo"
     assert payload["expires_at"].startswith("2024-01-02T12:00:00")
-    assert payload["max_uses"] == 5
     assert payload["key_fingerprint"]
     assert payload["key_plaintext"] == "fixed-secret"
 
     stored = fake_client.collection(create_access_key.DEFAULT_COLLECTION).document(payload["key_id"]).get().to_dict()
     assert stored["revoked"] is False
-    assert stored["max_uses"] == 5
 
 
 def test_revoke_by_key_id(monkeypatch, capsys):
