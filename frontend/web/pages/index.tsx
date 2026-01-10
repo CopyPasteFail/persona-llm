@@ -25,7 +25,7 @@ export default function IndexPage() {
   const isLocal = useMemo(() => API?.startsWith("http://localhost"), []);
   const streamRef = useRef<HTMLDivElement>(null);
   const hasSession = isCookieSession ? cookieSessionActive : Boolean(sessionToken);
-  const bannerMessage = error ?? authError ?? (!ready ? "Warming up the API… usually a few seconds." : null);
+  const bannerMessage = error ?? (!ready ? "Warming up the API… usually a few seconds." : null);
 
   useEffect(() => {
     if (isCookieSession) return;
