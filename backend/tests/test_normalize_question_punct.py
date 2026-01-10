@@ -62,9 +62,9 @@ def inputs_that_should_not_change() -> list[str]:
     return sorted(cases)
 
 
-# Curly apostrophe cases (’)
 @pytest.mark.parametrize("variant", build_persona_name_variants())
 def test_curly_apos_with_punct(variant: str) -> None:
+    """Curly apostrophe cases (’)."""
     assert normalize_question(f"{variant}’s.") == "your."
     assert normalize_question(f"{variant}’s,") == "your,"
     assert normalize_question(f"{variant}’s?") == "your?"
@@ -74,9 +74,9 @@ def test_curly_apos_with_punct(variant: str) -> None:
     assert normalize_question(f"Tell me about {variant}’s.") == "Tell me about your."
 
 
-# Straight apostrophe cases (')
 @pytest.mark.parametrize("variant", build_persona_name_variants())
 def test_straight_apos_with_punct(variant: str) -> None:
+    """Straight apostrophe cases (')."""
     assert normalize_question(f"{variant}'s.") == "your."
     assert normalize_question(f"{variant}'s,") == "your,"
     assert normalize_question(f"{variant}'s?") == "your?"
@@ -86,14 +86,14 @@ def test_straight_apos_with_punct(variant: str) -> None:
     assert normalize_question(f"Tell me about {variant}'s.") == "Tell me about your."
 
 
-# Bare name used as subject/object becomes "I"
 @pytest.mark.parametrize("variant", build_persona_name_variants())
 def test_bare_name_subject_object(variant: str) -> None:
+    """Bare name used as subject/object becomes "I"."""
     assert normalize_question(f"Tell me about {variant}.") == "Tell me about I."
     assert normalize_question(f"What did {variant} do?") == "What did I do?"
 
 
-# Should NOT change (dynamic)
 @pytest.mark.parametrize("input_text", inputs_that_should_not_change())
 def test_should_not_change(input_text: str) -> None:
+    """Should NOT change (dynamic)."""
     assert normalize_question(input_text) == input_text

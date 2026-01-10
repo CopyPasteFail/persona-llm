@@ -49,9 +49,10 @@ Metadata = dict[str, MetadataValue]
 Record = dict[str, Any]
 
 
-# Verifies restricts include every supported namespace by passing rich metadata
-# and expecting a complete, ordered restriction list.
 def test_build_restricts_includes_all_supported_namespaces() -> None:
+    """Verifies restricts include every supported namespace by passing rich metadata
+    and expecting a complete, ordered restriction list.
+    """
     metadata: Metadata = {
         ROLE_FIELD: ROLE_VALUE,
         DOC_ID_FIELD: DOC_ID_VALUE,
@@ -75,9 +76,10 @@ def test_build_restricts_includes_all_supported_namespaces() -> None:
     ]
 
 
-# Writes a single record to JSONL and validates the output line includes
-# expected IDs, metadata-derived fields, and the provided embedding vector.
 def test_write_datapoints_emits_expected_json_lines(tmp_path: Path) -> None:
+    """Writes a single record to JSONL and validates the output line includes
+    expected IDs, metadata-derived fields, and the provided embedding vector.
+    """
     output_path = tmp_path / JSON_LINES_FILENAME
 
     records: list[Record] = [
@@ -124,9 +126,10 @@ def test_write_datapoints_emits_expected_json_lines(tmp_path: Path) -> None:
     ]
 
 
-# Writes a single record to a gzip file and expects a compact JSON
-# payload with only IDs and the feature vector.
 def test_write_datapoints_handles_gzip_output(tmp_path: Path) -> None:
+    """Writes a single record to a gzip file and expects a compact JSON
+    payload with only IDs and the feature vector.
+    """
     output_path = tmp_path / GZIP_OUTPUT_FILENAME
 
     records: list[Record] = [{ID_FIELD: CHUNK_ID_TWO, METADATA_FIELD: {}}]
