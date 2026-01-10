@@ -15,8 +15,9 @@
 - Remove any unused “Local backend” boxes if present.
 
 ## Tests
-- Add golden tests for prompt builder and retrieval selection.
-- Add API key missing/bad tests (401) and rate limits (429).
+- LLM prompt builder (`api/llm.py`): missing tests for strict output instructions, context format, MAX_INPUT_TOKENS trimming, and usage parsing from Vertex responses. Decision: add unit coverage for `build_llm_prompt(...)`, trimming edge cases, and `_extract_usage`/`_usage_value`.
+- Rate limiting (`api/security.py`): missing tests for `/chat` 429s after thresholds and `/auth/key-login` IP/fingerprint limits (before key verification). Decision: add rate-limit tests for both endpoints and ordering.
+- Invalid/bad-key login (`api/auth.py`, `api/keys.py`): missing 401 coverage for wrong, revoked, expired, and overused keys, plus 429s for rate-limited login attempts. Decision: add negative auth tests to lock in these cases.
 - Add integration tests for real backend once wired.
 
 ## Deployment
@@ -26,54 +27,3 @@
 - Keep budget alerts and logging hygiene.
 
 References to prior docs for context: fileciteturn0file2 fileciteturn0file1
-
-# V4
-
-## Must-do to enable real mode *(completed in v6, retained for reference)*
-- Implement embeddings and vector search:
-  - `api/retrieval.py::embed_query`.
-  - `api/retrieval.py::search_vector_store`.
-  - `api/retrieval.py::apply_filters_and_boosting`.
-  - `api/retrieval.py::build_context_prompt`.
-- Wire LLM call:
-  - `api/llm.py::call_gemini_flash` with max tokens and low temperature.
-- Startup loading:
-  - In `api.main.on_startup`, load the `CHUNKS_PATH` side store from `BUCKET_NAME` and initialize clients, then set `READY=True`.
-- Error handling:
-  - Replace `NotImplementedError` path with proper 200 response and structured logging.
-
-## Ingestion
-- Optional: extend `jobs/pack_and_push.py` to:
-  - Generate embeddings and upsert to Vertex AI Matching Engine.
-  - Emit a consistent side-store manifest and checksum.
-- Optional: add a `make ingest` target that runs the job with the repo’s schema and config.
-- Optional: document the end-to-end ingestion flow in `README.md` with a concrete example.
-
-## Contract and schema
-- Decide whether `role`, `year`, and `tech` filters are part of the API. If yes, re-introduce them in `ChatRequest` and implement filtering.
-- Keep Pydantic `extra="ignore"` to avoid breaking older frontends.
-
-## Security and limits
-- Persist or shard rate-limits if multi-instance is planned. Current in-memory deques are per-pod only.
-- Add structured logs on success paths with `request_id`, latency, selected chunk IDs, and token counts.
-- Ensure secrets never hit logs. Keep placeholder validation in `api/settings.py`.
-
-## Frontend
-- Re-verify `persona-llm-frontend` once provided:
-  - Starter prompts disabled state when backend is down.
-  - Conversation scroll container and fixed layout.
-  - Remove any unused “Local backend” UI boxes.
-  - Confirm `NEXT_PUBLIC_API_URL` handling and error toasts for 503 cases.
-
-## Tests
-- Expand tests to cover failure cases on the real app:
-  - 401 for missing or bad API key.
-  - 429 for rate limits.
-  - 503 propagation when downstream services fail.
-- Add golden tests for the LLM prompt builder.
-- Keep the existing voice normalization tests green.
-
-## Deployment
-- Finish Cloud Run wiring and verify startup path.
-- Provision Vertex resources via Terraform or scripts and document teardown.
-- Confirm Firebase Hosting config and CORS with the deployed domain.
