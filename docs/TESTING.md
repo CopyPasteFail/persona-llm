@@ -36,14 +36,14 @@ make test
   Exercises access-key login behavior in the mock app. It covers invalid, expired, and revoked keys, confirms success responses include a bearer token and expiry, and checks rate limiting plus cookie-session settings.
   Command (repo root):
   ```bash
-  backend/.venv/bin/python -m pytest -q backend/tests/test_auth_key_login.py
+  make be-test-auth-key-login
   ```
 
 - `backend/tests/test_security_session.py`  
   Validates session token handling for `/chat` in the mock app. It covers bearer tokens in the Authorization header, cookie-based sessions when enabled, and the 401 response when no token is provided.
   Command (repo root):
   ```bash
-  backend/.venv/bin/python -m pytest -q backend/tests/test_security_session.py
+  make be-test-security-session
   ```
 
 ### Backend unit tests
@@ -58,21 +58,21 @@ make test
   Validates prompt construction and token-budget trimming. It checks that the system and user prompts include required content and that chunk trimming behaves correctly for tight and exact budgets.
   Command (repo root):
   ```bash
-  backend/.venv/bin/python -m pytest -q backend/tests/test_llm_prompt.py
+  make be-test-llm-prompt
   ```
 
 - `backend/tests/test_keys_store.py`  
   Covers access-key hashing, fingerprinting, and lookup behavior. It asserts correct handling of expired/revoked keys, missing keys, and duplicate fingerprint detection.
   Command (repo root):
   ```bash
-  backend/.venv/bin/python -m pytest -q backend/tests/test_keys_store.py
+  make be-test-keys-store
   ```
 
 - `backend/tests/test_create_access_key_cli.py`  
   Verifies the admin CLI create/revoke flows using a fake Firestore client. It checks JSON output, stored fields, and error handling for missing keys.
   Command (repo root):
   ```bash
-  backend/.venv/bin/python -m pytest -q backend/tests/test_create_access_key_cli.py
+  make be-test-create-access-key-cli
   ```
 
 - `backend/tests/test_build_datapoints.py`  
