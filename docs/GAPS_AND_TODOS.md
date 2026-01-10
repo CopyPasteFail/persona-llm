@@ -8,9 +8,9 @@
 - Rate limiting (enhancement): Per-IP limiting on `/chat`.
 
 ## Ingestion
-- `jobs/build_datapoints.py` now generates embeddings. Optionally automate the upsert flow (or integrate with `pack_and_push`) if you want a single command to run the whole pipeline.
+- (enhancement) Automate the upsert flow (or integrate with `pack_and_push`) if you want a single command to run the whole pipeline. Currently, `jobs/build_datapoints.py` now generates embeddings.
 - Emit a side-store manifest and checksum for the `CHUNKS_PATH` artifact.
-- Optionally add a `make ingest` target that chains the steps above.
+- (enhancement) Add a `make ingest` target that chains the steps above.
 
 ## Frontend
 - Confirm starters and input disable logic when backend is down.
@@ -30,5 +30,3 @@
 - Add stricter origin control on CORS in prod env (no wildcard).
 - Provision Vertex resources and document teardown.
 - Keep budget alerts and logging hygiene.
-
-References to prior docs for context: fileciteturn0file2 fileciteturn0file1
