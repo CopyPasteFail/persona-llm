@@ -13,7 +13,7 @@ Persona data and secrets point the backend at a local/private folder using `PRIV
 
 ### Step 1. Clone and set up your private overlay
 
-1. Clone this public repo.
+1. Clone this repo.
 2. Copy `private-template/` into a new private repo or folder.  
    This holds your secrets and persona data and must not be committed.
 3. Link it or point `PRIVATE_DIR` to its location.
@@ -53,7 +53,7 @@ PRIVATE_DIR=/abs/path/to/your-private-overlay make run
 > load-nvmrc
 > EOF
 > ```
-> Restart the shell (or `source ~/.bashrc`) and bash will run `nvm use` whenever you `cd` into this repo.
+> Restart the shell (or run `source ~/.bashrc`) and bash will run `nvm use` whenever you `cd` into this repo.
 
 
 At this stage you can locally run the mock backend and frontend, see [here](#mode-a-mock-frontend--mock-backend-local).
@@ -364,7 +364,7 @@ make dev:mock
 The root `package.json` forwards scripts to the `web` app via `"workspaces": ["web"]`.
 
 ### Mode A: Mock frontend + mock backend (local)
-Develop the UI against the mock API at `http://localhost:8080`.
+Develop the UI against the mock API.
 
 Run the mock backend and frontend pointing to the mock. Choose one:
 - Fast start (uses cached build):
@@ -383,7 +383,7 @@ If port 3000 is stuck:
 make fe-kill-port
 ```
 
-App: http://localhost:3000
+Open the UI at `http://localhost:8080`
 
 ---
 
