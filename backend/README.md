@@ -109,25 +109,4 @@ Strict allowlist. Real mode allows `http://localhost:3000` and `https://<project
 Per IP, 10 per minute and 100 per day on `/chat`. `/health` is never limited.
 
 ## Tests
-The repository includes several layers of automated tests to validate both the mock and real backend behavior, as well as the normalization logic for persona references:
-
-- **Smoke tests** (`test_smoke.py`)  
-  Basic checks against the mock API endpoints. They verify that `/health` responds as ready and that `/chat` returns an answer, citations, and token usage in the expected contract:contentReference[oaicite:0]{index=0}.
-
-- **Persona voice tests** (`test_persona_voice.py`)  
-  Ensure that the system correctly normalizes references to the persona name into first-person phrasing. These cover edge cases like possessives, bare name substitutions, curly/straight apostrophes, and strings that must not be changed (emails, handles, paths, etc.):contentReference[oaicite:1]{index=1}.
-
-- **Question punctuation normalization tests** (`test_normalize_question_punct.py`)  
-  Focus on punctuation handling and string transformations for consistent first-person responses, with exhaustive parameterization across variants of the persona’s name:contentReference[oaicite:2]{index=2}.
-
-- **Integration tests (real backend)** (`test_integration_real_backend.py`)  
-  Run against a locally running backend (`uvicorn api.main:app`) with real GCP credentials. They check that `/chat` produces valid responses, includes the expected structure (`answer`, `citations`, `usage`), and returns first-person answers containing pronouns like *I*, *my*, or *me*:contentReference[oaicite:3]{index=3}.
-  Integration tests for real mode will fail until that path is implemented.
-
-- **Live vector search test** (`make be-test-vector-live`)  
-  Hits Vertex AI Matching Engine end-to-end. Requires running from an environment that can resolve your private endpoint (for example a GCP VPC with Private Service Connect); skip locally if you do not have that network path.
-
-- **Environment setup for tests** (`conftest.py`)  
-  Provides default environment variables so tests can run consistently without requiring manual configuration. These cover persona name, project and region identifiers, index endpoints, tokens, and API keys:contentReference[oaicite:4]{index=4}.
-
-Together, these tests ensure that both the mock and real backends return well-structured responses, and that persona normalization logic behaves correctly under a variety of input forms.
+See `docs/TESTING.md` for the full test catalog, how to run tests, and integration requirements.

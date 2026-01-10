@@ -1,0 +1,145 @@
+# Testing
+
+This repo currently has backend-focused tests. The frontend does not have a dedicated test suite yet.
+
+## Quick start (backend)
+From repo root:
+```bash
+make be-install
+make be-test
+```
+
+From the backend directory:
+```bash
+make install
+make test
+```
+
+## Test catalog
+
+### Backend mock API tests
+- `backend/tests/test_smoke.py`  
+  Basic checks against the mock API endpoints. They verify that `/health` responds as ready and that `/chat` returns an answer, citations, and token usage in the expected contract.
+  Command (repo root):
+  ```bash
+  make be-test
+  ```
+
+- `backend/tests/test_persona_voice.py`  
+  Ensures the mock `/chat` endpoint produces first-person phrasing. It asserts the response structure and does a content sanity check (TLDR presence, no stray filter lines, and presence of first-person pronouns).
+  Command (repo root):
+  ```bash
+  make be-test-voice
+  ```
+
+- `backend/tests/test_auth_key_login.py`  
+  Exercises access-key login behavior in the mock app. It covers invalid, expired, and revoked keys, confirms success responses include a bearer token and expiry, and checks rate limiting plus cookie-session settings.
+  Command (repo root):
+  ```bash
+  backend/.venv/bin/python -m pytest -q backend/tests/test_auth_key_login.py
+  ```
+
+- `backend/tests/test_security_session.py`  
+  Validates session token handling for `/chat` in the mock app. It covers bearer tokens in the Authorization header, cookie-based sessions when enabled, and the 401 response when no token is provided.
+  Command (repo root):
+  ```bash
+  backend/.venv/bin/python -m pytest -q backend/tests/test_security_session.py
+  ```
+
+### Backend unit tests
+- `backend/tests/test_normalize_question_punct.py`  
+  Focuses on punctuation handling and name permutations for first-person normalization. It checks possessive handling (straight/curly apostrophes), bare-name substitutions, and ensures certain inputs are never modified (emails, handles, paths).
+  Command (repo root):
+  ```bash
+  backend/.venv/bin/python -m pytest -q backend/tests/test_normalize_question_punct.py
+  ```
+
+- `backend/tests/test_llm_prompt.py`  
+  Validates prompt construction and token-budget trimming. It checks that the system and user prompts include required content and that chunk trimming behaves correctly for tight and exact budgets.
+  Command (repo root):
+  ```bash
+  backend/.venv/bin/python -m pytest -q backend/tests/test_llm_prompt.py
+  ```
+
+- `backend/tests/test_keys_store.py`  
+  Covers access-key hashing, fingerprinting, and lookup behavior. It asserts correct handling of expired/revoked keys, missing keys, and duplicate fingerprint detection.
+  Command (repo root):
+  ```bash
+  backend/.venv/bin/python -m pytest -q backend/tests/test_keys_store.py
+  ```
+
+- `backend/tests/test_create_access_key_cli.py`  
+  Verifies the admin CLI create/revoke flows using a fake Firestore client. It checks JSON output, stored fields, and error handling for missing keys.
+  Command (repo root):
+  ```bash
+  backend/.venv/bin/python -m pytest -q backend/tests/test_create_access_key_cli.py
+  ```
+
+- `backend/tests/test_build_datapoints.py`  
+  Exercises the datapoint writer helpers for Matching Engine. It verifies restricts mapping, JSONL output structure, and gzip output behavior.
+  Command (repo root):
+  ```bash
+  make be-test-build_datapoints
+  ```
+
+- `backend/tests/test_retrieval_vector.py`  
+  Tests vector search adapter logic. It confirms normalization of embeddings, guard rails (empty vectors, zero `top_k`), and that configuring the client swaps the active implementation.
+  Command (repo root):
+  ```bash
+  make be-test-retrieval-vector
+  ```
+
+### Integration tests (real services)
+- `backend/tests/test_integration_real_backend.py`  
+  Runs against a real backend (`uvicorn api.main:app`) with live credentials. It checks `/health`, exercises `/auth/key-login` + `/chat`, and validates that responses contain first-person phrasing and the expected contract.
+  Command (repo root):
+  ```bash
+  make be-test-int
+  ```
+
+- `backend/tests/test_vector_search_integration.py`  
+  Optional live Vertex AI Matching Engine round-trip. It is skipped by default and only runs when `RUN_VERTEX_SEARCH_TEST=1` and a test embedding is provided.
+  Command (repo root):
+  ```bash
+  make be-test-vector-live
+  ```
+
+### Test support
+- `backend/tests/conftest.py`  
+  Provides default environment variables and fixtures so tests can run consistently without manual configuration.
+- `backend/pytest.ini` - `integration` marker configuration.
+
+## Running integration tests
+
+### Real backend integration
+Requirements:
+- Real backend running (for example `uvicorn api.main:app`)
+- `NEXT_PUBLIC_API_URL` pointing to the running backend
+- `ACCESS_KEY_PLAINTEXT` set to a valid access key
+
+Commands:
+```bash
+make be-test-int
+```
+Or from `backend/`:
+```bash
+make test-int
+```
+
+### Live vector search integration
+Requirements:
+- Access to the private Vertex AI Matching Engine endpoint
+- `DATAPOINTS_FILE` configured so `scripts.emit_test_embedding` can derive a test vector
+
+Command:
+```bash
+make be-test-vector-live
+```
+
+The live test also honors:
+- `RUN_VERTEX_SEARCH_TEST=1`
+- `VERTEX_TEST_EMBEDDING` (comma-separated floats)
+- `VERTEX_TEST_TOP_K` (optional, default 4)
+
+## Frontend tests
+No frontend test suite is wired up yet.
