@@ -6,7 +6,54 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple, Protocol, runtime
 from .settings import settings
 
 
-def build_llm_prompt(question: str, chunks: List[Dict]) -> Dict:
+def _estimate_tokens(text: str) -> int:
+    if not text:
+        return 0
+    return max(1, len(text) // 4)
+
+
+def _trim_chunks_to_budget(
+    chunks: List[Dict],
+    *,
+    max_input_tokens: Optional[int],
+    system_prompt: str,
+    question: str,
+) -> List[Dict]:
+    if not max_input_tokens or max_input_tokens <= 0:
+        return chunks
+
+    base_user = f"Question: {question}\n\nContext:\n\nOnly use facts that appear in Context."
+    base_tokens = _estimate_tokens(system_prompt) + _estimate_tokens(base_user)
+    remaining = max_input_tokens - base_tokens
+    if remaining <= 0:
+        return chunks[:1]
+
+    trimmed: List[Dict] = []
+    for idx, chunk in enumerate(chunks, start=1):
+        text = str(chunk.get("text", ""))
+        block = f"[{idx}] {text}"
+        block_tokens = _estimate_tokens(block)
+        if block_tokens <= remaining:
+            trimmed.append(chunk)
+            remaining -= block_tokens
+            continue
+
+        if not trimmed:
+            max_chars = max(1, remaining * 4)
+            truncated = text[:max_chars].rstrip()
+            if truncated:
+                trimmed.append({"id": chunk.get("id"), "text": truncated, "metadata": chunk.get("metadata")})
+        break
+
+    return trimmed or chunks[:1]
+
+
+def build_llm_prompt(
+    question: str,
+    chunks: List[Dict],
+    *,
+    max_input_tokens: Optional[int] = None,
+) -> Dict:
     """
     Build a system and user prompt that instructs the model to speak in first person
     as the configured persona. The persona name is read from settings.PERSONA_NAME.
@@ -19,10 +66,6 @@ def build_llm_prompt(question: str, chunks: List[Dict]) -> Dict:
       [Add up to 5 bullets total]
       Wrap: <one short closing line>
     """
-    context_block = "\n\n".join(
-        f"[{i+1}] {c.get('text','')}" for i, c in enumerate(chunks)
-    )
-
     system = (
         f"You are {settings.PERSONA_NAME} speaking in first person.\n"
         "Answer ONLY using the provided context chunks. Do not invent details.\n"
@@ -40,6 +83,17 @@ def build_llm_prompt(question: str, chunks: List[Dict]) -> Dict:
         "- <bullet 3>\n"
         "[Add up to 5 bullets total]\n"
         "Wrap: <one short closing line>"
+    )
+
+    selected = _trim_chunks_to_budget(
+        chunks,
+        max_input_tokens=max_input_tokens,
+        system_prompt=system,
+        question=question,
+    )
+
+    context_block = "\n\n".join(
+        f"[{i+1}] {c.get('text','')}" for i, c in enumerate(selected)
     )
 
     user = (
@@ -202,11 +256,20 @@ class _GeminiFlashClient:
             ),
         ]
 
-        response = model.generate_content(
-            contents,
-            generation_config=config,
-            safety_settings=safety_settings,
-        )
+        request_options = {"timeout": settings.request_timeout_seconds}
+        try:
+            response = model.generate_content(
+                contents,
+                generation_config=config,
+                safety_settings=safety_settings,
+                request_options=request_options,
+            )
+        except TypeError:
+            response = model.generate_content(
+                contents,
+                generation_config=config,
+                safety_settings=safety_settings,
+            )
 
         return _extract_response_text(response), _extract_usage(response)
 

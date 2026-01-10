@@ -30,7 +30,7 @@ class Settings(BaseModel):
     SESSION_COOKIE_SAMESITE: str = Field(default="lax")
     SESSION_COOKIE_SECURE: bool = Field(default=True)
     SESSION_COOKIE_PATH: str = Field(default="/")
-    MAX_INPUT_TOKENS: int = Field(..., ge=1, le=10000)
+    MAX_INPUT_TOKENS: int = Field(default=8000, ge=1, le=10000)
     MAX_OUTPUT_TOKENS: int = Field(..., ge=1, le=2000)
     REQ_TIMEOUT_MS: int = Field(..., ge=1000, le=60000)
 
@@ -93,6 +93,11 @@ class Settings(BaseModel):
     def session_cookie_path(self) -> str:
         return self.SESSION_COOKIE_PATH or "/"
 
+    @property
+    def request_timeout_seconds(self) -> float:
+        """Return the outbound request timeout in seconds."""
+        return float(self.REQ_TIMEOUT_MS) / 1000.0
+
 REQUIRED_ENV_VARS = [
     "PERSONA_NAME",
     "PROJECT_ID",
@@ -102,7 +107,6 @@ REQUIRED_ENV_VARS = [
     "BUCKET_NAME",
     "CHUNKS_PATH",
     "API_KEY",
-    "MAX_INPUT_TOKENS",
     "MAX_OUTPUT_TOKENS",
     "REQ_TIMEOUT_MS",
 ]
@@ -154,6 +158,8 @@ def load_settings() -> Settings:
     chunk_path = os.getenv("CHUNKS_PATH")
 
     try:
+        max_input_tokens = os.getenv("MAX_INPUT_TOKENS")
+        max_output_tokens = os.getenv("MAX_OUTPUT_TOKENS")
         return Settings(
             PERSONA_NAME=os.getenv("PERSONA_NAME"),
             PROJECT_ID=os.getenv("PROJECT_ID"),
@@ -170,8 +176,8 @@ def load_settings() -> Settings:
             SESSION_COOKIE_SAMESITE=os.getenv("SESSION_COOKIE_SAMESITE") or "lax",
             SESSION_COOKIE_SECURE=os.getenv("SESSION_COOKIE_SECURE") or True,
             SESSION_COOKIE_PATH=os.getenv("SESSION_COOKIE_PATH") or "/",
-            MAX_INPUT_TOKENS=os.getenv("MAX_INPUT_TOKENS"),
-            MAX_OUTPUT_TOKENS=os.getenv("MAX_OUTPUT_TOKENS"),
+            MAX_INPUT_TOKENS=max_input_tokens or 8000,
+            MAX_OUTPUT_TOKENS=max_output_tokens,
             REQ_TIMEOUT_MS=os.getenv("REQ_TIMEOUT_MS"),
         )
     except ValidationError as e:

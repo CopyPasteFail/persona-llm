@@ -27,7 +27,7 @@ Chunks are validated using [`chunk.schema.json`](../backend/schema/chunk.schema.
 Field-level explanations and rationale are documented in [`SCHEMA.md`](SCHEMA.md).
 
 ## Data flow
-**Mock path (active today)**
+**Mock path (available for local dev)**
 1. Client POSTs `/chat` with `{ "question": "..." }`.
 2. Question is normalized to first person.
 3. Service returns a deterministic answer with a dummy citation and usage.
@@ -35,18 +35,19 @@ Field-level explanations and rationale are documented in [`SCHEMA.md`](SCHEMA.md
 **Real path**
 1. Cloud Run API loads the side store object `CHUNKS_PATH` from `BUCKET_NAME` (GCS) at startup.
 2. User question goes to backend, embed query, Vector Search top K 8, apply mild boosting and filters.
-3. Query flow: , call Gemini Flash with strict grounding, return structured answer
+3. Build a strict grounded prompt, call Gemini Flash, return `{answer, citations, usage}`.
 
 ## Security
 - Access keys live in Firestore collection `access_keys` with `key_hash` (bcrypt), `key_fingerprint` (SHA-256), `expires_at`, `revoked`, and optional labels/usage caps.
 - `/auth/key-login` enforces rate limits before bcrypt: 10 attempts per 10 minutes per IP and 5 per fingerprint (in-memory today; `/chat` requires the bearer token issued by key-login).
 - `/chat` keeps existing per-IP limits: 10 per minute and 100 per day.
+- Rate limiting is per-instance (in-memory). This is fine for a single Cloud Run instance, but must move to a shared store (Redis/Firestore) to be reliable under multi-instance scaling.
 - CORS allowlist: localhost and your Hosting origin built from `PROJECT_ID`.
 
 ### Components
 - **Backend**: FastAPI with two apps.
   - `api.mock:app` for local dev, deterministic answers.
-  - `api.main:app` skeleton where `/chat` returns 503 until real retrieval and LLM are wired.
+  - `api.main:app` real mode: loads chunk side store on startup, runs hybrid retrieval + Gemini Flash; `/chat` returns 503 when not ready or when downstream services fail.
 - **Frontend**: Next.js app in `web/` with starter prompts and a fixed layout. Cold start: min instances 0. Shows “Warming up the API… usually a few seconds.” until `/health` is ready. Verify disabled states when the backend is down, and independent scroll for the conversation pane.
 - **Jobs**: `jobs/pack_and_push.py` to validate and package JSONL chunks.
-- **Tests**: pytest suite focused on the mock app. One integration test expects a real backend and will fail until implemented.
+- **Tests**: pytest suite focused on the mock app, plus opt-in integration tests that require a running real backend with valid GCP creds and data.
