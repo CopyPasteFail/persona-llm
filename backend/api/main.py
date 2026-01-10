@@ -115,6 +115,7 @@ async def chat(
         prompt_payload = llm.build_llm_prompt(
             norm_q,
             selected,
+            persona_name=settings.PERSONA_NAME,
             max_input_tokens=settings.MAX_INPUT_TOKENS,
         )
         answer_text, usage_meta = llm.call_gemini_flash(

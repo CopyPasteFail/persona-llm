@@ -52,11 +52,12 @@ def build_llm_prompt(
     question: str,
     chunks: List[Dict],
     *,
+    persona_name: str,
     max_input_tokens: Optional[int] = None,
 ) -> Dict:
     """
     Build a system and user prompt that instructs the model to speak in first person
-    as the configured persona. The persona name is read from settings.PERSONA_NAME.
+    as the configured persona. The persona name is provided by the caller.
 
     Output format (must be exact):
       TLDR: <one short sentence>
@@ -67,7 +68,7 @@ def build_llm_prompt(
       Wrap: <one short closing line>
     """
     system = (
-        f"You are {settings.PERSONA_NAME} speaking in first person.\n"
+        f"You are {persona_name} speaking in first person.\n"
         "Answer ONLY using the provided context chunks. Do not invent details.\n"
         "If the information is not present, say briefly that it is not in your CV yet.\n"
         "Writing rules:\n"
