@@ -1,7 +1,11 @@
 ## Backend
 - Strengthen retrieval in `api/retrieval.py`: expand tests around `embed_query`, `search_vector_store`, `apply_filters_and_boosting`, and `build_context_prompt`, and validate live client integration.
 - Add regression tests + observability for the Gemini client (`api/llm.py::call_gemini_flash`): stubbed unit tests, usage parsing coverage, and explicit timeout/error handling.
-- Move rate-limit storage to Redis/Firestore (currently per-pod in-memory) for multi-instance deployments.
+- Rate limiting (enhancement): keep the FastAPI limiter for app-level protection and consistent behavior, add an edge/service-level limiter (Cloud Armor / API Gateway / load balancer) for stronger enforcement and DDoS resistance.
+- Rate limiting (enhancement): move rate-limit storage to a shared store (Redis/Firestore; currently per-pod in-memory) for multi-instance deployments.
+- Auth/session (enhancement): revoking an access key should immediately invalidate existing JWT sessions (not just block new logins).
+- Auth/session (decision): logout is cookie deletion only (no server-side session invalidation). Good enough for small invite-only access-key sharing, and keeps the system stateless; future enhancement is server-side session invalidation to mitigate stolen-token reuse.
+- Rate limiting (decision): `/chat` uses per-key limits (authenticated), while `/auth/key-login` keeps per-IP + per-fingerprint limits; no per-IP limiting on `/chat` (documented tradeoff).
 
 ## Ingestion
 - `jobs/build_datapoints.py` now generates embeddings. Optionally automate the upsert flow (or integrate with `pack_and_push`) if you want a single command to run the whole pipeline.
