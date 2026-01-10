@@ -2,7 +2,7 @@
 
 This repo currently has backend-focused tests. The frontend does not have a dedicated test suite yet.
 
-> All commands assume you run them from the repo root. If you run them from `backend/`, drop the `be-` prefix (for example, `make test` instead of `make be-test`).
+> All commands assume you run them from the repo root. If you run them from `backend/`, drop the `be-` prefix (for example, `make test-smoke` instead of `make be-test-smoke`).
 
 ## Quick start
 
@@ -14,7 +14,7 @@ make be-install
 
 ### Smoke Test
 ```bash
-make be-test
+make be-test-smoke
 ```
 
 ### Core mock-safe backend suite
@@ -62,7 +62,7 @@ No frontend test suite is wired up yet.
   Basic checks against the mock API endpoints. They verify that `/health` responds as ready and that `/chat` returns an answer, citations, and token usage in the expected contract.
   Command:
   ```bash
-  make be-test
+  make be-test-smoke
   ```
 
 - `backend/tests/test_auth_key_login.py`  
