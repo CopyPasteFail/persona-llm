@@ -37,6 +37,7 @@ from typing import (
     cast,
 )
 
+from .prompts import QUESTION_PREFIX
 from .settings import settings
 
 # Apostrophe: support curly and straight
@@ -632,7 +633,7 @@ def build_context_prompt(question: str, selected: List[Dict[str, Any]]) -> str:
     question = (question or "").strip()
     sections: List[str] = []
     if question:
-        sections.append(f"Question: {question}")
+        sections.append(f"{QUESTION_PREFIX}{question}")
 
     for idx, chunk in enumerate(selected, start=1):
         text = (chunk.get("text") or "").strip()
