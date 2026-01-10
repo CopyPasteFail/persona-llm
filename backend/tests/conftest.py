@@ -56,40 +56,40 @@ DocumentPayload = dict[str, object]
 
 
 class _FakeDocument:
-    # Test helper: store a document payload and expose Firestore-style access.
     def __init__(self, doc_id: str, payload: DocumentPayload):
+        """Test helper: store a document payload and expose Firestore-style access."""
         self.id = doc_id
         self._payload: DocumentPayload = payload
         self.exists = True
 
-    # Test helper: return the stored document payload as a dict.
     def to_dict(self) -> DocumentPayload:
+        """Test helper: return the stored document payload as a dict."""
         return self._payload
 
 
 class _FakeDocumentReference:
-    # Test helper: point to a document in the in-memory store by id.
     def __init__(self, store: "InMemoryFirestoreStore", doc_id: str):
+        """Test helper: point to a document in the in-memory store by id."""
         self.id = doc_id
         self._store = store
 
-    # Test helper: fetch the document from the store, matching Firestore API.
     def get(self, transaction: Optional["_FakeTransaction"] = None) -> _FakeDocument:
+        """Test helper: fetch the document from the store, matching Firestore API."""
         return self._store.get_document_by_id(self.id)
 
-    # Test helper: apply updates to the stored document payload.
     def update(
         self, data: DocumentPayload, transaction: Optional["_FakeTransaction"] = None
     ) -> None:
+        """Test helper: apply updates to the stored document payload."""
         stored_doc = self._store.get_document_by_id(self.id)
         payload = stored_doc.to_dict()
         for field_name, new_value in data.items():
             updated_value = self._apply_value(payload.get(field_name), new_value)
             payload[field_name] = updated_value
 
-    # Test helper: interpret Firestore Increment values and apply them to fields.
     @staticmethod
     def _apply_value(current: object | None, value: object) -> object:
+        """Test helper: interpret Firestore Increment values and apply them to fields."""
         increment_by: int | None = None
         if value.__class__.__name__ == "Increment":
             increment_by = getattr(value, "value", None)
@@ -106,34 +106,33 @@ class _FakeDocumentReference:
 
 
 class _FakeTransaction:
-    # Test helper: hold a reference to the in-memory store for transactions.
     def __init__(self, store: "InMemoryFirestoreStore"):
+        """Test helper: hold a reference to the in-memory store for transactions."""
         self._store = store
 
-    # Test helper: fetch a document within the transaction.
     def get(self, doc_ref: _FakeDocumentReference) -> _FakeDocument:
+        """Test helper: fetch a document within the transaction."""
         return doc_ref.get(transaction=self)
 
-    # Test helper: update a document within the transaction.
     def update(self, doc_ref: _FakeDocumentReference, data: DocumentPayload) -> None:
+        """Test helper: update a document within the transaction."""
         doc_ref.update(data, transaction=self)
 
 
 class InMemoryFirestoreStore(keys.FirestoreKeyStore):
     """Test double for FirestoreKeyStore that keeps documents in memory."""
 
-    # Test helper: initialize empty in-memory document stores and flags.
     def __init__(self):
+        """Test helper: initialize empty in-memory document stores and flags."""
         super().__init__(client=None)
         self._docs_by_fp: dict[str, list[_FakeDocument]] = {}
         self._docs_by_id: dict[str, _FakeDocument] = {}
         self.last_transaction_used = False
 
-    # Test helper: get a stored document by id for the fake Firestore API.
     def get_document_by_id(self, doc_id: str) -> _FakeDocument:
+        """Test helper: get a stored document by id for the fake Firestore API."""
         return self._docs_by_id[doc_id]
 
-    # Test helper: add a key document with optional metadata for lookup by tests.
     def add_plain_key(
         self,
         plain_key: str,
@@ -142,6 +141,7 @@ class InMemoryFirestoreStore(keys.FirestoreKeyStore):
         expires_at: datetime | None = None,
         revoked: bool = False,
     ) -> str:
+        """Test helper: add a key document with optional metadata for lookup by tests."""
         expiration_time = expires_at or (
             datetime.now(timezone.utc) + timedelta(hours=DEFAULT_EXPIRATION_HOURS)
         )
@@ -159,31 +159,31 @@ class InMemoryFirestoreStore(keys.FirestoreKeyStore):
         self._docs_by_fp.setdefault(fingerprint, []).append(document)
         return doc_id
 
-    # Test helper: return at most a small set of matching documents by fingerprint.
     def _query_by_fingerprint(self, fingerprint: str) -> list[_FakeDocument]:
+        """Test helper: return at most a small set of matching documents by fingerprint."""
         matches = self._docs_by_fp.get(fingerprint, [])
         return matches[:MAX_FINGERPRINT_MATCHES]
 
-    # Test helper: return a document reference for a given id.
     def _get_doc_ref_for_id(self, doc_id: str) -> Any:
+        """Test helper: return a document reference for a given id."""
         return _FakeDocumentReference(self, doc_id)
 
-    # Test helper: simulate Firestore transactions and record usage for tests.
     def _run_transaction(self, fn: Callable[[_FakeTransaction], Any]) -> Any:
+        """Test helper: simulate Firestore transactions and record usage for tests."""
         self.last_transaction_used = True
         transaction = _FakeTransaction(self)
         return fn(transaction)
 
-    # Test helper: mark a key as revoked in the stored document payload.
     def revoke_key(self, key_id: str) -> None:
+        """Test helper: mark a key as revoked in the stored document payload."""
         document = self._docs_by_id.get(key_id)
         if document:
             document.to_dict()["revoked"] = True
 
 
 @pytest.fixture
-# Test fixture: provide an in-memory key store and reset it after each test.
 def access_key_store():
+    """Test fixture: provide an in-memory key store and reset it after each test."""
     store = InMemoryFirestoreStore()
     keys.set_key_store(store)
     try:

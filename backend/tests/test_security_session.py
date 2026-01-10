@@ -30,18 +30,19 @@ class _FakeKeyRecord:
         self.label: str | None = TEST_KEY_LABEL
 
 
-# Builds an async HTTP client against the mock app so tests can issue requests.
 @pytest_asyncio.fixture
 async def client() -> AsyncGenerator[AsyncClient, None]:
+    """Builds an async HTTP client against the mock app so tests can issue requests."""
     transport = ASGITransport(app=cast(Any, mock_app))
     async with AsyncClient(transport=transport, base_url=TEST_BASE_URL) as async_client:
         yield async_client
 
 
-# Checks that bearer tokens in the Authorization header are accepted by /chat,
-# expecting a 200 response with a non-empty answer payload.
 @pytest.mark.asyncio
 async def test_chat_accepts_authorization_header(client: AsyncClient) -> None:
+    """Checks that bearer tokens in the Authorization header are accepted by /chat,
+    expecting a 200 response with a non-empty answer payload.
+    """
     session_token, _ = security.create_session_token(_FakeKeyRecord("header-key"))
     response = await client.post(
         CHAT_ENDPOINT_PATH,
@@ -52,10 +53,11 @@ async def test_chat_accepts_authorization_header(client: AsyncClient) -> None:
     assert response.json()["answer"]
 
 
-# Checks that cookie-based session tokens are accepted when enabled by setting the
-# session cookie, expecting a 200 response with a non-empty answer payload.
 @pytest.mark.asyncio
 async def test_chat_accepts_cookie_when_enabled(client: AsyncClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Checks that cookie-based session tokens are accepted when enabled by setting the
+    session cookie, expecting a 200 response with a non-empty answer payload.
+    """
     session_token, _ = security.create_session_token(_FakeKeyRecord("cookie-key"))
     monkeypatch.setattr(settings, SESSION_COOKIE_ENABLED_SETTING, True)
     client.cookies.set(settings.session_cookie_name, session_token)
@@ -64,10 +66,11 @@ async def test_chat_accepts_cookie_when_enabled(client: AsyncClient, monkeypatch
     assert response.json()["answer"]
 
 
-# Checks that missing tokens are rejected by disabling cookies and calling /chat,
-# expecting a 401 response with a missing_token error detail.
 @pytest.mark.asyncio
 async def test_chat_missing_token_returns_401(client: AsyncClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Checks that missing tokens are rejected by disabling cookies and calling /chat,
+    expecting a 401 response with a missing_token error detail.
+    """
     monkeypatch.setattr(settings, SESSION_COOKIE_ENABLED_SETTING, False)
     response = await client.post(CHAT_ENDPOINT_PATH, json=CHAT_QUESTION_PAYLOAD)
     assert response.status_code == 401

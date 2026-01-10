@@ -62,8 +62,8 @@ class AccessKeyStoreProtocol(Protocol):
     def get_record_by_plain_key(self, plain_key: str) -> AccessKeyRecordProtocol: ...
 
 
-# Verify hashing produces a distinct value and only the original key verifies.
 def test_hash_and_verify_roundtrip() -> None:
+    """Verify hashing produces a distinct value and only the original key verifies."""
     plain_access_key = ACCESS_KEY_SAMPLE
     hashed_access_key = keys.hash_key(plain_access_key)
 
@@ -73,8 +73,8 @@ def test_hash_and_verify_roundtrip() -> None:
     assert len(keys.compute_key_fingerprint(plain_access_key)) == 64
 
 
-# Ensure fetching a valid key returns the expected record and label.
 def test_get_record_valid(access_key_store: AccessKeyStoreProtocol) -> None:
+    """Ensure fetching a valid key returns the expected record and label."""
     plain_access_key = VALID_ACCESS_KEY
     expires_at_utc = datetime.now(timezone.utc) + timedelta(
         minutes=EXPIRY_OFFSET_MINUTES
@@ -92,8 +92,8 @@ def test_get_record_valid(access_key_store: AccessKeyStoreProtocol) -> None:
     assert record.label == ACCESS_KEY_LABEL_DEMO
 
 
-# Confirm expired keys raise a 401 with the expected error detail.
 def test_get_record_expired(access_key_store: AccessKeyStoreProtocol) -> None:
+    """Confirm expired keys raise a 401 with the expected error detail."""
     access_key_store.add_plain_key(
         EXPIRED_ACCESS_KEY,
         expires_at=datetime.now(timezone.utc) - timedelta(
@@ -106,8 +106,8 @@ def test_get_record_expired(access_key_store: AccessKeyStoreProtocol) -> None:
     assert exc.value.detail == KEY_EXPIRED_DETAIL
 
 
-# Confirm revoked keys raise a 401 with the expected error detail.
 def test_get_record_revoked(access_key_store: AccessKeyStoreProtocol) -> None:
+    """Confirm revoked keys raise a 401 with the expected error detail."""
     access_key_store.add_plain_key(REVOKED_ACCESS_KEY, revoked=True)
     with pytest.raises(HTTPException) as exc:
         access_key_store.get_record_by_plain_key(REVOKED_ACCESS_KEY)
@@ -115,18 +115,18 @@ def test_get_record_revoked(access_key_store: AccessKeyStoreProtocol) -> None:
     assert exc.value.detail == KEY_REVOKED_DETAIL
 
 
-# Confirm missing keys raise a 401 with the expected error detail.
 def test_get_record_missing_key(access_key_store: AccessKeyStoreProtocol) -> None:
+    """Confirm missing keys raise a 401 with the expected error detail."""
     with pytest.raises(HTTPException) as exc:
         access_key_store.get_record_by_plain_key(MISSING_ACCESS_KEY)
     assert exc.value.status_code == UNAUTHORIZED_STATUS_CODE
     assert exc.value.detail == INVALID_KEY_DETAIL
 
 
-# Ensure duplicate fingerprints raise a 500 and do not use the last transaction.
 def test_duplicate_fingerprint_hard_fail(
     access_key_store: AccessKeyStoreProtocol,
 ) -> None:
+    """Ensure duplicate fingerprints raise a 500 and do not use the last transaction."""
     plain_access_key = DUPLICATE_ACCESS_KEY
     access_key_store.add_plain_key(plain_access_key, label=ACCESS_KEY_LABEL_FIRST)
     access_key_store.add_plain_key(plain_access_key, label=ACCESS_KEY_LABEL_SECOND)
@@ -141,10 +141,10 @@ def test_duplicate_fingerprint_hard_fail(
     assert access_key_store.last_transaction_used is False
 
 
-# Verify expiry timestamps are timezone-aware and enforced for expired keys.
 def test_expiry_uses_timezone_aware_datetime(
     access_key_store: AccessKeyStoreProtocol,
 ) -> None:
+    """Verify expiry timestamps are timezone-aware and enforced for expired keys."""
     aware_expires_at_utc = datetime.now(timezone.utc) + timedelta(
         minutes=EXPIRY_BUFFER_MINUTES
     )
