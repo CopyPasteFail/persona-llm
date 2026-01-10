@@ -1,0 +1,25 @@
+{
+  "keys": [
+    {
+      "id": "demo-1",
+      "label": "local dev",
+      "key": "test-key-123",
+      "expires_at": "2030-01-01T00:00:00Z",
+      "revoked": false
+    },
+    {
+      "id": "demo-2",
+      "label": "expired",
+      "key": "expired-key-123",
+      "expires_at": "2022-01-01T00:00:00Z",
+      "revoked": false
+    },
+    {
+      "id": "demo-3",
+      "label": "revoked",
+      "key": "revoked-key-456",
+      "expires_at": "2030-06-01T00:00:00Z",
+      "revoked": true
+    }
+  ]
+}

@@ -57,6 +57,7 @@ PRIVATE_DIR=/abs/path/to/your-private-overlay make run
 
 
 At this stage you can locally run the mock backend and frontend, see [here](#mode-a-mock-frontend--mock-backend-local).
+The mock backend can use a lightweight JSON access-key store for local testing (see [backend/README.md](backend/README.md))
 
 ## Preparing GCP and Firebase Environments
 
@@ -381,6 +382,11 @@ Terminate with Ctrl+C in the terminal.
 If port 3000 is stuck:
 ```bash
 make fe-kill-port
+```
+
+If port 8080 is stuck:
+```bash
+PID=$(lsof -ti :8080) && [ -n "$PID" ] && kill -9 $PID
 ```
 
 Open the UI at `http://localhost:8080`
