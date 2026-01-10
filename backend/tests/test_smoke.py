@@ -46,8 +46,14 @@ async def client(
 
 @pytest.mark.asyncio
 async def test_health_ready(client: AsyncClient) -> None:
-    """Calls the health endpoint to verify the service is reachable and reports
-    an OK status payload; expects a 200 response and "ok" status.
+    """Verify the health endpoint reports OK.
+
+    What is tested:
+        /health response status and payload.
+    How it's tested:
+        Call the health endpoint with the test client.
+    Expected result format:
+        Status is 200 and JSON status equals EXPECTED_HEALTH_STATUS.
     """
     response = await client.get(HEALTH_ENDPOINT)
     assert response.status_code == HTTP_OK
@@ -57,8 +63,14 @@ async def test_health_ready(client: AsyncClient) -> None:
 
 @pytest.mark.asyncio
 async def test_key_login_returns_token(client: AsyncClient) -> None:
-    """Posts a valid access key to the login endpoint to ensure token issuance
-    succeeds; expects HTTP 200 with bearer token data and expiration metadata.
+    """Verify key login returns a bearer token payload.
+
+    What is tested:
+        /auth/key-login success response fields.
+    How it's tested:
+        Post TEST_ACCESS_KEY to the login endpoint and inspect JSON.
+    Expected result format:
+        Status is 200 with token_type, access_token, and expires_at present.
     """
     request_payload = {"key": TEST_ACCESS_KEY}
     response = await client.post(KEY_LOGIN_ENDPOINT, json=request_payload)
@@ -72,8 +84,14 @@ async def test_key_login_returns_token(client: AsyncClient) -> None:
 
 @pytest.mark.asyncio
 async def test_chat_requires_auth(client: AsyncClient) -> None:
-    """Sends a chat request without auth headers to confirm access control
-    is enforced; expects HTTP 401 unauthorized.
+    """Verify /chat requires authentication.
+
+    What is tested:
+        /chat access control when no credentials are provided.
+    How it's tested:
+        Call /chat without auth headers or cookies.
+    Expected result format:
+        Status is 401.
     """
     request_payload = {"question": SAMPLE_QUESTION}
     response = await client.post(CHAT_ENDPOINT, json=request_payload)
@@ -82,9 +100,14 @@ async def test_chat_requires_auth(client: AsyncClient) -> None:
 
 @pytest.mark.asyncio
 async def test_chat_basic(client: AsyncClient) -> None:
-    """Logs in to obtain a bearer token, then calls the chat endpoint with auth
-    to validate response shape and content sanity; expects HTTP 200 with
-    answer, citations, and usage fields populated.
+    """Verify /chat returns a valid response for an authenticated request.
+
+    What is tested:
+        /chat response contract and content sanity for a valid auth token.
+    How it's tested:
+        Log in to get a bearer token, then call /chat with that token.
+    Expected result format:
+        Status is 200 with answer/citations/usage fields populated and sane.
     """
     login_response = await client.post(
         KEY_LOGIN_ENDPOINT,

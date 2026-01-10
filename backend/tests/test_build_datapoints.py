@@ -50,8 +50,14 @@ Record = dict[str, Any]
 
 
 def test_build_restricts_includes_all_supported_namespaces() -> None:
-    """Verifies restricts include every supported namespace by passing rich metadata
-    and expecting a complete, ordered restriction list.
+    """Verify restricts include all supported namespaces.
+
+    What is tested:
+        _build_restricts mapping for role, doc_id, topics, and tags.
+    How it's tested:
+        Build metadata with all supported fields and compare restricts output.
+    Expected result format:
+        The restricts list matches the expected namespace/token mapping order.
     """
     metadata: Metadata = {
         ROLE_FIELD: ROLE_VALUE,
@@ -77,8 +83,14 @@ def test_build_restricts_includes_all_supported_namespaces() -> None:
 
 
 def test_write_datapoints_emits_expected_json_lines(tmp_path: Path) -> None:
-    """Writes a single record to JSONL and validates the output line includes
-    expected IDs, metadata-derived fields, and the provided embedding vector.
+    """Verify JSONL datapoints include IDs, restricts, and embeddings.
+
+    What is tested:
+        _write_datapoints JSONL output for a single record with metadata.
+    How it's tested:
+        Write one record to disk, read the JSON line, and inspect fields.
+    Expected result format:
+        Output has one datapoint with expected ids, restricts, and featureVector.
     """
     output_path = tmp_path / JSON_LINES_FILENAME
 
@@ -127,8 +139,14 @@ def test_write_datapoints_emits_expected_json_lines(tmp_path: Path) -> None:
 
 
 def test_write_datapoints_handles_gzip_output(tmp_path: Path) -> None:
-    """Writes a single record to a gzip file and expects a compact JSON
-    payload with only IDs and the feature vector.
+    """Verify gzip output emits compact datapoints payloads.
+
+    What is tested:
+        _write_datapoints gzip mode behavior for minimal records.
+    How it's tested:
+        Write to a .gz file and parse the single JSON line.
+    Expected result format:
+        Output has only id fields and featureVector matching the embeddings.
     """
     output_path = tmp_path / GZIP_OUTPUT_FILENAME
 

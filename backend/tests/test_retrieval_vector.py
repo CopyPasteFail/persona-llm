@@ -41,7 +41,15 @@ def stub_client() -> Iterator[RecordingVectorClient]:
 def test_search_vector_store_normalizes_and_invokes_client(
     stub_client: RecordingVectorClient,
 ) -> None:
-    """Verify search normalizes embeddings, delegates to the client, and returns its payload."""
+    """Verify search normalizes embeddings and delegates to the client.
+
+    What is tested:
+        search_vector_store normalization and client invocation behavior.
+    How it's tested:
+        Call search_vector_store with a non-normalized vector and inspect calls.
+    Expected result format:
+        Result equals stub return value and recorded embedding is unit-normalized.
+    """
     result = retrieval.search_vector_store([3.0, 4.0], top_k=5)
 
     assert result == stub_client.return_value
@@ -55,7 +63,15 @@ def test_search_vector_store_normalizes_and_invokes_client(
 def test_search_vector_store_returns_empty_when_no_vector(
     stub_client: RecordingVectorClient,
 ) -> None:
-    """Verify empty inputs or zero top_k short-circuit without calling the client."""
+    """Verify empty input or top_k=0 short-circuits.
+
+    What is tested:
+        Guard-rail behavior for missing embeddings or zero top_k.
+    How it's tested:
+        Call search_vector_store with empty/None vectors and top_k=0.
+    Expected result format:
+        Each call returns [] and the client receives no queries.
+    """
     assert retrieval.search_vector_store([], top_k=3) == []
     assert retrieval.search_vector_store(None, top_k=3) == []
     assert retrieval.search_vector_store([1.0], top_k=0) == []
@@ -63,7 +79,15 @@ def test_search_vector_store_returns_empty_when_no_vector(
 
 
 def test_configure_vector_client_swaps_out_previous_stub() -> None:
-    """Verify swapping configured clients routes subsequent queries to the new stub."""
+    """Verify configure_vector_client swaps the active stub.
+
+    What is tested:
+        Client replacement behavior for subsequent search calls.
+    How it's tested:
+        Configure one stub, query, swap to another stub, and query again.
+    Expected result format:
+        Each query returns the corresponding stub's return value and records calls.
+    """
     first = RecordingVectorClient()
     second = RecordingVectorClient()
 
