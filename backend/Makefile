@@ -7,7 +7,7 @@ PIP := $(VENV)/bin/pip
 
 include ../make/env.mk
 
-.PHONY: help install run run-debug mock test test-voice test-int test-vector-live test-build_datapoints check envs clean build_datapoints
+.PHONY: help install run run-debug mock test test-voice test-int test-vector-live test-build_datapoints test-auth-key-login test-create-access-key-cli test-keys-store test-llm-prompt test-security-session check envs clean build_datapoints
 
 help:
 	@echo "Targets:"
@@ -19,6 +19,11 @@ help:
 	@echo "  test         - run pytest smoke tests against mock app"
 	@echo "  test-voice   - run persona voice + normalization tests (mock)"
 	@echo "  test-int     - run integration tests against real backend (requires GCP + uvicorn)"
+	@echo "  test-auth-key-login - run auth key login tests"
+	@echo "  test-create-access-key-cli - run access key CLI tests"
+	@echo "  test-keys-store - run key store tests"
+	@echo "  test-llm-prompt - run LLM prompt construction tests"
+	@echo "  test-security-session - run session security tests"
 	@echo "  check        - quick import check"
 	@echo "  build_datapoints - build embedding datapoints JSONL for upsert"
 	@echo "  test-build_datapoints - run datapoint helper unit tests"
@@ -90,6 +95,21 @@ test-vector-live: $(VENV)/bin/activate
 
 test-retrieval-vector: $(VENV)/bin/activate
 	$(PY) -m pytest -q tests/test_retrieval_vector.py
+
+test-auth-key-login: $(VENV)/bin/activate
+	$(PY) -m pytest -q tests/test_auth_key_login.py
+
+test-create-access-key-cli: $(VENV)/bin/activate
+	$(PY) -m pytest -q tests/test_create_access_key_cli.py
+
+test-keys-store: $(VENV)/bin/activate
+	$(PY) -m pytest -q tests/test_keys_store.py
+
+test-llm-prompt: $(VENV)/bin/activate
+	$(PY) -m pytest -q tests/test_llm_prompt.py
+
+test-security-session: $(VENV)/bin/activate
+	$(PY) -m pytest -q tests/test_security_session.py
 
 check: $(VENV)/bin/activate
 	$(PY) -c "import api.main, api.mock, api.retrieval, api.llm, api.settings"
