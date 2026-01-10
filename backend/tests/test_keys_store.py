@@ -63,7 +63,15 @@ class AccessKeyStoreProtocol(Protocol):
 
 
 def test_hash_and_verify_roundtrip() -> None:
-    """Verify hashing produces a distinct value and only the original key verifies."""
+    """Verify hash/verify roundtrip for access keys.
+
+    What is tested:
+        hash_key, verify_key, and compute_key_fingerprint outputs.
+    How it's tested:
+        Hash a sample key and verify success/failure against valid/invalid input.
+    Expected result format:
+        Hash differs, verify passes for valid key, fails for invalid, fingerprint len 64.
+    """
     plain_access_key = ACCESS_KEY_SAMPLE
     hashed_access_key = keys.hash_key(plain_access_key)
 
@@ -74,7 +82,15 @@ def test_hash_and_verify_roundtrip() -> None:
 
 
 def test_get_record_valid(access_key_store: AccessKeyStoreProtocol) -> None:
-    """Ensure fetching a valid key returns the expected record and label."""
+    """Verify valid keys return an access record with label.
+
+    What is tested:
+        get_record_by_plain_key behavior for a valid, unexpired key.
+    How it's tested:
+        Add a key with label and expiry, then fetch by plain key.
+    Expected result format:
+        Record id matches stored id and label equals ACCESS_KEY_LABEL_DEMO.
+    """
     plain_access_key = VALID_ACCESS_KEY
     expires_at_utc = datetime.now(timezone.utc) + timedelta(
         minutes=EXPIRY_OFFSET_MINUTES
@@ -93,7 +109,15 @@ def test_get_record_valid(access_key_store: AccessKeyStoreProtocol) -> None:
 
 
 def test_get_record_expired(access_key_store: AccessKeyStoreProtocol) -> None:
-    """Confirm expired keys raise a 401 with the expected error detail."""
+    """Verify expired keys raise HTTP 401 with key_expired detail.
+
+    What is tested:
+        get_record_by_plain_key behavior for expired keys.
+    How it's tested:
+        Add an expired key and expect an HTTPException on lookup.
+    Expected result format:
+        Exception status is 401 and detail equals KEY_EXPIRED_DETAIL.
+    """
     access_key_store.add_plain_key(
         EXPIRED_ACCESS_KEY,
         expires_at=datetime.now(timezone.utc) - timedelta(
@@ -107,7 +131,15 @@ def test_get_record_expired(access_key_store: AccessKeyStoreProtocol) -> None:
 
 
 def test_get_record_revoked(access_key_store: AccessKeyStoreProtocol) -> None:
-    """Confirm revoked keys raise a 401 with the expected error detail."""
+    """Verify revoked keys raise HTTP 401 with key_revoked detail.
+
+    What is tested:
+        get_record_by_plain_key behavior for revoked keys.
+    How it's tested:
+        Add a revoked key and expect an HTTPException on lookup.
+    Expected result format:
+        Exception status is 401 and detail equals KEY_REVOKED_DETAIL.
+    """
     access_key_store.add_plain_key(REVOKED_ACCESS_KEY, revoked=True)
     with pytest.raises(HTTPException) as exc:
         access_key_store.get_record_by_plain_key(REVOKED_ACCESS_KEY)
@@ -116,7 +148,15 @@ def test_get_record_revoked(access_key_store: AccessKeyStoreProtocol) -> None:
 
 
 def test_get_record_missing_key(access_key_store: AccessKeyStoreProtocol) -> None:
-    """Confirm missing keys raise a 401 with the expected error detail."""
+    """Verify missing keys raise HTTP 401 with invalid_key detail.
+
+    What is tested:
+        get_record_by_plain_key behavior when no record exists.
+    How it's tested:
+        Look up a missing key and capture the HTTPException.
+    Expected result format:
+        Exception status is 401 and detail equals INVALID_KEY_DETAIL.
+    """
     with pytest.raises(HTTPException) as exc:
         access_key_store.get_record_by_plain_key(MISSING_ACCESS_KEY)
     assert exc.value.status_code == UNAUTHORIZED_STATUS_CODE
@@ -126,7 +166,16 @@ def test_get_record_missing_key(access_key_store: AccessKeyStoreProtocol) -> Non
 def test_duplicate_fingerprint_hard_fail(
     access_key_store: AccessKeyStoreProtocol,
 ) -> None:
-    """Ensure duplicate fingerprints raise a 500 and do not use the last transaction."""
+    """Verify duplicate fingerprints raise HTTP 500 and skip last transaction.
+
+    What is tested:
+        get_record_by_plain_key handling of duplicate fingerprint conflicts.
+    How it's tested:
+        Add two keys with the same fingerprint and attempt lookup.
+    Expected result format:
+        Exception status is 500, detail includes duplicate fingerprint code/message,
+        and last_transaction_used is False.
+    """
     plain_access_key = DUPLICATE_ACCESS_KEY
     access_key_store.add_plain_key(plain_access_key, label=ACCESS_KEY_LABEL_FIRST)
     access_key_store.add_plain_key(plain_access_key, label=ACCESS_KEY_LABEL_SECOND)
@@ -144,7 +193,15 @@ def test_duplicate_fingerprint_hard_fail(
 def test_expiry_uses_timezone_aware_datetime(
     access_key_store: AccessKeyStoreProtocol,
 ) -> None:
-    """Verify expiry timestamps are timezone-aware and enforced for expired keys."""
+    """Verify expiry timestamps are timezone-aware and enforced.
+
+    What is tested:
+        Access key expiry normalization and expiration enforcement.
+    How it's tested:
+        Add aware/naive expiry keys, then confirm tzinfo normalization and expiry error.
+    Expected result format:
+        Retrieved records have tzinfo set, and expired key raises key_expired detail.
+    """
     aware_expires_at_utc = datetime.now(timezone.utc) + timedelta(
         minutes=EXPIRY_BUFFER_MINUTES
     )

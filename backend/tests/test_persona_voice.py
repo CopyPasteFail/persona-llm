@@ -28,6 +28,15 @@ class AccessKeyStore(Protocol):
 async def test_client(
     access_key_store: AccessKeyStore,
 ) -> AsyncGenerator[AsyncClient, None]:
+    """Verify the test client fixture yields an AsyncClient bound to the mock app.
+
+    What is tested:
+        Fixture setup for the mock app client and seeded access key.
+    How it's tested:
+        Seed the access key store and create an AsyncClient with ASGITransport.
+    Expected result format:
+        The fixture yields an AsyncClient ready for login and chat requests.
+    """
     access_key_store.add_plain_key(TEST_KEY)
     transport = ASGITransport(app=cast(Any, mock_app))
     async with AsyncClient(
@@ -39,9 +48,14 @@ async def test_client(
 
 @pytest.mark.asyncio
 async def test_first_person_normalization(test_client: AsyncClient) -> None:
-    """
-    The mock normalizes third-person mentions of 'John' to first person.
-    This is a sanity check to ensure the normalization logic is working.
+    """Verify mock responses normalize to first person.
+
+    What is tested:
+        Chat response contract and first-person normalization in mock app.
+    How it's tested:
+        Log in, call /chat with a third-person question, and inspect the answer.
+    Expected result format:
+        Response has answer/citations/usage, includes TLDR, and uses first-person.
     """
     login_response: Response = await test_client.post(
         AUTH_ENDPOINT,

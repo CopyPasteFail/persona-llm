@@ -75,7 +75,7 @@ def test_load_backend_env_merges_common_and_backend_env_files(
     How it's tested:
         Create both files with BUCKET_NAME set to different values, point
         PRIVATE_DIR to the temp secrets directory, then call load_backend_env.
-    Expected result:
+    Expected result format:
         The returned BUCKET_NAME value matches the backend.env value.
     """
     # Arrange
@@ -108,7 +108,7 @@ def test_load_backend_env_expands_home_and_env_vars(
     How it's tested:
         Write backend.env entries containing $HOME and $ENV_ONLY_KEY, set those
         environment variables, then load required and optional keys.
-    Expected result:
+    Expected result format:
         The returned BUCKET_NAME contains the expanded HOME path and the optional
         credentials key equals the referenced environment value.
     """
@@ -152,7 +152,7 @@ def test_load_backend_env_raises_for_missing_required_key(
     How it's tested:
         Create a backend.env without BUCKET_NAME, clear BUCKET_NAME from the
         environment, and call load_backend_env with BUCKET_NAME required.
-    Expected result:
+    Expected result format:
         A RuntimeError is raised and the error message contains BUCKET_NAME.
     """
     # Arrange

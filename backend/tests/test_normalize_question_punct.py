@@ -64,7 +64,15 @@ def inputs_that_should_not_change() -> list[str]:
 
 @pytest.mark.parametrize("variant", build_persona_name_variants())
 def test_curly_apos_with_punct(variant: str) -> None:
-    """Curly apostrophe cases (’)."""
+    """Verify curly apostrophe possessives normalize to "your".
+
+    What is tested:
+        normalize_question handling of name’s with trailing punctuation.
+    How it's tested:
+        Assert variants of "<name>’s" with punctuation normalize to "your".
+    Expected result format:
+        Output strings replace the possessive with "your" and preserve punctuation.
+    """
     assert normalize_question(f"{variant}’s.") == "your."
     assert normalize_question(f"{variant}’s,") == "your,"
     assert normalize_question(f"{variant}’s?") == "your?"
@@ -76,7 +84,15 @@ def test_curly_apos_with_punct(variant: str) -> None:
 
 @pytest.mark.parametrize("variant", build_persona_name_variants())
 def test_straight_apos_with_punct(variant: str) -> None:
-    """Straight apostrophe cases (')."""
+    """Verify straight apostrophe possessives normalize to "your".
+
+    What is tested:
+        normalize_question handling of name's with trailing punctuation.
+    How it's tested:
+        Assert variants of "<name>'s" with punctuation normalize to "your".
+    Expected result format:
+        Output strings replace the possessive with "your" and preserve punctuation.
+    """
     assert normalize_question(f"{variant}'s.") == "your."
     assert normalize_question(f"{variant}'s,") == "your,"
     assert normalize_question(f"{variant}'s?") == "your?"
@@ -88,12 +104,28 @@ def test_straight_apos_with_punct(variant: str) -> None:
 
 @pytest.mark.parametrize("variant", build_persona_name_variants())
 def test_bare_name_subject_object(variant: str) -> None:
-    """Bare name used as subject/object becomes "I"."""
+    """Verify bare names become first-person pronouns.
+
+    What is tested:
+        normalize_question handling of bare name subjects/objects.
+    How it's tested:
+        Assert "Tell me about <name>" and "What did <name> do" normalize to "I".
+    Expected result format:
+        Output strings use "I" in place of the persona name.
+    """
     assert normalize_question(f"Tell me about {variant}.") == "Tell me about I."
     assert normalize_question(f"What did {variant} do?") == "What did I do?"
 
 
 @pytest.mark.parametrize("input_text", inputs_that_should_not_change())
 def test_should_not_change(input_text: str) -> None:
-    """Should NOT change (dynamic)."""
+    """Verify non-name contexts do not change.
+
+    What is tested:
+        normalize_question guardrails for emails, URLs, substrings, and paths.
+    How it's tested:
+        Pass through a list of non-replacement inputs and compare output.
+    Expected result format:
+        Output equals the original input_text for each case.
+    """
     assert normalize_question(input_text) == input_text

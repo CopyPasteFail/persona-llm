@@ -40,8 +40,14 @@ async def client() -> AsyncGenerator[AsyncClient, None]:
 
 @pytest.mark.asyncio
 async def test_chat_accepts_authorization_header(client: AsyncClient) -> None:
-    """Checks that bearer tokens in the Authorization header are accepted by /chat,
-    expecting a 200 response with a non-empty answer payload.
+    """Verify bearer tokens in Authorization headers are accepted.
+
+    What is tested:
+        /chat authentication using the Authorization header.
+    How it's tested:
+        Create a session token and call /chat with a Bearer header.
+    Expected result format:
+        Status is 200 and the response JSON includes a non-empty answer.
     """
     session_token, _ = security.create_session_token(_FakeKeyRecord("header-key"))
     response = await client.post(
@@ -55,8 +61,14 @@ async def test_chat_accepts_authorization_header(client: AsyncClient) -> None:
 
 @pytest.mark.asyncio
 async def test_chat_accepts_cookie_when_enabled(client: AsyncClient, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Checks that cookie-based session tokens are accepted when enabled by setting the
-    session cookie, expecting a 200 response with a non-empty answer payload.
+    """Verify session cookies are accepted when enabled.
+
+    What is tested:
+        /chat authentication using session cookies when enabled in settings.
+    How it's tested:
+        Enable cookie auth, set the session cookie, and call /chat.
+    Expected result format:
+        Status is 200 and the response JSON includes a non-empty answer.
     """
     session_token, _ = security.create_session_token(_FakeKeyRecord("cookie-key"))
     monkeypatch.setattr(settings, SESSION_COOKIE_ENABLED_SETTING, True)
@@ -68,8 +80,14 @@ async def test_chat_accepts_cookie_when_enabled(client: AsyncClient, monkeypatch
 
 @pytest.mark.asyncio
 async def test_chat_missing_token_returns_401(client: AsyncClient, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Checks that missing tokens are rejected by disabling cookies and calling /chat,
-    expecting a 401 response with a missing_token error detail.
+    """Verify missing tokens return a 401 error.
+
+    What is tested:
+        /chat authentication behavior when no auth token is provided.
+    How it's tested:
+        Disable cookie auth and call /chat without headers or cookies.
+    Expected result format:
+        Status is 401 and response detail equals EXPECTED_MISSING_TOKEN_ERROR.
     """
     monkeypatch.setattr(settings, SESSION_COOKIE_ENABLED_SETTING, False)
     response = await client.post(CHAT_ENDPOINT_PATH, json=CHAT_QUESTION_PAYLOAD)

@@ -163,7 +163,15 @@ def test_create_prints_json(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """Print JSON and store a non-revoked key with expected fields."""
+    """Verify create prints JSON and stores a non-revoked key.
+
+    What is tested:
+        run_create output payload and stored document fields.
+    How it's tested:
+        Run create with deterministic secret and parse stdout JSON.
+    Expected result format:
+        Exit code is 0, JSON has key fields, and stored revoked is False.
+    """
     fake_client = FakeClient()
     current_time = CREATE_TIMESTAMP
 
@@ -208,7 +216,15 @@ def test_create_prints_json(
 
 
 def test_revoke_by_key_id(capsys: pytest.CaptureFixture[str]) -> None:
-    """Mark a key as revoked and record who and when."""
+    """Verify revoke updates fields and reports success.
+
+    What is tested:
+        run_revoke behavior for a known key id.
+    How it's tested:
+        Seed a document, revoke it, and inspect stdout and stored fields.
+    Expected result format:
+        Exit code is 0, output mentions revocation, and revoked fields updated.
+    """
     fake_client = FakeClient()
     collection = fake_client.collection(typed_create_access_key.DEFAULT_COLLECTION)
     document_ref = collection.document(REVOKE_KEY_ID)
@@ -237,7 +253,15 @@ def test_revoke_by_key_id(capsys: pytest.CaptureFixture[str]) -> None:
 
 
 def test_revoke_missing_key_returns_error(capsys: pytest.CaptureFixture[str]) -> None:
-    """Return non-zero exit code and error for missing keys."""
+    """Verify revoke returns error for missing keys.
+
+    What is tested:
+        run_revoke behavior when the key id does not exist.
+    How it's tested:
+        Run revoke against a missing id and inspect exit code and stderr.
+    Expected result format:
+        Exit code is 1 and stderr contains NOT_FOUND_ERROR_SUBSTRING.
+    """
     fake_client = FakeClient()
     revoke_args = make_args_for_command(COMMAND_REVOKE, key_id=MISSING_KEY_ID)
 
