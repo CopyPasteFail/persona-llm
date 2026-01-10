@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .types import ChatRequest, ChatResponse, Usage, Citation
 from .settings import settings
 from .auth import router as auth_router
-from .security import get_current_session
+from .security import Session, get_current_session
 from .retrieval import normalize_question_for_first_person
 from .keys import JsonKeyStore, set_key_store
 
@@ -86,7 +86,10 @@ def health():
 
 
 @app.post("/chat", response_model_exclude_none=True)
-def chat(req: ChatRequest, _session=Depends(get_current_session)) -> ChatResponse:
+def chat(
+    req: ChatRequest,
+    _session: Session = Depends(get_current_session),
+) -> ChatResponse:
     """Handle a mock chat request and return a deterministic response.
 
     Args:
