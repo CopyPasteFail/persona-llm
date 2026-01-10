@@ -6,6 +6,7 @@ from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .types import ChatRequest, ChatResponse, Usage, Citation
+from .settings import settings
 from .auth import router as auth_router
 from .security import get_current_session
 from .retrieval import normalize_question_for_first_person
@@ -60,4 +61,9 @@ def chat(req: ChatRequest, _session=Depends(get_current_session)) -> ChatRespons
 
     citations = [Citation(id="mock:1", text="deterministic mock chunk")]
 
-    return ChatResponse(answer=answer, citations=citations, usage=usage)
+    return ChatResponse(
+        answer=answer,
+        citations=citations,
+        usage=usage,
+        input_token_limit=settings.MAX_INPUT_TOKENS,
+    )
