@@ -1,49 +1,78 @@
+"""Tests for persona voice normalization and response contract behavior."""
+
+from typing import Any, AsyncGenerator, Protocol, cast
+
 import pytest
 import pytest_asyncio
-from httpx import AsyncClient, ASGITransport
+from httpx import ASGITransport, AsyncClient, Response
+
 from api.mock import app as mock_app
 
+ACCESS_TOKEN_JSON_FIELD = "access_token"
+AUTH_ENDPOINT = "/auth/key-login"
+BEARER_TOKEN_PREFIX = "Bearer"
+CHAT_ENDPOINT = "/chat"
+EXPECTED_RESPONSE_KEYS = {"answer", "citations", "usage"}
+FIRST_PERSON_PHRASES = [" I ", " my ", " me "]
+HTTP_OK_STATUS = 200
+TEST_BASE_URL = "http://test"
 TEST_KEY = "persona-voice-key"
+TEST_QUESTION = "What did Omer do with Kubernetes at Nexyte in 2024?"
+
+
+class AccessKeyStore(Protocol):
+    def add_plain_key(self, plain_key: str) -> str: ...
 
 
 @pytest_asyncio.fixture
-async def client(access_key_store):
+async def test_client(
+    access_key_store: AccessKeyStore,
+) -> AsyncGenerator[AsyncClient, None]:
     access_key_store.add_plain_key(TEST_KEY)
-    transport = ASGITransport(app=mock_app)
-    async with AsyncClient(transport=transport, base_url="http://test") as ac:
-        yield ac
+    transport = ASGITransport(app=cast(Any, mock_app))
+    async with AsyncClient(
+        transport=transport,
+        base_url=TEST_BASE_URL,
+    ) as http_client:
+        yield http_client
 
 
 @pytest.mark.asyncio
-async def test_first_person_normalization(client):
+async def test_first_person_normalization(test_client: AsyncClient) -> None:
     """
     The mock normalizes third-person mentions of 'Omer' to first person.
     This is a sanity check to ensure the normalization logic is working.
     """
-    login = await client.post("/auth/key-login", json={"key": TEST_KEY})
-    assert login.status_code == 200, login.text
-    token = login.json()["access_token"]
-
-    resp = await client.post(
-        "/chat",
-        json={"question": "What did Omer do with Kubernetes at Nexyte in 2024?"},
-        headers={"Authorization": f"Bearer {token}"},
+    login_response: Response = await test_client.post(
+        AUTH_ENDPOINT,
+        json={"key": TEST_KEY},
     )
-    assert resp.status_code == 200, resp.text
-    data = resp.json()
+    assert login_response.status_code == HTTP_OK_STATUS, login_response.text
+    access_token: str = login_response.json()[ACCESS_TOKEN_JSON_FIELD]
+
+    chat_response: Response = await test_client.post(
+        CHAT_ENDPOINT,
+        json={"question": TEST_QUESTION},
+        headers={"Authorization": f"{BEARER_TOKEN_PREFIX} {access_token}"},
+    )
+    assert chat_response.status_code == HTTP_OK_STATUS, chat_response.text
+    response_payload: dict[str, Any] = chat_response.json()
 
     # Contract checks
-    assert set(data.keys()) == {"answer", "citations", "usage"}
-    assert isinstance(data["answer"], str) and data["answer"]
-    assert isinstance(data["citations"], list) and len(data["citations"]) >= 1
-    assert "id" in data["citations"][0]
-    assert isinstance(data["usage"]["input_tokens"], int)
-    assert isinstance(data["usage"]["output_tokens"], int)
+    assert set(response_payload.keys()) == EXPECTED_RESPONSE_KEYS
+    assert (
+        isinstance(response_payload["answer"], str) and response_payload["answer"]
+    )
+    citations = cast(list[dict[str, Any]], response_payload["citations"])
+    assert isinstance(citations, list) and len(citations) >= 1
+    assert "id" in citations[0]
+    assert isinstance(response_payload["usage"]["input_tokens"], int)
+    assert isinstance(response_payload["usage"]["output_tokens"], int)
 
     # Content checks
-    ans = data["answer"]
-    assert "TLDR:" in ans
-    assert "filter:" not in ans.lower()
+    answer_text: str = response_payload["answer"]
+    assert "TLDR:" in answer_text
+    assert "filter:" not in answer_text.lower()
 
     # First-person sanity: the mock returns first-person phrasing
-    assert any(p in ans for p in [" I ", " my ", " me "])
+    assert any(phrase in answer_text for phrase in FIRST_PERSON_PHRASES)
