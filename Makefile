@@ -1,4 +1,4 @@
-.PHONY: install dev mock build fe-% fe-install be-install be-% require-private require-gcp-env require-index-ids require-datapoints-file require-operation-id clean clean-all gcp-create-project gcp-set-project gcp-create-bucket gcp-create-artifact-registry gcp-sa-create gcp-sa-delete gcp-sa-bind-roles gcp-sa-roles gcp-sa-key gcp-index-create gcp-index-endpoint-create gcp-index-deploy gcp-index-upsert gcp-index-list gcp-index-op-describe gcp-index-op-done gcp-index-update-time gcp-cloud-run-deploy-mock gcp-cloud-run-delete gcp-cloud-run-delete-mock
+.PHONY: help install dev mock build fe-% fe-install be-install be-% require-private require-gcp-env require-index-ids require-datapoints-file require-operation-id clean clean-all gcp-create-project gcp-set-project gcp-create-bucket gcp-create-artifact-registry gcp-sa-create gcp-sa-delete gcp-sa-bind-roles gcp-sa-roles gcp-sa-key gcp-index-create gcp-index-endpoint-create gcp-index-deploy gcp-index-upsert gcp-index-list gcp-index-op-describe gcp-index-op-done gcp-index-update-time gcp-cloud-run-deploy-mock gcp-cloud-run-delete gcp-cloud-run-delete-mock
 
 # -------------------------------
 # Private directory resolution
@@ -7,6 +7,52 @@
 
 # Environment bootstrap
 include make/env.mk
+
+help:
+	@echo "Targets:"
+	@echo "  install      - install frontend/backend dependencies"
+	@echo "  dev          - run backend and frontend dev servers (requires envs)"
+	@echo "  mock         - run mock backend with frontend dev server"
+	@echo "  build        - build backend image and frontend assets"
+	@echo "  clean        - clean frontend/backend build artifacts"
+	@echo "  clean-all    - remove build artifacts and local envs"
+	@echo "  fe-<target>  - forward to frontend Makefile (e.g. fe-dev, fe-build)"
+	@echo "  be-<target>  - forward to backend Makefile (e.g. be-run, be-mock)"
+	@echo "  gcp-print-env            - echo key GCP env vars"
+	@echo "  gcp-create-project       - create a GCP project (link billing manually)"
+	@echo "  gcp-set-project          - set active project and show billing status"
+	@echo "  gcp-enable-apis          - enable required APIs (AI Platform, Run, etc.)"
+	@echo "  gcp-create-bucket        - create GCS bucket $(BUCKET_NAME) in $(REGION)"
+	@echo "  gcp-create-artifact-registry - ensure Artifact Registry repo exists"
+	@echo "  gcp-enable-firebase      - enable Firebase for the active project"
+	@echo "  gcp-cloud-build          - build backend image via Cloud Build"
+	@echo "  gcp-auth-registry        - configure docker auth for Artifact Registry"
+	@echo "  gcp-push-backend         - tag/push local backend image to Artifact Registry"
+	@echo "  gcp-cloud-run-deploy     - deploy backend image to Cloud Run"
+	@echo "  gcp-cloud-run-deploy-mock - deploy mock backend image to Cloud Run"
+	@echo "  gcp-cloud-run-delete     - delete Cloud Run backend service"
+	@echo "  gcp-cloud-run-delete-mock - delete Cloud Run mock service"
+	@echo "  gcp-index-create         - create Vertex AI Matching Engine index"
+	@echo "  gcp-index-endpoint-create - create Vertex AI index endpoint"
+	@echo "  gcp-index-deploy         - deploy index to endpoint"
+	@echo "  gcp-index-upsert         - upload datapoints and trigger index update"
+	@echo "  gcp-index-list           - list indexes"
+	@echo "  gcp-index-op-describe    - describe an index operation (needs OPERATION_ID)"
+	@echo "  gcp-index-op-errors      - show errors for an index operation"
+	@echo "  gcp-index-op-done        - check if index operation is done"
+	@echo "  gcp-index-update-time    - get last update time for the index"
+	@echo "  gcp-check-billing        - check if billing is enabled"
+	@echo "  gcp-link-billing         - link billing account (requires BILLING_ACCOUNT_ID)"
+	@echo "  gcp-sa-create            - create persona-llm service account"
+	@echo "  gcp-sa-delete            - delete persona-llm service account"
+	@echo "  gcp-sa-grant-builder     - grant build-time roles to service account"
+	@echo "  gcp-sa-revoke-builder    - revoke build-time roles"
+	@echo "  gcp-sa-grant-runtime     - grant runtime roles"
+	@echo "  gcp-sa-revoke-runtime    - revoke runtime roles"
+	@echo "  gcp-sa-roles             - show current SA IAM bindings"
+	@echo "  gcp-sa-key               - create a service account key file"
+	@echo "  gcp-firestore-init       - create Firestore database if missing"
+	@echo "  gcp-firestore-delete     - delete Firestore database"
 
 # (=) Deferring expansion
 SA_EMAIL = persona-llm@$(PROJECT_ID).iam.gserviceaccount.com
