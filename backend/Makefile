@@ -100,7 +100,7 @@ test-auth-key-login: $(VENV)/bin/activate
 	$(PY) -m pytest -q tests/test_auth_key_login.py
 
 test-create-access-key-cli: $(VENV)/bin/activate
-	$(PY) -m pytest -q tests/test_create_access_key_cli.py
+	PYTHONPATH=.. $(PY) -m pytest -q tests/test_create_access_key_cli.py
 
 test-keys-store: $(VENV)/bin/activate
 	$(PY) -m pytest -q tests/test_keys_store.py
