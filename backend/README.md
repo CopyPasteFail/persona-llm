@@ -5,8 +5,8 @@ FastAPI service for the persona demo. Real mode integrates with Vertex AI Matchi
 ## Overview
 - Two apps:
   - `api.mock:app` for local development.
-  - `api.main:app` skeleton. `/chat` raises not implemented until retrieval and LLM are wired.
-- `/health` endpoint and minimal `/chat` contract exist.
+  - `api.main:app` for production-style runs with retrieval and LLM wiring.
+- `/health` (liveness) and `/ready` (readiness) endpoints exist.
 
 ## Prerequisites
 - Python 3.13
@@ -57,6 +57,7 @@ Common placeholders:
 - `API_KEY` remains the server secret (JWT signing fallback) and optional header for protected admin endpoints.
 - `BUCKET_NAME` / `CHUNKS_PATH` to locate the packaged JSONL side store (full GCS URI is derived at runtime).
 - Project, region, and model identifiers if using Vertex, names are placeholders only.
+See `docs/IMPLEMENTATION_SPEC.md` for the full environment contract and defaults.
 
 ## Access keys
 ### Admin CLI
@@ -93,27 +94,31 @@ Example JSON:
 ```
 
 ## API
-### `GET /health`
-- Returns readiness status.
-
-### `POST /chat`
-- Request JSON:
-```json
-{ "question": "your text" }
-```
-- Response JSON, mock:
-```json
-{ "answer": "text", "citations": [{"id":"mock:1"}], "usage": {"input_tokens": 0, "output_tokens": 0} }
-```
+The canonical API contract and error semantics live in `docs/IMPLEMENTATION_SPEC.md`.
+Summary:
+- `GET /health` liveness signal.
+- `GET /ready` readiness signal (real app only).
+- `POST /auth/key-login` issues a bearer token.
+- `POST /auth/logout` clears session cookies when enabled.
+- `POST /chat` requires auth.
 
 ### Curl examples
 ```bash
 curl -s http://localhost:8080/health | jq .
-curl -s -X POST http://localhost:8080/chat -H 'content-type: application/json' -d '{"question":"demo"}' | jq .
+
+KEY="test-key-123" # from backend/mock_access_keys.json in mock mode
+TOKEN=$(curl -s -X POST http://localhost:8080/auth/key-login \
+  -H 'content-type: application/json' \
+  -d "{\"key\":\"$KEY\"}" | jq -r .access_token)
+
+curl -s -X POST http://localhost:8080/chat \
+  -H "authorization: Bearer $TOKEN" \
+  -H 'content-type: application/json' \
+  -d '{"question":"demo"}' | jq .
 ```
 
 ## CORS
-Strict allowlist. Real mode allows `http://localhost:3000` and `https://<project-id>.web.app` (set exact host before deploy). Mock mode only allows `http://localhost:3000`.
+Strict allowlist. Real mode allows `http://localhost:3000` and `https://<project-id>.web.app` (set exact host before deploy). Mock mode allows `http://localhost:3000` and `http://127.0.0.1:3000`.
 
 ## Rate limits (real mode)
 Per IP, 10 per minute and 100 per day on `/chat`. `/health` is never limited.
