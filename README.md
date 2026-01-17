@@ -485,8 +485,6 @@ Static export on Firebase Hosting. API served by Cloud Run.
 7) Manage Access keys
   For managing the keys, see [admin CLI](backend/README.md#admin-cli).
 
----
-
 ## Undeploy / Teardown
 
 ### Cloud Run
