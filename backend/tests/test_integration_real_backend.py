@@ -17,6 +17,7 @@ CHAT_TIMEOUT_SECONDS = 30
 HTTP_OK_STATUS = 200
 HTTP_UNAUTHORIZED_STATUS = 401
 HTTP_RATE_LIMIT_STATUS = 429
+HTTP_SERVICE_UNAVAILABLE_STATUS = 503
 STATUS_FIELD = "status"
 ACCESS_TOKEN_FIELD = "access_token"
 ANSWER_FIELD = "answer"
@@ -27,7 +28,10 @@ TLDR_MARKER = "TLDR:"
 WRAP_MARKER = "Wrap:"
 FIRST_PERSON_PRONOUNS = [" I ", " my ", " me "]
 RATE_LIMIT_DETAIL = "rate_limited"
+CHAT_RATE_LIMIT_DETAIL = "rate limit exceeded"
 KEY_LOGIN_MAX_ATTEMPTS_PER_FINGERPRINT = 5
+CHAT_RATE_LIMIT_MAX_PER_MINUTE = 10
+CHAT_RATE_LIMIT_ATTEMPT_BUFFER = 5
 DUMMY_ACCESS_KEY = "rate-limit-dummy-key"
 
 def _get_base_url() -> str:
@@ -41,10 +45,26 @@ def _get_base_url() -> str:
 def _get_access_key() -> str:
     access_key = os.getenv(ACCESS_KEY_ENV)
     if not access_key:
+        print(
+            f"[integration] Missing {ACCESS_KEY_ENV}; "
+            f"run: export {ACCESS_KEY_ENV}='your-access-key'"
+        )
         pytest.skip(
-            f"Set {ACCESS_KEY_ENV} to a valid access key before running integration tests."
+            f"Set {ACCESS_KEY_ENV} to a valid access key before running integration tests. "
+            f"Example: export {ACCESS_KEY_ENV}='your-access-key'"
         )
     return access_key
+
+
+def _login_for_token(http_client: httpx.Client, base_url: str) -> str:
+    access_key = _get_access_key()
+    login_response = http_client.post(
+        f"{base_url}{KEY_LOGIN_PATH}",
+        json={"key": access_key},
+        timeout=HEALTH_TIMEOUT_SECONDS,
+    )
+    assert login_response.status_code == HTTP_OK_STATUS, login_response.text
+    return login_response.json()[ACCESS_TOKEN_FIELD]
 
 
 @pytest.fixture(scope="module")
@@ -92,15 +112,7 @@ def test_real_backend_first_person(base_url: str, http_client: httpx.Client) -> 
     Expected result format:
         Statuses are 200, answer includes TLDR/Wrap markers and first-person.
     """
-    access_key = _get_access_key()
-
-    login_response = http_client.post(
-        f"{base_url}{KEY_LOGIN_PATH}",
-        json={"key": access_key},
-        timeout=HEALTH_TIMEOUT_SECONDS,
-    )
-    assert login_response.status_code == HTTP_OK_STATUS, login_response.text
-    token = login_response.json()[ACCESS_TOKEN_FIELD]
+    token = _login_for_token(http_client, base_url)
 
     chat_response = http_client.post(
         f"{base_url}{CHAT_PATH}",
@@ -133,3 +145,31 @@ def test_real_backend_key_login_rate_limit(base_url: str, http_client: httpx.Cli
         assert response.status_code in (HTTP_OK_STATUS, HTTP_UNAUTHORIZED_STATUS), response.text
 
     assert saw_rate_limit, "Expected live key-login rate limit to trigger."
+
+
+@pytest.mark.integration
+def test_real_backend_chat_rate_limit_allows_503_until_limited(
+    base_url: str,
+    http_client: httpx.Client,
+) -> None:
+    """Verify /chat rate limits even if the backend returns 503s pre-limit."""
+    token = _login_for_token(http_client, base_url)
+    saw_rate_limit = False
+    max_attempts = CHAT_RATE_LIMIT_MAX_PER_MINUTE + CHAT_RATE_LIMIT_ATTEMPT_BUFFER
+    for _ in range(max_attempts):
+        response = http_client.post(
+            f"{base_url}{CHAT_PATH}",
+            headers={AUTH_HEADER_NAME: f"Bearer {token}"},
+            json={"question": "Ping?"},
+            timeout=CHAT_TIMEOUT_SECONDS,
+        )
+        if response.status_code == HTTP_RATE_LIMIT_STATUS:
+            assert response.json().get("detail") == CHAT_RATE_LIMIT_DETAIL
+            saw_rate_limit = True
+            break
+        assert response.status_code in (
+            HTTP_OK_STATUS,
+            HTTP_SERVICE_UNAVAILABLE_STATUS,
+        ), response.text
+
+    assert saw_rate_limit, "Expected /chat rate limit to trigger after retries."
