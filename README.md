@@ -390,8 +390,7 @@ PID=$(lsof -ti :8080) && [ -n "$PID" ] && kill -9 $PID
 ```
 
 Open the UI at `http://localhost:8080`
-
-Mock access keys come from [mock_access_keys.json](backend/mock_access_keys.json); the access key value is the `key` field.
+Information about the hardcoded (or customization of) access keys can be found [here](backend/README.md#mock-auth).
 
 ---
 
@@ -484,9 +483,7 @@ Static export on Firebase Hosting. API served by Cloud Run.
    ```
 
 7) Manage Access keys
-  Access keys for the real backend live in Firestore. You can view them in the console [here](https://console.cloud.google.com/firestore/databases/-default-/data/panel).
-
-  For managing the keys, see [admin CLI access key management](backend/README.md#admin-cli--access-keys).
+  For managing the keys, see [admin CLI](backend/README.md#admin-cli).
 
 ---
 
