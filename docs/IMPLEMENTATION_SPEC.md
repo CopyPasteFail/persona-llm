@@ -56,8 +56,10 @@ Backend configuration is loaded from a dotenv file rather than a global `PRIVATE
 - `GET /health` returns `{ "status": "ok" }`.
 - `GET /ready` returns `{ "ready": true }` when startup completed (local readiness only), otherwise 503.
 - `POST /chat` accepts JSON and returns structured JSON. Real mode returns 503 when the chunk store is not loaded at startup or downstream services are unavailable.
+
 ### Request schema
 - `question`: str
+
 ### Response schema
 - `answer`: str
 - `citations`: List[Citation]
@@ -65,11 +67,7 @@ Backend configuration is loaded from a dotenv file rather than a global `PRIVATE
 - `input_token_limit`: Optional[int] (echoes the configured MAX_INPUT_TOKENS)
 
 ### Minimal examples
-Mock app (if running at port 8000):
-```bash
-curl -s http://localhost:8000/health | jq .
-curl -s -X POST http://localhost:8000/chat -H 'content-type: application/json' -d '{"question":"demo"}' | jq .
-```
+See [backend/README.md#curl-examples](here) for the runnable curl commands and current local ports.
 
 ## Retrieval and LLM pipeline
 - `api/retrieval.py`: first-person normalization and retrieval pipeline (`embed_query`, `search_vector_store`, `apply_filters_and_boosting`, `build_context_prompt`) implemented; focus now on tests, tuning, and live Vertex integration.

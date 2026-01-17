@@ -58,23 +58,26 @@ Common placeholders:
 - `BUCKET_NAME` / `CHUNKS_PATH` to locate the packaged JSONL side store (full GCS URI is derived at runtime).
 - Project, region, and model identifiers if using Vertex, names are placeholders only.
 
-## Admin CLI / Access keys
-Access keys live in Firestore collection `access_keys`; manage them with the admin CLI:
-- Create: `python scripts/create_access_key.py create --label demo --expires-in 7d`
-- Create (Makefile): `make be-create-access-key ARGS="create --label demo --expires-in 7d --print-json"`
+## Access keys
+### Admin CLI
+Access keys live in Firestore collection `access_keys`.
+You can view them in GCP console using this [link](https://console.cloud.google.com/firestore/databases/-default-/data/panel).
+
+The access keys can be manage using the admin CLI:
+- Create: `make be-create-access-key ARGS="create --label demo --expires-in 7d --print-json"`
 - Optional JSON output: add `--print-json` to the command above
-- Explicit expiry: `python scripts/create_access_key.py create --expires-at 2024-12-31T23:59:00Z`
-- Explicit expiry (Makefile): `make be-create-access-key ARGS="create --expires-at 2024-12-31T23:59:00Z"`
-- Revoke: `python scripts/create_access_key.py revoke --key-id <doc-id>`
-- Revoke (Makefile): `make be-create-access-key ARGS="revoke --key-id <doc-id>"`
+- Explicit expiry: `make be-create-access-key ARGS="create --expires-at 2024-12-31T23:59:00Z"`
+- Revoke: `make be-create-access-key ARGS="revoke --key-id <doc-id>"`
 - Optional revoke metadata: add `--project <PROJECT>` and `--revoked-by you`
 Keys are not derived from `API_KEY`.
 
-## Mock auth
+### Mock auth
 For local testing with `api.mock:app`, you can use a lightweight JSON key store with plaintext access keys.
 The mock app will use `backend/mock_access_keys.json` if it exists, or you can override with `MOCK_ACCESS_KEYS_PATH`.
 
-Example JSON (see `backend/mock_access_keys.json`):
+Mock access keys come from [mock_access_keys.json](backend/mock_access_keys.json); the access key value is the `key` field.
+
+Example JSON:
 ```json
 {
   "keys": [
@@ -103,7 +106,7 @@ Example JSON (see `backend/mock_access_keys.json`):
 { "answer": "text", "citations": [{"id":"mock:1"}], "usage": {"input_tokens": 0, "output_tokens": 0} }
 ```
 
-Curl examples:
+### Curl examples
 ```bash
 curl -s http://localhost:8080/health | jq .
 curl -s -X POST http://localhost:8080/chat -H 'content-type: application/json' -d '{"question":"demo"}' | jq .
