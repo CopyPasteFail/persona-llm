@@ -31,6 +31,9 @@ Requirements:
 - Real backend running (for example `uvicorn api.main:app`)
 - `NEXT_PUBLIC_API_URL` pointing to the running backend
 - `ACCESS_KEY_PLAINTEXT` set to a valid access key
+  ```bash
+  export ACCESS_KEY_PLAINTEXT="your-access-key"
+  ```
 
 Commands:
 ```bash
@@ -143,7 +146,12 @@ make be-test-voice
 
 ### Integration tests (real services)
 - `backend/tests/test_integration_real_backend.py`  
-  Runs against a real backend (`uvicorn api.main:app`) with live credentials. It checks `/health`, exercises `/auth/key-login` + `/chat`, and validates that responses contain first-person phrasing and the expected contract.
+  Runs against a real backend (`uvicorn api.main:app`) with live credentials.
+  Sub-tests:
+  - `/health`: no access key required; no live vector required.
+  - `/auth/key-login`: requires `ACCESS_KEY_PLAINTEXT`; no live vector required.
+  - `/chat` response contract + first-person phrasing: requires `ACCESS_KEY_PLAINTEXT` and a live vector.
+  - `/chat` rate limiting (503 allowed until limiter triggers): requires `ACCESS_KEY_PLAINTEXT`; no live vector required.
   Command:
   ```bash
   make be-test-int

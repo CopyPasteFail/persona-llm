@@ -92,7 +92,7 @@ test-voice: $(VENV)/bin/activate
 	$(PY) -m pytest -q tests/test_persona_voice.py tests/test_normalize_question_punct.py
 
 test-int: $(VENV)/bin/activate
-	$(PY) -m pytest -q -m integration tests/test_integration_real_backend.py
+	$(PY) -m pytest -q -rs -m integration tests/test_integration_real_backend.py
 
 test-vector-live: $(VENV)/bin/activate
 	embedding=`$(PY) -m scripts.emit_test_embedding` || exit 1; \
