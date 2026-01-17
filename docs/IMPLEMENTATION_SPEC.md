@@ -1,7 +1,7 @@
 # IMPLEMENTATION_SPEC
 
 ## Repos
-- Public mono-repo: Contains both backend and frontend. The backend is in `api/` and jobs under `jobs/`. The frontend is in `web/`. A private folder for secrets may be referenced during runtime, not committed.
+- Public mono-repo: Contains both backend and frontend. The backend is in `backend/api/` and jobs under `backend/jobs/`. The frontend is in `frontend/web/`. A private folder for secrets may be referenced during runtime, not committed.
 
 ## Environment variables
 Backend configuration is loaded from a dotenv file rather than a global `PRIVATE_DIR`.
@@ -55,6 +55,8 @@ Backend configuration is loaded from a dotenv file rather than a global `PRIVATE
 ### Endpoints
 - `GET /health` returns `{ "status": "ok" }`.
 - `GET /ready` returns `{ "ready": true }` when startup completed (local readiness only), otherwise 503.
+- `POST /auth/key-login` accepts `{ "key": "<access key>" }` and returns a bearer token.
+- `POST /auth/logout` returns 204 and clears the session cookie when enabled.
 - `POST /chat` accepts JSON and returns structured JSON. Real mode returns 503 when the chunk store is not loaded at startup or downstream services are unavailable.
 
 ### Request schema
@@ -65,6 +67,10 @@ Backend configuration is loaded from a dotenv file rather than a global `PRIVATE
 - `citations`: List[Citation]
 - `usage`: Usage
 - `input_token_limit`: Optional[int] (echoes the configured MAX_INPUT_TOKENS)
+
+### Auth
+- `/chat` requires authentication via `Authorization: Bearer <token>`.
+- Tokens are issued by `/auth/key-login` and may also be stored in a session cookie when enabled.
 
 ### Minimal examples
 See [backend/README.md#curl-examples](here) for the runnable curl commands and current local ports.
@@ -138,7 +144,7 @@ See [`DATA_DESIGN_RATIONALE.md`](./DATA_DESIGN_RATIONALE.md) for discussion.
 
 ## Security details
 - `/auth/key-login` rate limits before bcrypt: 10 attempts per 10 minutes per IP and 5 per fingerprint (in-memory today).
-- `/chat` requires auth and rate limits per access key (no per-IP limiting on `/chat`).
+- `/chat` requires auth and rate limits per IP (no per-access-key limiting on `/chat` yet).
 
 ## Frontend behavior
 - Frontend present under `frontend/web/`.
