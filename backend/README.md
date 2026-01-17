@@ -54,14 +54,21 @@ make help
 Provide these through your shell or a private folder loader. Do not commit secrets.
 
 Common placeholders:
-- Access keys live in Firestore collection `access_keys`; manage them with the admin CLI:
-  - Create: `python scripts/create_access_key.py create --label demo --expires-in 7d [--print-json]`
-  - Explicit expiry: `python scripts/create_access_key.py create --expires-at 2024-12-31T23:59:00Z`
-  - Revoke: `python scripts/create_access_key.py revoke --key-id <doc-id> [--project <PROJECT>] [--revoked-by you]`
-  Keys are not derived from `API_KEY`.
 - `API_KEY` remains the server secret (JWT signing fallback) and optional header for protected admin endpoints.
 - `BUCKET_NAME` / `CHUNKS_PATH` to locate the packaged JSONL side store (full GCS URI is derived at runtime).
 - Project, region, and model identifiers if using Vertex, names are placeholders only.
+
+## Admin CLI / Access keys
+Access keys live in Firestore collection `access_keys`; manage them with the admin CLI:
+- Create: `python scripts/create_access_key.py create --label demo --expires-in 7d`
+- Create (Makefile): `make be-create-access-key ARGS="create --label demo --expires-in 7d --print-json"`
+- Optional JSON output: add `--print-json` to the command above
+- Explicit expiry: `python scripts/create_access_key.py create --expires-at 2024-12-31T23:59:00Z`
+- Explicit expiry (Makefile): `make be-create-access-key ARGS="create --expires-at 2024-12-31T23:59:00Z"`
+- Revoke: `python scripts/create_access_key.py revoke --key-id <doc-id>`
+- Revoke (Makefile): `make be-create-access-key ARGS="revoke --key-id <doc-id>"`
+- Optional revoke metadata: add `--project <PROJECT>` and `--revoked-by you`
+Keys are not derived from `API_KEY`.
 
 ## Mock auth
 For local testing with `api.mock:app`, you can use a lightweight JSON key store with plaintext access keys.

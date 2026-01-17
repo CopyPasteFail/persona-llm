@@ -355,8 +355,21 @@ class FirestoreKeyStore:
         transaction: FirestoreTransaction,
         doc_ref: FirestoreDocumentReference,
     ) -> FirestoreDocumentSnapshot:
-        """Return a document snapshot within a Firestore transaction."""
-        return transaction.get(doc_ref)
+        """Return a document snapshot within a Firestore transaction.
+
+        Some Firestore client versions return a generator even for a single
+        document reference, so normalize to a single snapshot.
+        """
+        snapshot = transaction.get(doc_ref)
+        if hasattr(snapshot, "to_dict"):
+            return snapshot
+        try:
+            return next(iter(snapshot))
+        except StopIteration:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=ERROR_CODE_INVALID_KEY,
+            )
 
     def _transaction_update(
         self,
