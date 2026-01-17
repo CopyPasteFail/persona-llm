@@ -161,7 +161,7 @@ export default function IndexPage() {
               onClick={() => clearSession()}
               className="rounded-full border border-zinc-700 px-3 py-1 text-[11px] text-zinc-200 hover:border-zinc-500"
             >
-              Reset session
+              End session
             </button>
           )}
         </div>
