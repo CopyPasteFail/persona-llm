@@ -40,6 +40,16 @@ Commands:
 make be-test-int
 ```
 
+#### Deployed CORS integration
+Requirements:
+- Deployed backend URL set via `NEXT_PUBLIC_API_URL`
+- Frontend Hosting origin via `FRONTEND_ORIGIN` or `PROJECT_ID` (derived as `https://<project-id>.web.app`)
+
+Command:
+```bash
+make be-test-cors-deploy
+```
+
 #### Live vector search integration
 Requirements:
 - Access to the private Vertex AI Matching Engine endpoint
@@ -155,6 +165,13 @@ make be-test-voice
   Command:
   ```bash
   make be-test-int
+  ```
+
+- `backend/tests/test_cors_deployment.py`  
+  Checks CORS allow/deny behavior on a deployed backend using the configured Hosting origin.
+  Command:
+  ```bash
+  make be-test-cors-deploy
   ```
 
 - `backend/tests/test_vector_search_integration.py`  

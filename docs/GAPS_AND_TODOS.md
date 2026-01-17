@@ -22,7 +22,5 @@
 - Add integration tests for real backend once wired.
 
 ## Deployment
-- Verify Cloud Run deployment and CORS with Hosting origin.
-- Add stricter origin control on CORS in prod env (no wildcard).
 - Provision Vertex resources and document teardown.
 - Keep budget alerts and logging hygiene.
