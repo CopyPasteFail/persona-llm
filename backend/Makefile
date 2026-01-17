@@ -7,7 +7,7 @@ PIP := $(VENV)/bin/pip
 
 include ../make/env.mk
 
-.PHONY: help install run run-debug mock test-smoke test-core test-voice test-int test-vector-live test-build_datapoints test-auth-key-login test-create-access-key-cli test-keys-store test-llm-prompt test-security-session test-load-backend-env test-pack-and-push-processing check envs clean build_datapoints
+.PHONY: help install run run-debug mock test-smoke test-core test-voice test-int test-vector-live test-build_datapoints test-auth-key-login test-create-access-key-cli test-keys-store test-llm-prompt test-security-session test-load-backend-env test-pack-and-push-processing check envs clean build_datapoints create-access-key
 
 help:
 	@echo "Targets:"
@@ -22,6 +22,7 @@ help:
 	@echo "  test-int     - run integration tests against real backend (requires GCP + uvicorn)"
 	@echo "  test-auth-key-login - run auth key login tests"
 	@echo "  test-create-access-key-cli - run access key CLI tests"
+	@echo "  create-access-key - run access key CLI (pass ARGS='create ...')"
 	@echo "  test-keys-store - run key store tests"
 	@echo "  test-llm-prompt - run LLM prompt construction tests"
 	@echo "  test-security-session - run session security tests"
@@ -106,6 +107,9 @@ test-auth-key-login: $(VENV)/bin/activate
 
 test-create-access-key-cli: $(VENV)/bin/activate
 	PYTHONPATH=.. $(PY) -m pytest -q tests/test_create_access_key_cli.py
+
+create-access-key: $(VENV)/bin/activate
+	$(PY) scripts/create_access_key.py $(ARGS)
 
 test-keys-store: $(VENV)/bin/activate
 	$(PY) -m pytest -q tests/test_keys_store.py
