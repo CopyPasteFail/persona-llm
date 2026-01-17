@@ -53,11 +53,13 @@ Backend configuration is loaded from a dotenv file rather than a global `PRIVATE
 
 ## Backend API
 ### Endpoints
-- `GET /health` returns `{ "status": "ok" }`.
-- `GET /ready` returns `{ "ready": true }` when startup completed (local readiness only), otherwise 503.
-- `POST /auth/key-login` accepts `{ "key": "<access key>" }` and returns a bearer token.
-- `POST /auth/logout` returns 204 and clears the session cookie when enabled.
-- `POST /chat` accepts JSON and returns structured JSON. Real mode returns 503 when the chunk store is not loaded at startup or downstream services are unavailable.
+**Public**
+- `GET /health` (liveness) – returns `{ "status": "ok" }`.
+- `GET /ready` (readiness) – returns `{ "ready": true }` when startup completed (local readiness only), otherwise 503.
+- `POST /auth/key-login` – rate-limited, accepts `{ "key": "<access key>" }` and returns a bearer token.
+- `POST /auth/logout` – returns 204 and clears the session cookie when enabled.
+**Protected**
+- `POST /chat` – requires bearer token or session cookie, accepts JSON and returns structured JSON. Real mode returns 503 when the chunk store is not loaded at startup or downstream services are unavailable.
 
 ### Request schema
 - `question`: str
