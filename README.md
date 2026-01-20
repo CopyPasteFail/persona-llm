@@ -406,31 +406,17 @@ Information about the hardcoded (or customization of) access keys can be found [
 
 ---
 
-### Mode B: Local frontend + Cloud Run backend
-Run Next.js locally but call the real Cloud Run API.
+### Mode B: Local frontend + local live backend
+Run Next.js locally against the live backend (`api.main:app`) with real LLM + retrieval.
 
 1) Ensure secrets/backend.env are set in your private repository
 
-2) Deploy backend to Cloud Run (pick one):
-- Real backend:
+2) Start the live backend locally:
   ```bash
-  make gcp-cloud-run-deploy
-  ```
-- Mock backend:
-  ```bash
-  make gcp-cloud-run-deploy-mock
+  make be-dev
   ```
 
-Access keys for the real backend live in Firestore. You can view them in the console [here](https://console.cloud.google.com/firestore/databases/-default-/data/panel).
-
-For managing the keys, see [admin CLI access key management](backend/README.md#admin-cli--access-keys).
-
-3) Verify the deployed API (point at the Cloud Run URL from deploy):
-  ```bash
-  PYTEST_ADDOPTS="-s" make be-test-int
-  ```
-
-4) Start the dev server. Choose one:
+3) Start the dev server. Choose one:
 - Fast start (uses cached build):
   ```bash
   make fe-dev
@@ -443,7 +429,7 @@ For managing the keys, see [admin CLI access key management](backend/README.md#a
 
 App: http://localhost:3000
 
-> To target your Cloud Run service, set `NEXT_PUBLIC_API_URL` in `private/secrets/frontend.env` (or export it in the shell) to the HTTPS URL returned by `gcloud run deploy` before running the dev command.
+> To target your local backend, set `NEXT_PUBLIC_API_URL=http://localhost:8080` in `private/secrets/frontend.env` (or export it in the shell) before running the dev command.
 
 ---
 
@@ -495,7 +481,15 @@ Static export on Firebase Hosting. API served by Cloud Run.
    ```
 
 7) Manage Access keys
-  For managing the keys, see [admin CLI](backend/README.md#admin-cli).
+  Access keys for the real backend live in Firestore. You can view them in the console [here](https://console.cloud.google.com/firestore/databases/-default-/data/panel).
+
+  For managing the keys, see [admin CLI access key management](backend/README.md#admin-cli--access-keys).
+
+3) Verify the deployed API (point at the Cloud Run URL from deploy):
+  ```bash
+  PYTEST_ADDOPTS="-s" make be-test-int
+  ```
+
 
 ## Undeploy / Teardown
 
