@@ -376,7 +376,7 @@ make dev:mock
 
 The root `package.json` forwards scripts to the `web` app via `"workspaces": ["web"]`.
 
-### Mode A: Mock frontend + mock backend (local)
+### Mode A: local-mock (mock frontend + mock backend)
 Develop the UI against the mock API.
 
 Run the mock backend and frontend pointing to the mock. Choose one:
@@ -406,8 +406,8 @@ Information about the hardcoded (or customization of) access keys can be found [
 
 ---
 
-### Mode B: Local frontend + local live backend
-Run Next.js locally against the live backend (`api.main:app`) with real LLM + retrieval.
+### Mode B: local-integrated (local frontend + local integrated backend)
+Run Next.js locally against the integrated backend (`api.main:app`) with real LLM + retrieval.
 
 1) Ensure secrets/backend.env are set in your private repository
 
