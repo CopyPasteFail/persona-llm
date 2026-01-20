@@ -26,9 +26,9 @@ make be-test-core
 
 > To skip integration tests in a broader run, use `-m "not integration"`
 
-#### Real backend integration
+#### Integrated backend integration
 Requirements:
-- Real backend running (for example `uvicorn api.main:app`)
+- Integrated backend running (for example `uvicorn api.main:app`)
 - `NEXT_PUBLIC_API_URL` pointing to the running backend
 - `ACCESS_KEY_PLAINTEXT` set to a valid access key
   ```bash
@@ -154,9 +154,9 @@ make be-test-voice
   make be-test-retrieval-vector
   ```
 
-### Integration tests (real services)
+### Integration tests (live services)
 - `backend/tests/test_integration_real_backend.py`  
-  Runs against a real backend (`uvicorn api.main:app`) with live credentials.
+  Runs against an integrated backend (`uvicorn api.main:app`) with live credentials.
   Sub-tests:
   - `/health`: no access key required; no live vector required.
   - `/auth/key-login`: requires `ACCESS_KEY_PLAINTEXT`; no live vector required.

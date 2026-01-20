@@ -1,11 +1,11 @@
 # Backend, FastAPI apps (`api/`)
 
-FastAPI service for the persona demo. Real mode uses local vector search by default and can fall back to Vertex AI Matching Engine. Mock mode returns deterministic responses and is the default for local development.
+FastAPI service for the persona demo. Integrated mode uses local vector search by default and can fall back to Vertex AI Matching Engine. Mock mode returns deterministic responses and is the default for local development.
 
 ## Overview
 - Two apps:
   - `api.mock:app` for local development.
-  - `api.main:app` for production-style runs with retrieval and LLM wiring.
+  - `api.main:app` for integrated runs with retrieval and LLM wiring.
 - `/health` (liveness) and `/ready` (readiness) endpoints exist.
 
 ## Prerequisites
@@ -103,7 +103,7 @@ Example JSON:
 > [Security context (auth, CORS, rate limits, cookies)](../docs/ARCHITECTURE_OVERVIEW.md#security)
 
 - `GET /health` liveness signal.
-- `GET /ready` readiness signal (real app only).
+- `GET /ready` readiness signal (integrated app only).
 - `POST /auth/key-login` issues a bearer token.
 - `POST /auth/logout` clears session cookies when enabled.
 - `POST /chat` requires auth.
@@ -134,9 +134,9 @@ Atomic update order:
 Local dev can bypass ops auth with `OPS_AUTH=disabled`.
 
 ## CORS
-Strict allowlist. Real mode allows `http://localhost:3000` and `https://<project-id>.web.app` (set exact host before deploy). Mock mode allows `http://localhost:3000` and `http://127.0.0.1:3000`.
+Strict allowlist. Integrated mode allows `http://localhost:3000` and `https://<project-id>.web.app` (set exact host before deploy). Mock mode allows `http://localhost:3000` and `http://127.0.0.1:3000`.
 
-## Rate limits (real mode)
+## Rate limits (integrated mode)
 Per IP, 10 per minute and 100 per day on `/chat`. `/health` is never limited.
 
 ## Tests

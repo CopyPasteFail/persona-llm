@@ -10,9 +10,9 @@
   "scripts": {
     "clean": "rm -rf .next out .turbo",
     "dev": "next dev -p 3000",
-    "dev:mock": "NEXT_PUBLIC_API_URL=http://localhost:8080 next dev -p 3000",
     "dev:clean": "npm run clean && npm run dev",
-    "dev:mock:clean": "npm run clean && npm run dev:mock",
+    "dev:local": "NEXT_PUBLIC_API_URL=http://localhost:8080 next dev -p 3000",
+    "dev:local:clean": "npm run clean && npm run dev:local",
     "build": "next build",
     "preview": "npx serve out -l 4173",
     "kill-port": "kill-port 3000"

@@ -358,20 +358,6 @@ See [docs/VECTOR_SEARCH.md](docs/VECTOR_SEARCH.md) for roles, workflows, and a d
 - [`backend/`](./backend/README.md) — FastAPI app, env vars, API docs
 - `private/` — points to your private overlay for local dev
 
-## Develop
-
-```bash
-make install
-make dev
-```
-
-> Tip: confirm your shell auto-loads Node 20 (see the setup note above) so these commands use the supported runtime.
-
-Mock mode if available:
-```bash
-make dev:mock
-```
-
 ## Run Modes
 
 The root `package.json` forwards scripts to the `web` app via `"workspaces": ["web"]`.
@@ -380,14 +366,15 @@ The root `package.json` forwards scripts to the `web` app via `"workspaces": ["w
 Develop the UI against the mock API.
 
 Run the mock backend and frontend pointing to the mock. Choose one:
-- Fast start (uses cached build):
-  ```bash
-  make mock
-  ```
-- Clean start (force rebuild):
+
+- Clean start (if needed):
   ```bash
   make clean-all
-  make mock
+  ```
+
+- Fast start (uses cached build):
+  ```bash
+  make local-mock
   ```
 
 Terminate with Ctrl+C in the terminal.  
@@ -407,33 +394,18 @@ Information about the hardcoded (or customization of) access keys can be found [
 ---
 
 ### Mode B: local-integrated (local frontend + local integrated backend)
-Run Next.js locally against the integrated backend (`api.main:app`) with real LLM + retrieval.
+Run Next.js locally against the integrated backend (`api.main:app`) with live LLM + retrieval.
 
-1) Ensure secrets/backend.env are set in your private repository
-
-2) Start the live backend locally:
-  ```bash
-  make be-dev
-  ```
-
-3) Start the dev server. Choose one:
-- Fast start (uses cached build):
-  ```bash
-  make fe-dev
-  ```
-- Clean start (force rebuild):
-  ```bash
-  make fe-clean:all
-  make fe-dev
-  ```
+Run the integrated backend and frontend together:
+```bash
+make local-integrated
+```
 
 App: http://localhost:3000
 
-> To target your local backend, set `NEXT_PUBLIC_API_URL=http://localhost:8080` in `private/secrets/frontend.env` (or export it in the shell) before running the dev command.
-
 ---
 
-### Mode C: Production (Firebase Hosting + Cloud Run)
+### Mode C: production (Firebase Hosting + Cloud Run)
 Static export on Firebase Hosting. API served by Cloud Run.
 
 > Note: ensure `secrets/backend.env` and `secrets/frontend.env` are set in your private repo.
@@ -481,7 +453,7 @@ Static export on Firebase Hosting. API served by Cloud Run.
    ```
 
 7) Manage Access keys
-  Access keys for the real backend live in Firestore. You can view them in the console [here](https://console.cloud.google.com/firestore/databases/-default-/data/panel).
+  Access keys for the integrated backend live in Firestore. You can view them in the console [here](https://console.cloud.google.com/firestore/databases/-default-/data/panel).
 
   For managing the keys, see [admin CLI access key management](backend/README.md#admin-cli--access-keys).
 

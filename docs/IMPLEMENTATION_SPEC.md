@@ -18,7 +18,7 @@ Backend configuration is loaded from a dotenv file rather than a global `PRIVATE
   - `PERSONA_NAME`: Display name used in mock responses.
   - `REGION`: GCP region.
   - `VECTOR_BACKEND`: `local` (default) or `matching_engine`.
-  - `LLM_BACKEND`: `vertex` (real app default) or `deterministic` (mock default).
+  - `LLM_BACKEND`: `vertex` (integrated app default) or `deterministic` (mock default).
   - `INDEX_ENDPOINT_ID`: Vertex AI Index Endpoint ID (required only for `VECTOR_BACKEND=matching_engine`).
   - `DEPLOYED_INDEX_ID`: Deployed Index resource ID (required only for `VECTOR_BACKEND=matching_engine`).
   - `BUCKET_NAME`: GCS bucket used for persona artifacts.
@@ -66,7 +66,7 @@ Backend configuration is loaded from a dotenv file rather than a global `PRIVATE
 - `POST /auth/logout` – returns 204 and clears the session cookie when enabled.
 
 **Protected**
-- `POST /chat` – accepts JSON and returns structured JSON. Real mode returns 503 when the chunk store is not loaded at startup or downstream services are unavailable.
+- `POST /chat` – accepts JSON and returns structured JSON. Integrated mode returns 503 when the chunk store is not loaded at startup or downstream services are unavailable.
 - `GET /ops/vector/status` – returns loaded version + pointer version (requires `x-ops-secret` when ops auth is enabled).
 - `POST /ops/vector/reload` – reloads the dataset cache (rate-limited to 1 per 10s).
 
@@ -139,7 +139,7 @@ For a human-readable guide explaining the meaning, use cases, benefits, and trad
    - `backend/jobs/build_datapoints.py` batches persona chunks, calls the selected Vertex embedding model, writes `datapoints.jsonl`, and emits `manifest.json` with model/dim/count metadata.
    - `make gcp-index-upsert` remains available if you choose `VECTOR_BACKEND=matching_engine`.
 
-> Next implementation stage: deepen verification for the now-live runtime—add golden tests for retrieval + LLM prompts, cover API key/rate-limit branches, and run the end-to-end integration test against the real backend.
+> Next implementation stage: deepen verification for the now-live runtime—add golden tests for retrieval + LLM prompts, cover API key/rate-limit branches, and run the end-to-end integration test against the integrated backend.
 
 ### Vector search configuration (Vertex AI Matching Engine)
 This section applies only when `VECTOR_BACKEND=matching_engine`.

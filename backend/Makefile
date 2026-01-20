@@ -17,7 +17,7 @@ DATASET_GCS_PREFIX ?= $(DATASET_FOLDER)/$(DATASET_VERSION)
 help:
 	@echo "Targets:"
 	@echo "  install      - create venv and install deps"
-	@echo "  run          - start real API skeleton on :8080 (requires envs)"
+	@echo "  run          - start integrated API (api.main:app) on :8080 (requires envs)"
 	@echo "  mock         - start mock API on :8080"
 	@echo "  docker-build - build local backend image"
 	@echo "  docker-run   - run local backend image with mounted secrets"

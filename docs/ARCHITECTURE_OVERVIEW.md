@@ -63,8 +63,8 @@ Then choose the project.
 ### Components
 - **Backend**: FastAPI with two apps.
   - `api.mock:app` for local dev, deterministic answers.
-  - `api.main:app` real mode: loads versioned dataset cache on startup, runs hybrid retrieval + Gemini Flash; `/chat` returns 503 when not ready or when downstream services fail.
+  - `api.main:app` integrated mode: loads versioned dataset cache on startup, runs hybrid retrieval + Gemini Flash; `/chat` returns 503 when not ready or when downstream services fail.
   - Ops endpoints for cache status + reload live on the same service.
 - **Frontend**: Next.js app in `web/` with starter prompts and a fixed layout. Cold start: min instances 0. Shows “Warming up the API… usually a few seconds.” until `/health` is ready. Verify disabled states when the backend is down, and independent scroll for the conversation pane.
 - **Jobs**: `jobs/pack_and_push.py` to validate and package JSONL chunks.
-- **Tests**: pytest suite focused on the mock app, plus opt-in integration tests that require a running real backend with valid GCP creds and data.
+- **Tests**: pytest suite focused on the mock app, plus opt-in integration tests that require a running integrated backend with valid GCP creds and data.

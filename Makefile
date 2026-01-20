@@ -1,4 +1,4 @@
-.PHONY: help install dev mock build fe-% fe-install be-install be-% require-private require-gcp-env require-index-ids require-datapoints-file require-operation-id clean clean-all gcp-create-project gcp-set-project gcp-create-bucket gcp-create-artifact-registry gcp-sa-create gcp-sa-delete gcp-sa-bind-roles gcp-sa-roles gcp-sa-key gcp-index-create gcp-index-endpoint-create gcp-index-deploy gcp-index-upsert gcp-index-list gcp-index-op-describe gcp-index-op-done gcp-index-update-time gcp-cloud-run-deploy-mock gcp-cloud-run-delete gcp-cloud-run-delete-mock
+.PHONY: help install local-integrated local-mock build fe-% fe-install be-install be-% require-private require-gcp-env require-index-ids require-datapoints-file require-operation-id clean clean-all gcp-create-project gcp-set-project gcp-create-bucket gcp-create-artifact-registry gcp-sa-create gcp-sa-delete gcp-sa-bind-roles gcp-sa-roles gcp-sa-key gcp-index-create gcp-index-endpoint-create gcp-index-deploy gcp-index-upsert gcp-index-list gcp-index-op-describe gcp-index-op-done gcp-index-update-time gcp-cloud-run-deploy-mock gcp-cloud-run-delete gcp-cloud-run-delete-mock
 
 # -------------------------------
 # Private directory resolution
@@ -11,8 +11,8 @@ include make/env.mk
 help:
 	@echo "Targets:"
 	@echo "  install      - install frontend/backend dependencies"
-	@echo "  dev          - run backend and frontend dev servers (requires envs)"
-	@echo "  mock         - run mock backend with frontend dev server"
+	@echo "  local-integrated - run integrated backend + frontend locally"
+	@echo "  local-mock   - run mock backend + frontend locally"
 	@echo "  build        - build backend image and frontend assets"
 	@echo "  clean        - clean frontend/backend build artifacts"
 	@echo "  clean-all    - remove build artifacts and local envs"
@@ -151,12 +151,12 @@ install:
 	$(MAKE) fe-install
 	$(MAKE) be-install
 
-dev: require-private
-	PERSONA_DIR="$${PERSONA_DIR:-$(PRIVATE_DIR)/persona}" $(MAKE) be-dev & \
-	PRIVATE_DIR="$(PRIVATE_DIR)" $(MAKE) fe-dev
+local-integrated: require-private
+	PERSONA_DIR="$${PERSONA_DIR:-$(PRIVATE_DIR)/persona}" $(MAKE) be-run & \
+	NEXT_PUBLIC_API_URL="http://localhost:8080" PRIVATE_DIR="$(PRIVATE_DIR)" $(MAKE) fe-dev
 
-mock: require-private
-	( $(MAKE) be-mock & PRIVATE_DIR="$(PRIVATE_DIR)" $(MAKE) fe-dev:mock )
+local-mock: require-private
+	( $(MAKE) be-mock & NEXT_PUBLIC_API_URL="http://localhost:8080" PRIVATE_DIR="$(PRIVATE_DIR)" $(MAKE) fe-dev )
 
 build:
 	$(MAKE) be-docker-build
