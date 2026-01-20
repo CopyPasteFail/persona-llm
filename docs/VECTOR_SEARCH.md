@@ -1,6 +1,12 @@
 # Vector Search Roles and Flows
 
-## Roles
+## Backends (default: local)
+- `VECTOR_BACKEND=local|matching_engine`
+- **local**: in-process cosine search over the cached dataset embeddings. Zero serving cost and simplest for a POC; default path.
+- **matching_engine**: Vertex AI Matching Engine for larger corpora or low-latency/high-recall needs. Requires `INDEX_ENDPOINT_ID` + `DEPLOYED_INDEX_ID`.
+- Query embeddings are L2-normalized at request time; datapoints are pre-normalized at ingest, and the runtime validates norms.
+
+## Roles (Matching Engine only)
 - `INDEX_ID`: The vector index asset. Needed to deploy a new/updated index. Not used for queries/upserts once deployed.
 - `INDEX_ENDPOINT_ID`: The serving endpoint. Stable “host” you deploy to and send traffic through.
 - `DEPLOYED_INDEX_ID`: Your chosen name for a specific deployment on that endpoint; used to route queries/upserts. It must start with a letter and only include letters, numbers, or underscores.

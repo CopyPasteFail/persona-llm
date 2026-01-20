@@ -168,5 +168,7 @@ def test_write_datapoints_handles_gzip_output(tmp_path: Path) -> None:
     assert datapoint == {
         DATAPOINT_ID_FIELD: CHUNK_ID_TWO,
         ID_FIELD: CHUNK_ID_TWO,
-        FEATURE_VECTOR_FIELD: GZIP_EMBEDDINGS[0],
+        FEATURE_VECTOR_FIELD: build_datapoints._l2_normalize( # pyright: ignore[reportPrivateUsage]
+            GZIP_EMBEDDINGS[0]
+        ),
     }

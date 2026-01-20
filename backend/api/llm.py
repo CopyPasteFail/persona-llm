@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+import os
 import threading
 from collections.abc import Mapping, Sequence
 from typing import Any, Optional, Protocol, TypedDict, cast, runtime_checkable
@@ -15,7 +17,8 @@ from .settings import settings
 
 APPROX_CHARS_PER_TOKEN = 4
 MIN_ESTIMATED_TOKENS = 1
-DEFAULT_MODEL_NAME = "gemini-2.0-flash"
+DEFAULT_MODEL_NAME = "gemini-2.5-flash"
+FALLBACK_MODEL_NAME = "gemini-1.5-flash"
 DEFAULT_GENERATION_TEMPERATURE = 0.2
 DEFAULT_GENERATION_TOP_P = 0.9
 ROLE_SYSTEM = "system"
@@ -28,6 +31,8 @@ USAGE_CANDIDATE_TOKEN_KEYS = ("candidates_token_count", "candidates_tokens")
 
 Chunk = dict[str, Any]
 UsageMetadata = dict[str, int]
+
+logger = logging.getLogger(__name__)
 
 class PromptMessage(TypedDict):
     role: str
@@ -54,6 +59,11 @@ def _estimate_tokens(text: str) -> int:
     if not text:
         return 0
     return max(MIN_ESTIMATED_TOKENS, len(text) // APPROX_CHARS_PER_TOKEN)
+
+
+def _llm_debug_enabled() -> bool:
+    value = os.getenv("LLM_DEBUG", "").strip().lower()
+    return value in {"1", "true", "yes", "on"}
 
 
 def _build_user_prompt(question: str, context_block: str) -> str:
@@ -220,10 +230,11 @@ def _get_llm_client() -> _GeminiClient:
     """
     global _llm_client
     if _llm_client is None:
+        model_name = (settings.LLM_MODEL_NAME or DEFAULT_MODEL_NAME).strip()
         _llm_client = _GeminiFlashClient(
             project=settings.PROJECT_ID,
             region=settings.REGION,
-            model_name=DEFAULT_MODEL_NAME,
+            model_name=model_name,
         )
     return _llm_client
 
@@ -328,17 +339,9 @@ class _GeminiFlashClient:
             Content,
             GenerativeModel,
             GenerationConfig,
-            HarmBlockThreshold,
-            HarmCategory,
             Part,
-            SafetySetting,
         )
-
-        model = GenerativeModel(
-            self._model_name,
-            system_instruction=system_prompt or None,
-        )
-        model_any = cast(Any, model)
+        from google.api_core import exceptions as google_exceptions
 
         contents = [
             Content(role="user", parts=[Part.from_text(text.strip())])
@@ -354,47 +357,53 @@ class _GeminiFlashClient:
             top_p=DEFAULT_GENERATION_TOP_P,
         )
 
-        harm_category = cast(Any, HarmCategory)
-        harm_block_threshold = cast(Any, HarmBlockThreshold)
-        safety_settings = [
-            SafetySetting(
-                category=harm_category.HARM_CATEGORY_HATE_SPEECH,
-                threshold=harm_block_threshold.BLOCK_MEDIUM_AND_ABOVE,
-            ),
-            SafetySetting(
-                category=harm_category.HARM_CATEGORY_HARASSMENT,
-                threshold=harm_block_threshold.BLOCK_MEDIUM_AND_ABOVE,
-            ),
-            SafetySetting(
-                category=harm_category.HARM_CATEGORY_DANGEROUS_CONTENT,
-                threshold=harm_block_threshold.BLOCK_MEDIUM_AND_ABOVE,
-            ),
-            SafetySetting(
-                category=harm_category.HARM_CATEGORY_SEXUAL_CONTENT,
-                threshold=harm_block_threshold.BLOCK_MEDIUM_AND_ABOVE,
-            ),
-        ]
+        if _llm_debug_enabled():
+            logger.debug(
+                {
+                    "event": "llm_prompt_debug",
+                    "model": self._model_name,
+                    "system_prompt": system_prompt,
+                    "user_messages": list(user_messages),
+                    "max_output_tokens": max_output_tokens,
+                }
+            )
 
-        request_options = {"timeout": settings.request_timeout_seconds}
+        def _generate_with_model(model_name: str) -> Any:
+            model = GenerativeModel(
+                model_name,
+                system_instruction=system_prompt or None,
+            )
+            model_any = cast(Any, model)
+            request_options = {"timeout": settings.request_timeout_seconds}
+            try:
+                return model_any.generate_content(
+                    contents,
+                    generation_config=config,
+                    request_options=request_options,
+                )
+            except TypeError:
+                return model_any.generate_content(
+                    contents,
+                    generation_config=config,
+                )
+
         response: Any
         try:
-            response = model_any.generate_content(
-                contents,
-                generation_config=config,
-                safety_settings=safety_settings,
-                request_options=request_options,
-            )
-        except TypeError:
-            response = model_any.generate_content(
-                contents,
-                generation_config=config,
-                safety_settings=safety_settings,
-            )
+            response = _generate_with_model(self._model_name)
+        except google_exceptions.NotFound as exc:
+            if (
+                self._model_name != FALLBACK_MODEL_NAME
+                and "Publisher Model" in str(exc)
+                and "not found" in str(exc)
+            ):
+                response = _generate_with_model(FALLBACK_MODEL_NAME)
+            else:
+                raise
 
-        return _extract_response_text(response), _extract_usage(response)
+        return _extract_response_text(response, max_output_tokens), _extract_usage(response)
 
 
-def _extract_response_text(response: Any) -> str:
+def _extract_response_text(response: Any, max_output_tokens: int | None = None) -> str:
     """
     Extract response text from a Gemini API response.
 
@@ -403,7 +412,14 @@ def _extract_response_text(response: Any) -> str:
     Edge cases: if no text is found, raises a runtime error; trims whitespace
     and joins candidate parts with newlines.
     """
-    text = getattr(response, "text", None)
+    try:
+        text = response.text
+    except ValueError as exc:
+        safety_info = _format_safety_info(response, max_output_tokens=max_output_tokens)
+        message = "Gemini response contained no text"
+        if safety_info:
+            message = f"{message} ({safety_info})"
+        raise RuntimeError(message) from exc
     if isinstance(text, str) and text.strip():
         return text.strip()
 
@@ -423,7 +439,101 @@ def _extract_response_text(response: Any) -> str:
 
     if parts:
         return "\n".join(parts).strip()
-    raise RuntimeError("Gemini response did not contain text")
+    safety_info = _format_safety_info(response, max_output_tokens=max_output_tokens)
+    message = "Gemini response did not contain text"
+    if safety_info:
+        message = f"{message} ({safety_info})"
+    raise RuntimeError(message)
+
+
+def _format_safety_info(response: Any, *, max_output_tokens: int | None = None) -> str:
+    """
+    Best-effort summary of safety/finish metadata for error messages.
+    """
+    pieces: list[str] = []
+    candidates: Sequence[Any] = cast(
+        Sequence[Any],
+        getattr(response, "candidates", None) or [],
+    )
+    candidate = candidates[0] if candidates else None
+    if candidate is not None:
+        finish_reason = _format_finish_reason(getattr(candidate, "finish_reason", None))
+        if finish_reason:
+            pieces.append(f"finish_reason={finish_reason}")
+        ratings_summary = _summarize_safety_ratings(
+            getattr(candidate, "safety_ratings", None)
+        )
+        if ratings_summary:
+            pieces.append(f"safety_ratings={ratings_summary}")
+
+    usage_metadata = getattr(response, "usage_metadata", None)
+    if usage_metadata is not None:
+        pieces.append(f"usage={_summarize_usage_metadata(usage_metadata)}")
+    if max_output_tokens is not None:
+        pieces.append(f"max_output_tokens={max_output_tokens}")
+
+    prompt_feedback = getattr(response, "prompt_feedback", None)
+    if prompt_feedback is None:
+        prompt_feedback = getattr(response, "safety_feedback", None)
+    if prompt_feedback is not None:
+        pieces.append(f"prompt_feedback={prompt_feedback}")
+
+    return "; ".join(pieces)
+
+
+def _format_finish_reason(value: Any) -> str:
+    """Normalize finish_reason values from SDK enums or raw primitives."""
+    if value is None:
+        return ""
+    name = getattr(value, "name", None)
+    if isinstance(name, str) and name:
+        return name
+    return str(value)
+
+
+def _summarize_safety_ratings(ratings: Any) -> str:
+    """
+    Build a compact, human-readable summary of safety ratings when present.
+    """
+    if not ratings:
+        return ""
+    summaries: list[str] = []
+    for rating in ratings:
+        category = getattr(rating, "category", None)
+        probability = getattr(rating, "probability", None)
+        blocked = getattr(rating, "blocked", None)
+        parts: list[str] = []
+        if category is not None:
+            parts.append(str(category))
+        if probability is not None:
+            parts.append(f"prob={probability}")
+        if blocked is not None:
+            parts.append(f"blocked={blocked}")
+        if parts:
+            summaries.append("/".join(parts))
+    return ", ".join(summaries)
+
+
+def _summarize_usage_metadata(usage_metadata: Any) -> str:
+    """Summarize usage metadata for debugging failures."""
+    summary_parts: list[str] = []
+    prompt_tokens = getattr(usage_metadata, "prompt_token_count", None)
+    if prompt_tokens is None and isinstance(usage_metadata, dict):
+        prompt_tokens = usage_metadata.get("prompt_token_count")
+    total_tokens = getattr(usage_metadata, "total_token_count", None)
+    if total_tokens is None and isinstance(usage_metadata, dict):
+        total_tokens = usage_metadata.get("total_token_count")
+    thoughts_tokens = getattr(usage_metadata, "thoughts_token_count", None)
+    if thoughts_tokens is None and isinstance(usage_metadata, dict):
+        thoughts_tokens = usage_metadata.get("thoughts_token_count")
+
+    if prompt_tokens is not None:
+        summary_parts.append(f"prompt={prompt_tokens}")
+    if total_tokens is not None:
+        summary_parts.append(f"total={total_tokens}")
+    if thoughts_tokens is not None:
+        summary_parts.append(f"thoughts={thoughts_tokens}")
+    return ",".join(summary_parts)
 
 
 def _extract_usage(response: Any) -> dict[str, int]:

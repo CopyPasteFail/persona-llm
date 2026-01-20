@@ -7,12 +7,17 @@ PIP := $(VENV)/bin/pip
 
 include ../make/env.mk
 
-.PHONY: help install run run-debug mock test-smoke test-core test-voice test-int test-cors-deploy test-vector-live test-build_datapoints test-auth-key-login test-create-access-key-cli test-keys-store test-llm-prompt test-security-session test-load-backend-env test-pack-and-push-processing check envs clean build_datapoints create-access-key
+DATASET_DIR ?= $(dir $(DATAPOINTS_FILE))
+DATASET_VERSION ?= $(notdir $(patsubst %/,%,$(DATASET_DIR)))
+DATASET_FOLDER := datasets
+DATASET_GCS_PREFIX ?= $(DATASET_FOLDER)/$(DATASET_VERSION)
+
+.PHONY: help install run run-debug mock test-smoke test-core test-voice test-int test-cors-deploy test-vector-live test-build_datapoints test-auth-key-login test-create-access-key-cli test-keys-store test-llm-prompt test-security-session test-load-backend-env test-pack-and-push-processing check envs clean build_datapoints create-access-key dataset-version-check dataset-chunks dataset-datapoints dataset-upload dataset-pointer-update
 
 help:
 	@echo "Targets:"
 	@echo "  install      - create venv and install deps"
-	@echo "  run          - start real API skeleton on :8000 (requires envs)"
+	@echo "  run          - start real API skeleton on :8080 (requires envs)"
 	@echo "  mock         - start mock API on :8080"
 	@echo "  docker-build - build local backend image"
 	@echo "  docker-run   - run local backend image with mounted secrets"
@@ -31,6 +36,10 @@ help:
 	@echo "  test-pack-and-push-processing - run pack_and_push processing tests"
 	@echo "  check        - quick import check"
 	@echo "  build_datapoints - build embedding datapoints JSONL for upsert"
+	@echo "  dataset-chunks - build chunks.jsonl.gz in DATAPOINTS_FILE directory"
+	@echo "  dataset-datapoints - build datapoints.jsonl + manifest.json"
+	@echo "  dataset-upload - upload dataset folder to GCS"
+	@echo "  dataset-pointer-update - update datasets/current.json in GCS"
 	@echo "  test-build_datapoints - run datapoint helper unit tests"
 	@echo "  test-retrieval-vector - run vector adapter unit tests"
 	@echo "  envs         - print required env variables"
@@ -46,9 +55,9 @@ $(VENV)/bin/activate: requirements.txt
 install: $(VENV)/bin/activate
 
 run: $(VENV)/bin/activate
-	$(RUN_ENV) $(PY) -m uvicorn api.main:app --reload --port 8000
+	$(RUN_ENV) $(PY) -m uvicorn api.main:app --reload --port 8080
 
-run-debug: RUN_ENV=RETRIEVAL_DEBUG=1 UVICORN_LOG_LEVEL=debug
+run-debug: RUN_ENV=APP_LOG_LEVEL=debug
 run-debug: run
 
 docker-build:
@@ -80,6 +89,25 @@ pack_and_push: $(VENV)/bin/activate
 
 build_datapoints: $(VENV)/bin/activate
 	$(PY) jobs/build_datapoints.py
+
+dataset-version-check:
+	@test -n "$(DATASET_VERSION)" || { echo "DATASET_VERSION is required (e.g. v13)."; exit 1; }
+	@printf "%s" "$(DATASET_VERSION)" | grep -Eq '^v[0-9A-Za-z_-]+$$' || { echo "Invalid DATASET_VERSION '$(DATASET_VERSION)'; expected v followed by [0-9A-Za-z_-]."; exit 1; }
+
+dataset-chunks: dataset-version-check $(VENV)/bin/activate
+	$(PY) jobs/pack_and_push.py --output-dir "$(DATASET_DIR)" --skip-upload
+
+dataset-datapoints: dataset-version-check $(VENV)/bin/activate
+	$(PY) jobs/build_datapoints.py
+
+dataset-upload:
+	gcloud storage cp "$(DATASET_DIR)/datapoints.jsonl" "gs://$(BUCKET_NAME)/$(DATASET_GCS_PREFIX)/datapoints.jsonl"
+	gcloud storage cp "$(DATASET_DIR)/chunks.jsonl.gz" "gs://$(BUCKET_NAME)/$(DATASET_GCS_PREFIX)/chunks.jsonl.gz"
+	gcloud storage cp "$(DATASET_DIR)/manifest.json" "gs://$(BUCKET_NAME)/$(DATASET_GCS_PREFIX)/manifest.json"
+	@echo "GCS browser: https://console.cloud.google.com/storage/browser/$(BUCKET_NAME)"
+
+dataset-pointer-update:
+	printf '{ "version": "%s" }\n' "$(DATASET_VERSION)" | gcloud storage cp - "gs://$(BUCKET_NAME)/$(DATASET_FOLDER)/current.json"
 
 test-build_datapoints: $(VENV)/bin/activate
 	$(PY) -m pytest -q tests/test_build_datapoints.py

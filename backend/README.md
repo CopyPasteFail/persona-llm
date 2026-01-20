@@ -1,6 +1,6 @@
 # Backend, FastAPI apps (`api/`)
 
-FastAPI service for the persona demo. Real mode integrates with Vertex AI Matching Engine and Gemini. Mock mode returns deterministic responses and is the default for local development.
+FastAPI service for the persona demo. Real mode uses local vector search by default and can fall back to Vertex AI Matching Engine. Mock mode returns deterministic responses and is the default for local development.
 
 ## Overview
 - Two apps:
@@ -55,8 +55,12 @@ Provide these through your shell or a private folder loader. Do not commit secre
 
 Common placeholders:
 - `API_KEY` remains the server secret (JWT signing fallback) and optional header for protected admin endpoints.
-- `BUCKET_NAME` / `CHUNKS_PATH` to locate the packaged JSONL side store (full GCS URI is derived at runtime).
-- Project, region, and model identifiers if using Vertex, names are placeholders only.
+- `BUCKET_NAME` selects the active dataset version in GCS via the internal pointer.
+- `VECTOR_BACKEND=local|matching_engine` controls vector search; Matching Engine IDs are required only for `matching_engine`.
+- `LLM_BACKEND=vertex|deterministic` controls LLM selection (mock defaults to deterministic; use Vertex with ADC).
+- `OPS_SECRET` protects `/ops/*` endpoints when `OPS_AUTH=enabled`.
+- Project, region, and model identifiers if using Vertex; names are placeholders only.
+Legacy note: `make be-pack_and_push` is only needed for older `CHUNKS_PATH` deployments.
 See `docs/IMPLEMENTATION_SPEC.md` for the full environment contract and defaults.
 
 ## Access keys
@@ -103,6 +107,8 @@ Example JSON:
 - `POST /auth/key-login` issues a bearer token.
 - `POST /auth/logout` clears session cookies when enabled.
 - `POST /chat` requires auth.
+- `GET /ops/vector/status` requires `x-ops-secret` when ops auth is enabled.
+- `POST /ops/vector/reload` requires `x-ops-secret` and is rate-limited.
 
 ### Curl examples
 ```bash
@@ -118,6 +124,14 @@ curl -s -X POST http://localhost:8080/chat \
   -H 'content-type: application/json' \
   -d '{"question":"demo"}' | jq .
 ```
+
+## Dataset switching (ops)
+Atomic update order:
+1) Upload `datasets/vNN/datapoints.jsonl`, `datasets/vNN/chunks.jsonl.gz`, `datasets/vNN/manifest.json`
+2) Update `datasets/current.json` to `{ "version": "vNN" }`
+3) Call `POST /ops/vector/reload` with `x-ops-secret: $OPS_SECRET` (or restart the service)
+
+Local dev can bypass ops auth with `OPS_AUTH=disabled`.
 
 ## CORS
 Strict allowlist. Real mode allows `http://localhost:3000` and `https://<project-id>.web.app` (set exact host before deploy). Mock mode allows `http://localhost:3000` and `http://127.0.0.1:3000`.

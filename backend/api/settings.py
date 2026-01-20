@@ -18,10 +18,13 @@ class Settings(BaseModel):
     PERSONA_NAME: str = Field(..., min_length=1, max_length=PERSONA_MAX_CHARS)
     PROJECT_ID: str = Field(...)
     REGION: str = Field(...)
-    INDEX_ENDPOINT_ID: str = Field(...)
-    DEPLOYED_INDEX_ID: str = Field(...)
+    LLM_MODEL_NAME: str = Field(default="gemini-2.5-flash")
+    INDEX_ENDPOINT_ID: str | None = Field(default=None)
+    DEPLOYED_INDEX_ID: str | None = Field(default=None)
     BUCKET_NAME: str = Field(...)
-    CHUNKS_PATH: str = Field(...)
+    CHUNKS_PATH: str | None = Field(default=None)
+    VECTOR_BACKEND: str = Field(default="local")
+    LLM_BACKEND: str = Field(default="vertex")
     API_KEY: str = Field(...)
     JWT_SECRET: str | None = Field(default=None)
     JWT_SESSION_TTL_SECONDS: int = Field(default=3600, ge=300, le=86400)
@@ -34,6 +37,8 @@ class Settings(BaseModel):
     MAX_OUTPUT_TOKENS: int = Field(..., ge=1, le=2000)
     REQ_TIMEOUT_MS: int = Field(..., ge=1000, le=60000)
     MOCK_ACCESS_KEYS_PATH: str | None = Field(default=None)
+    OPS_AUTH: str = Field(default="enabled")
+    OPS_SECRET: str | None = Field(default=None)
 
     @field_validator("PERSONA_NAME")
     @classmethod
@@ -47,6 +52,8 @@ class Settings(BaseModel):
     @property
     def chunks_uri(self) -> str:
         """Return a gs:// URI built from typed bucket/path fields."""
+        if not self.CHUNKS_PATH:
+            return ""
         bucket = self.BUCKET_NAME.rstrip("/")
         object_name = self.CHUNKS_PATH.lstrip("/")
         return f"gs://{bucket}/{object_name}"
@@ -55,6 +62,8 @@ class Settings(BaseModel):
     def index_endpoint_path(self) -> str:
         """Normalize index endpoint to a full resource path; tolerate prefilled path."""
         endpoint = (self.INDEX_ENDPOINT_ID or "").strip()
+        if not endpoint:
+            raise RuntimeError("INDEX_ENDPOINT_ID is required for matching_engine vector backend")
         if "/" in endpoint:
             return endpoint
         return (
@@ -103,10 +112,7 @@ REQUIRED_ENV_VARS = [
     "PERSONA_NAME",
     "PROJECT_ID",
     "REGION",
-    "INDEX_ENDPOINT_ID",
-    "DEPLOYED_INDEX_ID",
     "BUCKET_NAME",
-    "CHUNKS_PATH",
     "API_KEY",
     "MAX_OUTPUT_TOKENS",
     "REQ_TIMEOUT_MS",
@@ -179,7 +185,12 @@ def load_settings() -> Settings:
         raise RuntimeError(f"Missing required env vars: {sorted(set(missing_vars))}. {hint}")
 
     bucket_name = _require_env("BUCKET_NAME")
-    chunk_path = _require_env("CHUNKS_PATH")
+    chunk_path = os.getenv("CHUNKS_PATH")
+
+    vector_backend = (os.getenv("VECTOR_BACKEND") or "local").strip().lower()
+    if vector_backend == "matching_engine":
+        for required in ("INDEX_ENDPOINT_ID", "DEPLOYED_INDEX_ID"):
+            _require_env(required)
 
     try:
         max_input_tokens = _env_int("MAX_INPUT_TOKENS", 8000)
@@ -188,10 +199,13 @@ def load_settings() -> Settings:
             PERSONA_NAME=_require_env("PERSONA_NAME"),
             PROJECT_ID=_require_env("PROJECT_ID"),
             REGION=_require_env("REGION"),
-            INDEX_ENDPOINT_ID=_require_env("INDEX_ENDPOINT_ID"),
-            DEPLOYED_INDEX_ID=_require_env("DEPLOYED_INDEX_ID"),
+            LLM_MODEL_NAME=(os.getenv("LLM_MODEL_NAME") or "gemini-2.5-flash").strip(),
+            INDEX_ENDPOINT_ID=os.getenv("INDEX_ENDPOINT_ID"),
+            DEPLOYED_INDEX_ID=os.getenv("DEPLOYED_INDEX_ID"),
             BUCKET_NAME=bucket_name,
             CHUNKS_PATH=chunk_path,
+            VECTOR_BACKEND=vector_backend,
+            LLM_BACKEND=os.getenv("LLM_BACKEND") or "vertex",
             API_KEY=_require_env("API_KEY"),
             JWT_SECRET=os.getenv("JWT_SECRET"),
             JWT_SESSION_TTL_SECONDS=_env_int("JWT_SESSION_TTL_SECONDS", 3600),
@@ -204,6 +218,8 @@ def load_settings() -> Settings:
             MAX_OUTPUT_TOKENS=max_output_tokens,
             REQ_TIMEOUT_MS=int(_require_env("REQ_TIMEOUT_MS")),
             MOCK_ACCESS_KEYS_PATH=os.getenv("MOCK_ACCESS_KEYS_PATH"),
+            OPS_AUTH=os.getenv("OPS_AUTH") or "enabled",
+            OPS_SECRET=os.getenv("OPS_SECRET"),
         )
     except ValidationError as e:
         fields = [err["loc"][0] for err in e.errors()]

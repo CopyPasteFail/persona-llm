@@ -1,11 +1,13 @@
-"""Generate Vertex AI Matching Engine datapoints from persona chunks."""
+"""Generate normalized datapoints and a dataset manifest from persona chunks."""
 
 from __future__ import annotations
 
 import gzip
 import json
+import math
 import os
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Iterator, List, Mapping, MutableMapping, Sequence, cast
 
@@ -82,6 +84,10 @@ _DATAPOINT_FEATURE_VECTOR_FIELD = "featureVector"
 _DATAPOINT_CROWDING_TAG_FIELD = "crowdingTag"
 _DATAPOINT_RESTRICTS_FIELD = "restricts"
 _EMBEDDING_OUTPUT_DIMENSION_FIELD = "output_dimensionality"
+
+_DATASET_CHUNKS_FILENAME = "chunks.jsonl.gz"
+_DATASET_DATAPOINTS_FILENAME = "datapoints.jsonl"
+_DATASET_MANIFEST_FILENAME = "manifest.json"
 
 
 def _env_bool(name: str, default: str = "0") -> bool:
@@ -205,6 +211,26 @@ def _embedding_values(embedding: object) -> List[float]:
     return list(values)
 
 
+def _l2_normalize(vector: Iterable[float]) -> List[float]:
+    """Normalize a vector to unit length.
+
+    Inputs:
+    - vector: Iterable of numeric values.
+
+    Output:
+    - List of float values scaled to unit norm.
+
+    Edge cases:
+    - Raises RuntimeError for zero vectors to avoid invalid normalization.
+    """
+    values = [float(x) for x in vector]
+    norm = math.sqrt(sum(v * v for v in values))
+    if norm == 0:
+        raise RuntimeError("Embedding vector has zero norm; cannot normalize")
+    scale = 1.0 / norm
+    return [v * scale for v in values]
+
+
 def _write_datapoints(
     records: Sequence[dict[str, object]],
     embeddings: Sequence[Iterable[float]],
@@ -252,7 +278,7 @@ def _write_datapoints(
             datapoint: dict[str, object] = {
                 _DATAPOINT_ID_ALIAS_FIELD: datapoint_id,
                 _DATAPOINT_ID_FIELD: datapoint_id,
-                _DATAPOINT_FEATURE_VECTOR_FIELD: list(vector),
+                _DATAPOINT_FEATURE_VECTOR_FIELD: _l2_normalize(vector),
             }
             section = metadata_dict.get(_METADATA_SECTION_KEY)
             if isinstance(section, str) and section:
@@ -261,6 +287,29 @@ def _write_datapoints(
                 datapoint[_DATAPOINT_RESTRICTS_FIELD] = restricts
             handle.write(json.dumps(datapoint, ensure_ascii=False))
             handle.write("\n")
+
+
+def _write_dataset_manifest(
+    *,
+    output_dir: Path,
+    version: str,
+    embedding_model: str,
+    dimensions: int,
+    num_datapoints: int,
+) -> Path:
+    """Write the dataset manifest required by the runtime loader."""
+    manifest = {
+        "version": version,
+        "created_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "datapoints_file": _DATASET_DATAPOINTS_FILENAME,
+        "chunks_file": _DATASET_CHUNKS_FILENAME,
+        "embedding_model": embedding_model,
+        "dimensions": dimensions,
+        "num_datapoints": num_datapoints,
+    }
+    manifest_path = output_dir / _DATASET_MANIFEST_FILENAME
+    manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+    return manifest_path
 
 
 def main() -> None:
@@ -298,8 +347,29 @@ def main() -> None:
     output_path = Path(datapoints_output_value).expanduser()
     output_path.parent.mkdir(parents=True, exist_ok=True)
     gzip_output = _env_bool(_ENV_DATAPOINTS_GZIP, _DEFAULT_DATAPOINTS_GZIP)
-    if gzip_output and not output_path.suffix.endswith(".gz"):
-        output_path = output_path.with_suffix(output_path.suffix + ".gz")
+    if gzip_output:
+        raise RuntimeError(
+            f"{_ENV_DATAPOINTS_GZIP} must be 0; "
+            f"dataset datapoints must be {_DATASET_DATAPOINTS_FILENAME}"
+        )
+    if output_path.name != _DATASET_DATAPOINTS_FILENAME:
+        raise RuntimeError(
+            f"{_ENV_DATAPOINTS_FILE} must point to "
+            f".../{_DATASET_DATAPOINTS_FILENAME} for dataset builds"
+        )
+    dataset_dir = output_path.parent
+    dataset_version = dataset_dir.name
+    if not dataset_version:
+        raise RuntimeError(
+            f"Cannot infer dataset version from {output_path}; "
+            "use a versioned folder like datasets/v13/"
+        )
+    chunks_path = dataset_dir / _DATASET_CHUNKS_FILENAME
+    if not chunks_path.is_file():
+        raise RuntimeError(
+            f"Missing {_DATASET_CHUNKS_FILENAME} in {dataset_dir}; "
+            "build chunks before datapoints"
+        )
 
     schema_override = os.getenv(_ENV_DATAPOINTS_SCHEMA)
     input_override = os.getenv(_ENV_DATAPOINTS_INPUT)
@@ -407,14 +477,18 @@ def main() -> None:
             f"expected {dimensions}, received {observed_dimension_count}. "
             f"Ensure {_ENV_DATAPOINTS_DIMENSIONS} matches the embedding model output."
         )
+    manifest_path = _write_dataset_manifest(
+        output_dir=dataset_dir,
+        version=dataset_version,
+        embedding_model=model_name,
+        dimensions=observed_dimension_count,
+        num_datapoints=total,
+    )
     print(
         "Wrote "
         f"{total} datapoints ({observed_dimension_count} dims) to {output_path}"
     )
-    print(
-        "Ready for make gcp-index-upsert "
-        f"(uses {_ENV_DATAPOINTS_FILE} from backend.env)\n"
-    )
+    print(f"Wrote dataset manifest to {manifest_path}")
 
 
 if __name__ == "__main__":

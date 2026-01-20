@@ -17,15 +17,21 @@ Backend configuration is loaded from a dotenv file rather than a global `PRIVATE
 - **Backend variables (loaded from backend.env):**
   - `PERSONA_NAME`: Display name used in mock responses.
   - `REGION`: GCP region.
-  - `INDEX_ENDPOINT_ID`: Vertex AI Index Endpoint ID (store the trailing ID; the service reconstructs the full resource name).
-  - `DEPLOYED_INDEX_ID`: Deployed Index resource ID.
+  - `VECTOR_BACKEND`: `local` (default) or `matching_engine`.
+  - `LLM_BACKEND`: `vertex` (real app default) or `deterministic` (mock default).
+  - `INDEX_ENDPOINT_ID`: Vertex AI Index Endpoint ID (required only for `VECTOR_BACKEND=matching_engine`).
+  - `DEPLOYED_INDEX_ID`: Deployed Index resource ID (required only for `VECTOR_BACKEND=matching_engine`).
   - `BUCKET_NAME`: GCS bucket used for persona artifacts.
-  - `CHUNKS_PATH`: Object name of the packed chunk data.
+  - `CHUNKS_PATH`: Legacy chunk object name (fallback path).
+  - `OPS_AUTH`: `enabled` (default) or `disabled` for local dev (bypasses ops auth).
+  - `OPS_SECRET`: Required when `OPS_AUTH=enabled` for `/ops/*` endpoints.
   - `API_KEY`: Shared secret for JWT signing fallback and any internal calls; **not** an access key.
   - `MAX_INPUT_TOKENS`: Input context budget for LLM calls (defaults to 8000 if unset).
   - `MAX_OUTPUT_TOKENS`: Output budget for LLM calls.
 - `REQ_TIMEOUT_MS`: Request timeout in milliseconds.
   - Applied to outbound calls that accept timeouts (GCS chunk download, Matching Engine queries, Gemini generation). Some SDK calls may ignore this if they lack timeout support.
+
+`OPS_SECRET` should not be committed; set it via the private overlay, `gcloud run services update --set-env-vars OPS_SECRET=...`, or Secret Manager.
 
 - **Access keys (Firestore):**
   - Stored in collection `access_keys` with fields: `key_hash` (bcrypt), `key_fingerprint` (SHA-256), `expires_at`, `revoked`, optional `label`, `created_at`, `created_by`.
@@ -61,6 +67,8 @@ Backend configuration is loaded from a dotenv file rather than a global `PRIVATE
 
 **Protected**
 - `POST /chat` – accepts JSON and returns structured JSON. Real mode returns 503 when the chunk store is not loaded at startup or downstream services are unavailable.
+- `GET /ops/vector/status` – returns loaded version + pointer version (requires `x-ops-secret` when ops auth is enabled).
+- `POST /ops/vector/reload` – reloads the dataset cache (rate-limited to 1 per 10s).
 
 ### Request schema
 - `question`: str
@@ -79,12 +87,26 @@ Backend configuration is loaded from a dotenv file rather than a global `PRIVATE
 See [backend/README.md#curl-examples](here) for the runnable curl commands and current local ports.
 
 ## Retrieval and LLM pipeline
-- `api/retrieval.py`: first-person normalization and retrieval pipeline (`embed_query`, `search_vector_store`, `apply_filters_and_boosting`, `build_context_prompt`) implemented; focus now on tests, tuning, and live Vertex integration.
-- `api/llm.py`: `build_llm_prompt` returns the strict format, and `call_gemini_flash` is implemented via the Vertex AI Python SDK (Gemini Flash) with basic usage extraction.
+- `api/retrieval.py`: first-person normalization and retrieval pipeline (`embed_query`, `search_vector_store`, `apply_filters_and_boosting`, `build_context_prompt`).
+- `api/dataset_cache.py`: versioned dataset loader + in-process cache with pointer-based reloads.
+- `api/vector_backends.py`: local cosine search (default) or Matching Engine (optional).
+- `api/rag_chat_orchestrator.py`: shared RAG flow for main and mock handlers.
+- `api/llm.py`: prompt construction and Gemini Flash calls.
+- `api/llm_backends.py`: Vertex LLM vs deterministic mock backend selection.
+- `api/ops_routes.py` + `api/ops_security.py`: `/ops/vector/status` and `/ops/vector/reload` with header auth + rate limiting.
 
 ## Ingestion jobs
-- `jobs/pack_and_push.py` validates JSONL against `schema/chunk.schema.json`, and if any bullet **or paragraph** exceeds ~2.2k characters (~450 tokens), splits it by sentence boundaries (never mid-sentence). Writes `chunks-<sha>.jsonl.gz` with enriched metadata and prints a `gs://` URI if a `bucket:` is provided in a YAML file passed with `--settings`.
-- `jobs/build_datapoints.py` loads the same chunk file, calls the configured Vertex AI embedding model (default `gemini-embedding-001` at 3,072 dims), and emits a newline-delimited JSON file ready for `gcloud ai index-endpoints upsert-datapoints`. Embedding calls are batched in groups of 16 (`DATAPOINTS_BATCH_SIZE` in the env) to minimize network round trips without risking payload limits, and the job enforces `DATAPOINTS_DIMENSIONS` so the vectors match the Matching Engine index while staying within the model’s supported dimensionality.
+- `jobs/pack_and_push.py` validates JSONL against `schema/chunk.schema.json`, and if any bullet **or paragraph** exceeds ~2.2k characters (~450 tokens), splits it by sentence boundaries (never mid-sentence). It can also write `chunks.jsonl.gz` into a dataset folder via `--output-dir`.
+- `jobs/build_datapoints.py` calls the configured Vertex AI embedding model (default `text-embedding-004` at 768 dims), writes **unit-normalized** embeddings to `datapoints.jsonl`, and emits a required `manifest.json` (embedding model, dimensions, and count). Embedding calls are batched in groups of 16 (`DATAPOINTS_BATCH_SIZE`) and `DATAPOINTS_DIMENSIONS` is enforced to keep vectors consistent with your index and manifest.
+
+`manifest.json` required fields:
+- `version`
+- `created_at`
+- `datapoints_file`
+- `chunks_file`
+- `embedding_model`
+- `dimensions`
+- `num_datapoints`
 
 Validation is performed against the machine-readable schema:
 - [`chunk.schema.json`](../backend/schema/chunk.schema.json)
@@ -100,8 +122,8 @@ For a human-readable guide explaining the meaning, use cases, benefits, and trad
 - **Tags**:
   - Always add `role:infra` or `role:product`.
   - Optionally add `topic:*` for precision (`topic:kubernetes`, `topic:roadmap`).
-- **Chunks**: store as JSONL lines with text + metadata; keep gzipped in GCS as the object named by `CHUNKS_PATH` in `BUCKET_NAME`.
-- **Vectors**: embeddings from each chunk → upsert to **Vertex AI Matching Engine** for semantic search.
+- **Chunks**: store as JSONL lines with text + metadata; keep gzipped in GCS as `datasets/<version>/chunks.jsonl.gz` and switch versions via `datasets/current.json`.
+- **Vectors**: embeddings from each chunk → local cosine search by default; optional upsert to **Vertex AI Matching Engine** for semantic search.
 - **BM25**: lightweight inverted index over the same chunks; built in memory at startup.
 
 ### Ingestion stage (one-time or occasional)
@@ -111,15 +133,16 @@ For a human-readable guide explaining the meaning, use cases, benefits, and trad
    - Attach `role` + optional `topic` tags.
    - Validate against `chunk.schema.json`.
 2. **Packaging**
-   - Write `chunks-<sha>.jsonl.gz` with metadata fragments.
-   - Upload to GCS (sidecar store).
+   - Write `chunks.jsonl.gz` into `datasets/<version>/`.
+   - Upload the dataset folder to GCS.
 3. **Embedding + upsert**
-   - `backend/jobs/build_datapoints.py` (invoked via `make be-build_datapoints`) batches persona chunks, calls the selected Vertex embedding model (default `gemini-embedding-001`), and writes the `DATAPOINTS_FILE` artifact with ready-to-upload datapoints.
-   - `make gcp-index-upsert` converts that artifact if needed, uploads it to `gs://$BUCKET_NAME/matching-engine/<timestamp>/datapoints.json`, and triggers `gcloud ai indexes update` so Matching Engine serves the embeddings consumed by `embed_query` → `search_vector_store`.
+   - `backend/jobs/build_datapoints.py` batches persona chunks, calls the selected Vertex embedding model, writes `datapoints.jsonl`, and emits `manifest.json` with model/dim/count metadata.
+   - `make gcp-index-upsert` remains available if you choose `VECTOR_BACKEND=matching_engine`.
 
 > Next implementation stage: deepen verification for the now-live runtime—add golden tests for retrieval + LLM prompts, cover API key/rate-limit branches, and run the end-to-end integration test against the real backend.
 
 ### Vector search configuration (Vertex AI Matching Engine)
+This section applies only when `VECTOR_BACKEND=matching_engine`.
 - **Index type:** Tree-AH with dot-product distance; match cosine behaviour by L2-normalizing every embedding (during upsert and query).
 - **Dimensions:** Match `DATAPOINTS_DIMENSIONS`/`DATAPOINTS_MODEL` (3,072 with `gemini-embedding-001`, 768 with the `text-embedding-00x` family).
 - **Replicas:** `ME_MIN_REPLICAS`/`ME_MAX_REPLICAS` control the min/max replica counts during `make gcp-index-deploy` (default 1/1); bump the max to allow autoscaling.
@@ -129,13 +152,13 @@ For a human-readable guide explaining the meaning, use cases, benefits, and trad
 ### Deployment/runtime stage (every query)
 
 1. **Startup (Cloud Run container)**
-   - Load env vars (`BUCKET_NAME`, `CHUNKS_PATH`, `PROJECT_ID`, `INDEX_ENDPOINT_ID`, etc.).
-   - Load `chunks-<sha>.jsonl.gz` from GCS.
+   - Load env vars (`BUCKET_NAME`, `VECTOR_BACKEND`, etc.).
+   - Resolve `datasets/current.json` to a version folder and load `datapoints.jsonl`, `chunks.jsonl.gz`, `manifest.json`.
    - Build in-memory BM25 inverted index (tokenize chunks, compute idf, etc.).
 2. **Query flow**
    - **First-person normalization** (convert “Omer Reznik” → “I”).
    - **Role classification**: cheap heuristic/embedding sim → `role=infra` or `role=product`. Leave unclassified for mixed queries.
-   - **Vector search (ANN)**: embed query, call Vertex Matching Engine, fetch ~50 candidates.
+   - **Vector search**: embed query, run local cosine search by default or call Vertex Matching Engine when configured.
    - **BM25 scoring**: run query keywords against in-memory index; get lexical scores.
    - **Rerank/boost**:
      - Blend scores: `0.7 * ANN + 0.3 * BM25 + role/topic boosts`.

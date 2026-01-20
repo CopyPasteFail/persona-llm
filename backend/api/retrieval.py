@@ -37,6 +37,7 @@ from typing import (
     cast,
 )
 
+from . import dataset_cache, vector_backends
 from .prompts import QUESTION_PREFIX
 from .settings import settings
 
@@ -198,6 +199,7 @@ def configure_vector_client(client: Optional[_VectorSearchClient]) -> None:
 
 
 def _l2_normalize(vector: Sequence[float]) -> List[float]:
+    """Return a unit-normalized copy of the provided vector."""
     norm = math.sqrt(sum(float(x) * float(x) for x in vector))
     if norm == 0:
         return [float(x) for x in vector]
@@ -208,14 +210,12 @@ def _l2_normalize(vector: Sequence[float]) -> List[float]:
 def _get_vector_client() -> _VectorSearchClient:
     global _vector_client
     if _vector_client is None:
-        _vector_client = _MatchingEngineClient(
-            index_endpoint_path=settings.index_endpoint_path,
-            deployed_index_id=settings.DEPLOYED_INDEX_ID,
-        )
+        _vector_client = vector_backends.get_vector_backend()
     return _vector_client
 
 
 def search_vector_store(embedding: Optional[Sequence[float]], top_k: int = 8) -> List[Dict[str, Any]]:
+    """Normalize and query the vector backend, returning candidate neighbors."""
     if embedding is None:
         return []
     if top_k <= 0:
@@ -440,8 +440,10 @@ _chunks_by_id: Optional[Dict[str, Dict[str, Any]]] = None
 _bm25_index: Optional[_Bm25Index] = None
 
 
-def configure_chunk_store(chunks: Optional[Iterable[Mapping[str, Any]]]) -> None:
-    """Allow tests to inject a deterministic chunk corpus."""
+def configure_chunk_store(
+    chunks: Optional[Iterable[Mapping[str, Any]] | Mapping[str, Mapping[str, Any]]]
+) -> None:
+    """Allow tests or callers to inject a deterministic chunk corpus."""
     global _chunks_by_id, _bm25_index
     with _chunk_lock:
         if chunks is None:
@@ -450,21 +452,36 @@ def configure_chunk_store(chunks: Optional[Iterable[Mapping[str, Any]]]) -> None
             return
 
         mapping: Dict[str, Dict[str, Any]] = {}
-        for chunk in chunks:
-            chunk_id = str(chunk.get("id") or "")
-            text = chunk.get("text")
-            if not chunk_id or not isinstance(text, str):
-                continue
-            metadata_obj = chunk.get("metadata")
-            metadata_dict: Dict[str, Any] = {}
-            if isinstance(metadata_obj, Mapping):
-                metadata_dict = dict(cast(Mapping[str, Any], metadata_obj))
-            record: Dict[str, Any] = {
-                "id": chunk_id,
-                "text": text,
-                "metadata": metadata_dict,
-            }
-            mapping[chunk_id] = record
+        if isinstance(chunks, Mapping):
+            for chunk_id, chunk in chunks.items():
+                text = chunk.get("text")
+                if not chunk_id or not isinstance(text, str):
+                    continue
+                metadata_obj = chunk.get("metadata")
+                metadata_dict: Dict[str, Any] = {}
+                if isinstance(metadata_obj, Mapping):
+                    metadata_dict = dict(cast(Mapping[str, Any], metadata_obj))
+                mapping[chunk_id] = {
+                    "id": chunk_id,
+                    "text": text,
+                    "metadata": metadata_dict,
+                }
+        else:
+            for chunk in chunks:
+                chunk_id = str(chunk.get("id") or "")
+                text = chunk.get("text")
+                if not chunk_id or not isinstance(text, str):
+                    continue
+                metadata_obj = chunk.get("metadata")
+                metadata_dict: Dict[str, Any] = {}
+                if isinstance(metadata_obj, Mapping):
+                    metadata_dict = dict(cast(Mapping[str, Any], metadata_obj))
+                record: Dict[str, Any] = {
+                    "id": chunk_id,
+                    "text": text,
+                    "metadata": metadata_dict,
+                }
+                mapping[chunk_id] = record
         _chunks_by_id = mapping
         _bm25_index = _Bm25Index(mapping) if mapping else None
 
@@ -507,7 +524,10 @@ def _resolve_local_chunks_path(name: str) -> Optional[Path]:
 
 
 def _iter_chunk_records() -> Iterable[Dict[str, Any]]:
-    path_value = settings.CHUNKS_PATH
+    """Yield chunk records from local disk or GCS for backward compatibility."""
+    path_value = settings.CHUNKS_PATH or ""
+    if not path_value:
+        return []
     local_path = _resolve_local_chunks_path(path_value)
     if local_path:
         opener = gzip.open if local_path.suffix.endswith(".gz") else open
@@ -550,6 +570,7 @@ def _iter_chunk_records() -> Iterable[Dict[str, Any]]:
 
 
 def _ensure_chunk_store_loaded() -> None:
+    """Ensure the chunk store is loaded before applying filters."""
     global _chunks_by_id, _bm25_index
     if _chunks_by_id is not None:
         return
@@ -557,6 +578,18 @@ def _ensure_chunk_store_loaded() -> None:
     with _chunk_lock:
         if _chunks_by_id is not None:
             return
+        try:
+            cache = dataset_cache.get_or_load_cache()
+            configure_chunk_store(cache.chunks_by_id)
+            return
+        except Exception as exc:
+            if (settings.DATASET_POINTER_PATH or "").strip():
+                raise RuntimeError(
+                    "Failed to load dataset cache while DATASET_POINTER_PATH is configured"
+                ) from exc
+            logger.exception(
+                "Failed to load dataset cache for chunks; falling back to CHUNKS_PATH."
+            )
         records: Dict[str, Dict[str, Any]] = {}
         for record in _iter_chunk_records():
             chunk_id = str(record.get("id") or "")
@@ -703,102 +736,3 @@ class _VertexEmbeddingClient:
             if values is not None:
                 return [float(v) for v in cast(Iterable[Any], values)]
         raise RuntimeError("Embedding response missing values field")
-
-
-class _MatchingEngineClient:
-    """Lazy wrapper around Vertex AI Matching Engine."""
-
-    def __init__(self, *, index_endpoint_path: str, deployed_index_id: str) -> None:
-        self._index_endpoint_path = index_endpoint_path
-        self._deployed_index_id = deployed_index_id
-        self._endpoint = None
-
-    def _ensure_endpoint(self):
-        if self._endpoint is None:
-            from google.cloud.aiplatform.matching_engine.matching_engine_index_endpoint import (
-                MatchingEngineIndexEndpoint,
-            )
-
-            self._endpoint = MatchingEngineIndexEndpoint(
-                index_endpoint_name=self._index_endpoint_path
-            )
-        return self._endpoint
-
-    def query(self, embedding: Sequence[float], *, top_k: int) -> List[Dict[str, Any]]:
-        endpoint = self._ensure_endpoint()
-        try:
-            responses = endpoint.find_neighbors(
-                deployed_index_id=self._deployed_index_id,
-                queries=[list(embedding)],
-                num_neighbors=top_k,
-                timeout=settings.request_timeout_seconds,
-            )
-        except TypeError:
-            responses = endpoint.find_neighbors(
-                deployed_index_id=self._deployed_index_id,
-                queries=[list(embedding)],
-                num_neighbors=top_k,
-            )
-
-        if not responses:
-            return []
-
-        # Matching Engine returns one response per query, we send a single query.
-        response = responses[0]
-        neighbors = getattr(response, "neighbors", [])
-        if not neighbors:
-            return []
-
-        return [_neighbor_to_candidate(neighbor) for neighbor in neighbors]
-
-
-def _neighbor_proto(neighbor: Any) -> Any:
-    """Extract the underlying proto from a Matching Engine neighbor."""
-    to_proto = getattr(neighbor, "to_proto", None)
-    if callable(to_proto):
-        proto = to_proto()
-        if proto is not None:
-            return proto
-
-    for attr in ("proto", "_proto", "_pb"):
-        proto = getattr(neighbor, attr, None)
-        if proto is not None:
-            return proto
-
-    raise AttributeError("Matching Engine neighbor lacks a proto representation")
-
-
-def _neighbor_to_candidate(neighbor: Any) -> Dict[str, Any]:
-    """Convert a Matching Engine neighbor proto into our simplified dict."""
-    try:
-        from google.protobuf.json_format import MessageToDict
-    except ImportError:
-        MessageToDict = None
-
-    if MessageToDict is None:
-        raise RuntimeError("google-cloud-aiplatform dependency is required for live vector search")
-
-    # Convert proto with field names preserved to avoid snake/camel churn.
-    neighbor_dict = MessageToDict(_neighbor_proto(neighbor), preserving_proto_field_name=True)
-    datapoint = neighbor_dict.get("datapoint", {})
-
-    candidate: Dict[str, Any] = {
-        "id": datapoint.get("datapointId")
-        or neighbor_dict.get("datapointId")
-        or neighbor_dict.get("id"),
-        "distance": float(neighbor_dict.get("distance", 0.0)),
-    }
-
-    feature_vector = datapoint.get("featureVector")
-    if feature_vector is not None:
-        candidate["featureVector"] = [float(x) for x in feature_vector]
-
-    restricts = datapoint.get("restricts")
-    if restricts:
-        candidate["restricts"] = restricts
-
-    crowding_tag = datapoint.get("crowdingTag")
-    if crowding_tag:
-        candidate["crowdingTag"] = crowding_tag
-
-    return candidate

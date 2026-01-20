@@ -16,6 +16,8 @@
 13. [Chunk Identity vs Order (chunk_id and position)](#13-chunk-identity-vs-order-chunk_id-and-position)
 14. [Overlap for Retrieval Continuity](#14-overlap-for-retrieval-continuity)
 15. [Vertex Matching Engine Update Mode (Batch Update)](#15-vertex-matching-engine-update-mode-batch-update)
+16. [Versioned Dataset Folder + Pointer](#16-versioned-dataset-folder--pointer)
+17. [Pre-normalized Embeddings](#17-pre-normalized-embeddings)
 
 ## 1. One CV file per Role (role:infra, role:product)
 
@@ -309,3 +311,37 @@
 - No real-time inserts/deletes. If data starts changing frequently, the pipeline must shift to streaming.
 
 **Decision:** Use `BATCH_UPDATE` for now. The CV persona changes rarely, and keeping the index in batch mode reduces spend and complexity. We’ll revisit streaming only if we need sub-minute freshness.
+
+---
+
+## 16. Versioned Dataset Folder + Pointer
+
+**What:** Store coupled artifacts in `datasets/<version>/` (`datapoints.jsonl`, `chunks.jsonl.gz`, `manifest.json`) and atomically switch versions by updating `datasets/current.json`.  
+**Alternatives considered:** Use per-deploy env vars or hardcode file names in the service.
+
+**Pros:**
+- Atomic switch with a tiny pointer write, no partial data loads.
+- Easy rollback (republish the pointer to a prior version).
+- Single bucket, predictable paths, and explicit manifest for validation.
+
+**Cons:**  
+- Requires a manifest discipline and a reload call after pointer updates.
+
+**Decision:** Use a versioned folder with a pointer file. It keeps deployments stable while allowing safe, explicit data changes.
+
+---
+
+## 17. Pre-normalized Embeddings
+
+**What:** Normalize embeddings at ingest time and require unit-length vectors in `datapoints.jsonl`.  
+**Alternatives considered:** Normalize at query time only or normalize both sides at runtime.
+
+**Pros:**
+- Dot product equals cosine similarity without extra per-vector work.
+- Consistent across backends (local or Matching Engine).
+- Keeps runtime logic simple and predictable.
+
+**Cons:**  
+- Requires validation and guardrails during ingest and load.
+
+**Decision:** Always normalize embeddings during ingest, validate norms at load, and normalize query vectors at request time.
