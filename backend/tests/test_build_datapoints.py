@@ -13,6 +13,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from jobs import build_datapoints
 
 ALLOW_TOKENS_FIELD = "allowTokens"
@@ -122,7 +124,11 @@ def test_write_datapoints_emits_expected_json_lines(tmp_path: Path) -> None:
     datapoint: dict[str, Any] = serialized[0]
     assert datapoint[DATAPOINT_ID_FIELD] == CHUNK_ID_ONE
     assert datapoint[ID_FIELD] == CHUNK_ID_ONE
-    assert datapoint[FEATURE_VECTOR_FIELD] == EMBEDDINGS_FOR_SINGLE_RECORD[0]
+    assert datapoint[FEATURE_VECTOR_FIELD] == pytest.approx(
+        build_datapoints._l2_normalize( # pyright: ignore[reportPrivateUsage]
+            EMBEDDINGS_FOR_SINGLE_RECORD[0]
+        )
+    )
     assert datapoint[CROWDING_TAG_FIELD] == PROFILE_SECTION
     assert datapoint[RESTRICTS_FIELD] == [
         {NAMESPACE_FIELD: ROLE_FIELD, ALLOW_TOKENS_FIELD: [ROLE_VALUE]},
