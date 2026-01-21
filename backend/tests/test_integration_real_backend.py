@@ -1,4 +1,4 @@
-"""Integration tests that hit a live backend using real credentials and config."""
+"""Integration tests that hit an integrated backend using Firestore credentials and config."""
 
 import os
 from typing import Generator
@@ -38,7 +38,7 @@ def _get_base_url() -> str:
     base_url = os.getenv(BASE_URL_ENV, "")
     print(f"[integration] Target BASE_URL={base_url!r}")
     if not base_url or not base_url.startswith(BASE_URL_PREFIX):
-        pytest.skip(f"Set {BASE_URL_ENV} to run real backend integration tests")
+        pytest.skip(f"Set {BASE_URL_ENV} to run integration tests against an integrated backend ")
     return base_url.rstrip("/")
 
 
@@ -103,12 +103,12 @@ def test_real_backend_health(base_url: str, http_client: httpx.Client) -> None:
 
 @pytest.mark.integration
 def test_real_backend_first_person(base_url: str, http_client: httpx.Client) -> None:
-    """Verify real backend answers in first person.
+    """Verify integrated backend answers in first person.
 
     What is tested:
         Auth flow and chat response content against a live backend.
     How it's tested:
-        Log in with a real access key, then call /chat and inspect the answer.
+        Log in with a Firestore-hosted access key, then call /chat and inspect the answer.
     Expected result format:
         Statuses are 200, answer includes TLDR/Wrap markers and first-person.
     """
@@ -124,7 +124,7 @@ def test_real_backend_first_person(base_url: str, http_client: httpx.Client) -> 
     response_body = chat_response.json()
     answer_text = response_body[ANSWER_FIELD]
     assert TLDR_MARKER in answer_text and WRAP_MARKER in answer_text
-    # In real mode, response should include first-person pronouns.
+    # In integrated mode, response should include first-person pronouns.
     assert any(pronoun in answer_text for pronoun in FIRST_PERSON_PRONOUNS)
 
 

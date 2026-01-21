@@ -80,7 +80,7 @@ class FakeSnapshot:
         self.exists = data is not None
 
     def to_dict(self) -> DocumentData:
-        """Return snapshot data in the same shape as the real client."""
+        """Return snapshot data in the same shape as the Firestore client."""
         return dict(self._data) if self._data is not None else {}
 
 

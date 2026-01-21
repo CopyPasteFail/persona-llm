@@ -701,7 +701,7 @@ def build_context_prompt(question: str, selected: List[Dict[str, Any]]) -> str:
     return "\n\n".join(sections)
 
 def has_signal(selected: List[Dict[str, Any]]) -> bool:
-    """Helper used by main.py mock/real path to decide if we answer at all."""
+    """Helper used by main.py mock/integrated path to decide if we answer at all."""
     return bool(selected)
 
 

@@ -1,6 +1,6 @@
 """Optional live integration test for Vertex AI Matching Engine.
 
-The test is skipped by default because it requires real cloud credentials and a
+The test is skipped by default because it requires cloud credentials and a
 running deployment. When opted-in (``RUN_VERTEX_SEARCH_TEST=1`` with a sample
 embedding provided), it exercises the production ``search_vector_store`` path
 end-to-end against the configured Matching Engine endpoint to catch auth or API
