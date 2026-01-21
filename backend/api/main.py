@@ -10,12 +10,13 @@ from contextlib import asynccontextmanager
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 
-from .types import ChatRequest, ChatResponse
+from .types import ChatRequest, ChatResponse, Usage
 from .security import Session, check_rate_limit_dependency, get_current_session
 from .settings import settings
 from .auth import router as auth_router
 from . import dataset_cache, retrieval
 from . import llm_backends, ops_routes, rag_chat_orchestrator
+from .llm import GeminiEmptyResponseError
 
 API_TITLE = "Persona LLM API"
 API_VERSION = "1.0.0"
@@ -198,6 +199,34 @@ async def chat(
 
     except HTTPException:
         raise
+    except GeminiEmptyResponseError as exc:
+        if exc.is_token_starvation:
+            message = (
+                "Gemini returned no text, likely token starvation "
+                "(thinking consumed output budget)"
+            )
+        else:
+            message = "Gemini returned no text, cause unknown"
+        logger.warning(
+            message,
+            extra={
+                "request_id": request_id,
+                "elapsed_ms": int((time.time() - request_start_time) * 1000),
+                "ip": getattr(request.client, "host", None),
+                "finish_reason": exc.finish_reason,
+                "prompt_token_count": exc.prompt_token_count,
+                "total_token_count": exc.total_token_count,
+                "thoughts_token_count": exc.thoughts_token_count,
+                "is_token_starvation": exc.is_token_starvation,
+                "key_id": getattr(session, "key_id", None),
+            },
+        )
+        return ChatResponse(
+            answer="",
+            citations=[],
+            usage=Usage(input_tokens=0, output_tokens=0),
+            input_token_limit=settings.MAX_INPUT_TOKENS,
+        )
     except Exception as exc:
         logger.exception(
             EVENT_CHAT_FAILED,

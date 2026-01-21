@@ -28,11 +28,43 @@ PROMPT_ROLE_KEY = "role"
 PROMPT_CONTENT_KEY = "content"
 USAGE_PROMPT_TOKEN_KEYS = ("prompt_token_count", "prompt_tokens")
 USAGE_CANDIDATE_TOKEN_KEYS = ("candidates_token_count", "candidates_tokens")
+USAGE_TOTAL_TOKEN_KEYS = ("total_token_count", "total_tokens")
+USAGE_THOUGHTS_TOKEN_KEYS = ("thoughts_token_count", "thoughts_tokens")
+FINISH_REASON_MAX_TOKENS = "MAX_TOKENS"
+TOKEN_STARVATION_THRESHOLD_FRACTION = 0.85
 
 Chunk = dict[str, Any]
 UsageMetadata = dict[str, int]
 
 logger = logging.getLogger(__name__)
+
+
+class GeminiEmptyResponseError(RuntimeError):
+    """
+    Error raised when Gemini returns a response without extractable text.
+
+    Inputs: message and optional metadata extracted from the response.
+    Output: an exception carrying finish reason, token counts, and a token-starvation flag.
+    Edge cases: metadata fields are None when usage or finish info is unavailable.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        finish_reason: str | None,
+        prompt_token_count: int | None,
+        total_token_count: int | None,
+        thoughts_token_count: int | None,
+        is_token_starvation: bool,
+    ) -> None:
+        super().__init__(message)
+        self.finish_reason = finish_reason
+        self.prompt_token_count = prompt_token_count
+        self.total_token_count = total_token_count
+        self.thoughts_token_count = thoughts_token_count
+        self.is_token_starvation = is_token_starvation
+
 
 class PromptMessage(TypedDict):
     role: str
@@ -409,7 +441,7 @@ def _extract_response_text(response: Any, max_output_tokens: int | None = None) 
 
     Input: raw SDK response object or dict.
     Output: aggregated response text.
-    Edge cases: if no text is found, raises a runtime error; trims whitespace
+    Edge cases: if no text is found, raises GeminiEmptyResponseError; trims whitespace
     and joins candidate parts with newlines.
     """
     try:
@@ -419,7 +451,11 @@ def _extract_response_text(response: Any, max_output_tokens: int | None = None) 
         message = "Gemini response contained no text"
         if safety_info:
             message = f"{message} ({safety_info})"
-        raise RuntimeError(message) from exc
+        raise _build_empty_response_error(
+            response,
+            max_output_tokens=max_output_tokens,
+            message=message,
+        ) from exc
     if isinstance(text, str) and text.strip():
         return text.strip()
 
@@ -443,7 +479,11 @@ def _extract_response_text(response: Any, max_output_tokens: int | None = None) 
     message = "Gemini response did not contain text"
     if safety_info:
         message = f"{message} ({safety_info})"
-    raise RuntimeError(message)
+    raise _build_empty_response_error(
+        response,
+        max_output_tokens=max_output_tokens,
+        message=message,
+    )
 
 
 def _format_safety_info(response: Any, *, max_output_tokens: int | None = None) -> str:
@@ -489,6 +529,96 @@ def _format_finish_reason(value: Any) -> str:
     if isinstance(name, str) and name:
         return name
     return str(value)
+
+
+def _extract_finish_reason(response: Any) -> Optional[str]:
+    """
+    Extract the finish_reason from the first candidate when available.
+
+    Input: raw SDK response object or dict.
+    Output: normalized finish_reason string or None.
+    Edge cases: returns None when the response has no candidates or reason.
+    """
+    candidates: Sequence[Any] = cast(
+        Sequence[Any],
+        getattr(response, "candidates", None) or [],
+    )
+    candidate = candidates[0] if candidates else None
+    if candidate is None:
+        return None
+    finish_reason = _format_finish_reason(getattr(candidate, "finish_reason", None))
+    return finish_reason or None
+
+
+def _extract_usage_metadata_counts(
+    usage_metadata: Any,
+) -> tuple[Optional[int], Optional[int], Optional[int]]:
+    """
+    Extract prompt, total, and thoughts token counts from usage metadata.
+
+    Input: usage metadata object or mapping.
+    Output: prompt, total, and thoughts token counts, each optional.
+    Edge cases: missing or invalid values yield None.
+    """
+    if usage_metadata is None:
+        return None, None, None
+    prompt_token_count = _usage_value(usage_metadata, USAGE_PROMPT_TOKEN_KEYS)
+    total_token_count = _usage_value(usage_metadata, USAGE_TOTAL_TOKEN_KEYS)
+    thoughts_token_count = _usage_value(usage_metadata, USAGE_THOUGHTS_TOKEN_KEYS)
+    return prompt_token_count, total_token_count, thoughts_token_count
+
+
+def _is_token_starvation(
+    *,
+    finish_reason: str | None,
+    thoughts_token_count: int | None,
+    max_output_tokens: int | None,
+) -> bool:
+    """
+    Determine whether an empty response was likely caused by token starvation.
+
+    Inputs: finish_reason, thoughts token count, and max output tokens.
+    Output: True when the finish reason is MAX_TOKENS and thoughts consumed the budget.
+    Edge cases: missing values return False.
+    """
+    if finish_reason != FINISH_REASON_MAX_TOKENS:
+        return False
+    if thoughts_token_count is None or max_output_tokens is None:
+        return False
+    return thoughts_token_count >= max_output_tokens * TOKEN_STARVATION_THRESHOLD_FRACTION
+
+
+def _build_empty_response_error(
+    response: Any,
+    *,
+    max_output_tokens: int | None,
+    message: str,
+) -> GeminiEmptyResponseError:
+    """
+    Build a GeminiEmptyResponseError from a response and derived metadata.
+
+    Inputs: response object, output token cap, and error message.
+    Output: GeminiEmptyResponseError populated with finish and usage metadata.
+    Edge cases: missing usage or finish metadata yields None values.
+    """
+    finish_reason = _extract_finish_reason(response)
+    usage_metadata = getattr(response, "usage_metadata", None)
+    prompt_token_count, total_token_count, thoughts_token_count = (
+        _extract_usage_metadata_counts(usage_metadata)
+    )
+    is_token_starvation = _is_token_starvation(
+        finish_reason=finish_reason,
+        thoughts_token_count=thoughts_token_count,
+        max_output_tokens=max_output_tokens,
+    )
+    return GeminiEmptyResponseError(
+        message,
+        finish_reason=finish_reason,
+        prompt_token_count=prompt_token_count,
+        total_token_count=total_token_count,
+        thoughts_token_count=thoughts_token_count,
+        is_token_starvation=is_token_starvation,
+    )
 
 
 def _summarize_safety_ratings(ratings: Any) -> str:
