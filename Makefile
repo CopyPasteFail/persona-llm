@@ -152,7 +152,7 @@ install:
 	$(MAKE) be-install
 
 local-integrated: require-private
-	PERSONA_DIR="$${PERSONA_DIR:-$(PRIVATE_DIR)/persona}" $(MAKE) be-run & \
+	PERSONA_DIR="$${PERSONA_DIR:-$(PRIVATE_DIR)/persona}" OPS_AUTH=disabled $(MAKE) be-run & \
 	NEXT_PUBLIC_API_URL="http://localhost:8080" PRIVATE_DIR="$(PRIVATE_DIR)" $(MAKE) fe-dev
 
 local-mock: require-private

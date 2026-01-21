@@ -6,6 +6,17 @@
 - **matching_engine**: Vertex AI Matching Engine for larger corpora or low-latency/high-recall needs. Requires `INDEX_ENDPOINT_ID` + `DEPLOYED_INDEX_ID`.
 - Query embeddings are L2-normalized at request time; datapoints are pre-normalized at ingest, and the runtime validates norms.
 
+## Dataset source (applies to both backends)
+- `DATASET_URI` selects where dataset artifacts are read from (when unset, `BUCKET_NAME` is used).
+  - `gs://my-bucket` (GCS bucket root)
+  - `file:/abs/or/relative/path` (local filesystem root)
+  - Omit `DATASET_URI` to default to `BUCKET_NAME` (GCS).
+- Layout under the root is the same for all sources:
+  - `datasets/current.json`
+  - `datasets/<version>/manifest.json`
+  - `datasets/<version>/datapoints.jsonl`
+  - `datasets/<version>/chunks.jsonl.gz`
+
 ## Roles (Matching Engine only)
 - `INDEX_ID`: The vector index asset. Needed to deploy a new/updated index. Not used for queries/upserts once deployed.
 - `INDEX_ENDPOINT_ID`: The serving endpoint. Stable “host” you deploy to and send traffic through.

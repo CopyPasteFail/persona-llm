@@ -21,7 +21,8 @@ class Settings(BaseModel):
     LLM_MODEL_NAME: str = Field(default="gemini-2.5-flash")
     INDEX_ENDPOINT_ID: str | None = Field(default=None)
     DEPLOYED_INDEX_ID: str | None = Field(default=None)
-    BUCKET_NAME: str = Field(...)
+    BUCKET_NAME: str | None = Field(default=None)
+    DATASET_URI: str | None = Field(default=None)
     CHUNKS_PATH: str | None = Field(default=None)
     VECTOR_BACKEND: str = Field(default="local")
     LLM_BACKEND: str = Field(default="vertex")
@@ -34,7 +35,7 @@ class Settings(BaseModel):
     SESSION_COOKIE_SECURE: bool = Field(default=True)
     SESSION_COOKIE_PATH: str = Field(default="/")
     MAX_INPUT_TOKENS: int = Field(default=8000, ge=1, le=10000)
-    MAX_OUTPUT_TOKENS: int = Field(..., ge=1, le=2000)
+    MAX_OUTPUT_TOKENS: int = Field(..., ge=1, le=4000)
     REQ_TIMEOUT_MS: int = Field(..., ge=1000, le=60000)
     MOCK_ACCESS_KEYS_PATH: str | None = Field(default=None)
     OPS_AUTH: str = Field(default="enabled")
@@ -53,6 +54,8 @@ class Settings(BaseModel):
     def chunks_uri(self) -> str:
         """Return a gs:// URI built from typed bucket/path fields."""
         if not self.CHUNKS_PATH:
+            return ""
+        if not self.BUCKET_NAME:
             return ""
         bucket = self.BUCKET_NAME.rstrip("/")
         object_name = self.CHUNKS_PATH.lstrip("/")
@@ -112,7 +115,6 @@ REQUIRED_ENV_VARS = [
     "PERSONA_NAME",
     "PROJECT_ID",
     "REGION",
-    "BUCKET_NAME",
     "API_KEY",
     "MAX_OUTPUT_TOKENS",
     "REQ_TIMEOUT_MS",
@@ -142,7 +144,10 @@ def _load_env_files_if_available() -> tuple[Path | None, Path | None]:
 
 def _missing_env_vars() -> list[str]:
     """List required env names that are unset/empty, leveraging str typing."""
-    return [name for name in REQUIRED_ENV_VARS if not os.getenv(name)]
+    required = list(REQUIRED_ENV_VARS)
+    if not os.getenv("DATASET_URI"):
+        required.append("BUCKET_NAME")
+    return [name for name in required if not os.getenv(name)]
 
 def _require_env(name: str) -> str:
     value = os.getenv(name)
@@ -184,7 +189,8 @@ def load_settings() -> Settings:
         hint = "; ".join(hint_parts)
         raise RuntimeError(f"Missing required env vars: {sorted(set(missing_vars))}. {hint}")
 
-    bucket_name = _require_env("BUCKET_NAME")
+    dataset_uri = os.getenv("DATASET_URI")
+    bucket_name = _require_env("BUCKET_NAME") if not dataset_uri else os.getenv("BUCKET_NAME")
     chunk_path = os.getenv("CHUNKS_PATH")
 
     vector_backend = (os.getenv("VECTOR_BACKEND") or "local").strip().lower()
@@ -203,6 +209,7 @@ def load_settings() -> Settings:
             INDEX_ENDPOINT_ID=os.getenv("INDEX_ENDPOINT_ID"),
             DEPLOYED_INDEX_ID=os.getenv("DEPLOYED_INDEX_ID"),
             BUCKET_NAME=bucket_name,
+            DATASET_URI=(dataset_uri or None),
             CHUNKS_PATH=chunk_path,
             VECTOR_BACKEND=vector_backend,
             LLM_BACKEND=os.getenv("LLM_BACKEND") or "vertex",

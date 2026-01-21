@@ -6,6 +6,7 @@ import json
 import math
 import os
 import threading
+from pathlib import Path
 from array import array
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -96,8 +97,7 @@ def reload_cache() -> DatasetCache:
 def get_pointer_info() -> PointerInfo:
     """Load the dataset pointer JSON and return the version."""
     pointer_path = _DATASET_POINTER_PATH
-    bucket_name = settings.BUCKET_NAME
-    data, generation = _read_gcs_object(bucket_name, pointer_path)
+    data, generation = _read_dataset_object(_dataset_root_uri(), pointer_path)
     try:
         payload = json.loads(data.decode("utf-8"))
     except json.JSONDecodeError as exc:
@@ -121,7 +121,10 @@ def _load_cache_from_pointer() -> DatasetCache:
     datapoints_path = f"{base_prefix}{_DATAPOINTS_FILENAME}"
     chunks_path = f"{base_prefix}{_CHUNKS_FILENAME}"
 
-    manifest_data, manifest_generation = _read_gcs_object(settings.BUCKET_NAME, manifest_path)
+    manifest_data, manifest_generation = _read_dataset_object(
+        _dataset_root_uri(),
+        manifest_path,
+    )
     manifest = _parse_manifest(
         manifest_data,
         manifest_path=manifest_path,
@@ -133,11 +136,12 @@ def _load_cache_from_pointer() -> DatasetCache:
     _validate_manifest_model(manifest, expected_model)
     _validate_manifest_dimensions(manifest)
 
-    chunks_data, chunks_generation = _read_gcs_object(settings.BUCKET_NAME, chunks_path)
+    chunks_data, chunks_generation = _read_dataset_object(_dataset_root_uri(), chunks_path)
     chunks_by_id = _load_chunks(chunks_data, chunks_path)
 
-    datapoints_data, datapoints_generation = _read_gcs_object(
-        settings.BUCKET_NAME, datapoints_path
+    datapoints_data, datapoints_generation = _read_dataset_object(
+        _dataset_root_uri(),
+        datapoints_path,
     )
     ids, embeddings = _load_datapoints(
         datapoints_data,
@@ -255,6 +259,48 @@ def _validate_manifest_dimensions(manifest: Mapping[str, Any]) -> None:
             "Embedding dimensions mismatch: "
             f"expected={expected_dim} manifest={manifest.get('dimensions')}"
         )
+
+
+def _dataset_root_uri() -> str:
+    """Return the dataset root URI for reads (GCS bucket by default)."""
+    uri = (settings.DATASET_URI or "").strip()
+    if uri:
+        return uri
+    return f"gs://{settings.BUCKET_NAME}"
+
+
+def _is_local_dataset_root(uri: str) -> bool:
+    """Detect local dataset roots without adding new flags."""
+    return uri.startswith(("/", "./", "../", "~", "file:"))
+
+
+def _read_dataset_object(root_uri: str, object_path: str) -> Tuple[bytes, Optional[str]]:
+    """Read a dataset object from local disk or GCS based on the root URI."""
+    root_uri = root_uri.strip()
+    if _is_local_dataset_root(root_uri):
+        return _read_local_object(root_uri, object_path)
+
+    if root_uri.startswith("gs://"):
+        uri = f"{root_uri.rstrip('/')}/{object_path.lstrip('/')}"
+        return _read_gcs_object("", uri)
+
+    uri = f"gs://{root_uri.strip().rstrip('/')}/{object_path.lstrip('/')}"
+    return _read_gcs_object("", uri)
+
+
+def _read_local_object(root_uri: str, object_path: str) -> Tuple[bytes, Optional[str]]:
+    """Read a dataset object from the local filesystem."""
+    local_root = root_uri
+    if local_root.startswith("file:"):
+        local_root = local_root[len("file:") :]
+        if local_root.startswith("//"):
+            local_root = local_root[2:]
+    root_path = Path(local_root).expanduser()
+    file_path = root_path / object_path.lstrip("/")
+    try:
+        return file_path.read_bytes(), None
+    except FileNotFoundError as exc:
+        raise RuntimeError(f"Missing dataset file: {file_path}") from exc
 
 
 def _read_gcs_object(bucket_name: str, object_path: str) -> Tuple[bytes, Optional[str]]:
