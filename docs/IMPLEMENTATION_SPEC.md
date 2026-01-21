@@ -3,6 +3,9 @@
 ## Repos
 - Public mono-repo: Contains both backend and frontend. The backend is in `backend/api/` and jobs under `backend/jobs/`. The frontend is in `frontend/web/`. A private folder for secrets may be referenced during runtime, not committed.
 
+## Terminology
+See [GLOSSARY.md](./GLOSSARY.md) for definitions of RAG, embeddings, tokens, and other retrieval terms used throughout this spec.
+
 ## Environment variables
 Backend configuration is loaded from a dotenv file rather than a global `PRIVATE_DIR`.
 

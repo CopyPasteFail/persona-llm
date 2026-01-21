@@ -3,6 +3,12 @@
 Monorepo for the persona demo. Frontend in `frontend`, backend in `backend`.
 Persona data and secrets point the backend at a local/private folder using `PRIVATE_DIR`.
 
+Key docs:
+- [ARCHITECTURE_OVERVIEW](docs/ARCHITECTURE_OVERVIEW.md)
+- [IMPLEMENTATION_SPEC](docs/IMPLEMENTATION_SPEC.md)
+- [VECTOR_SEARCH](docs/VECTOR_SEARCH.md)
+- [GLOSSARY](docs/GLOSSARY.md)
+
 ## Why not a submodule?
 - Submodules expose the private repo URL in `.gitmodules`.
 - Workarounds like locally setting the Submodule private-url are clunky, for example VS Code revert/undo won't work.

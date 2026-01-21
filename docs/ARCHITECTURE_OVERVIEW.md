@@ -3,6 +3,8 @@
 ## Goal
 A reusable public showcase where people can query a "persona" LLM representing a human. Answers are grounded in a provided dataset, for example a CV, using Vertex AI Vector Search. Priorities: low cost, low ops, transparent design.
 
+Terminology: see [GLOSSARY.md](./GLOSSARY.md).
+
 ## Stack
 - Frontend: Next.js static export, hosted on Firebase Hosting
 - Backend: FastAPI on Cloud Run
