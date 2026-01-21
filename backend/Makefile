@@ -82,7 +82,7 @@ docker-run-mock:
 		uvicorn api.mock:app --host 0.0.0.0 --port 8080
 
 mock: $(VENV)/bin/activate
-	$(PY) -m uvicorn api.mock:app --reload --port 8080
+	LLM_BACKEND=deterministic $(PY) -m uvicorn api.mock:app --reload --port 8080
 
 pack_and_push: $(VENV)/bin/activate
 	$(PY) jobs/pack_and_push.py
@@ -113,7 +113,7 @@ test-build_datapoints: $(VENV)/bin/activate
 	$(PY) -m pytest -q tests/test_build_datapoints.py
 
 test-smoke: $(VENV)/bin/activate
-	$(PY) -m pytest -q tests/test_smoke.py
+	LLM_BACKEND=deterministic $(PY) -m pytest -q $(PYTEST_ARGS) tests/test_smoke.py
 
 test-core: test-smoke test-voice test-auth-key-login test-security-session test-keys-store test-llm-prompt test-create-access-key-cli test-build_datapoints test-retrieval-vector test-load-backend-env test-pack-and-push-processing
 

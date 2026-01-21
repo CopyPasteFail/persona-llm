@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Protocol, Sequence, runtime_checkable
+from typing import Any, Dict, List, Optional, Protocol, Sequence, cast, runtime_checkable
 
 from . import dataset_cache
 from .settings import settings
@@ -15,6 +15,7 @@ class VectorBackend(Protocol):
 
     def query(self, embedding: Sequence[float], *, top_k: int) -> List[Dict[str, Any]]:
         """Return vector search candidates for a normalized embedding."""
+        ...
 
 
 class LocalVectorBackend:
@@ -67,25 +68,32 @@ class MatchingEngineBackend:
     def query(self, embedding: Sequence[float], *, top_k: int) -> List[Dict[str, Any]]:
         """Query Matching Engine and return candidates in the expected shape."""
         endpoint = self._ensure_endpoint()
+        find_neighbors = cast(Any, endpoint).find_neighbors
         try:
-            responses = endpoint.find_neighbors(
-                deployed_index_id=self._deployed_index_id,
-                queries=[list(embedding)],
-                num_neighbors=top_k,
-                timeout=settings.request_timeout_seconds,
+            responses = cast(
+                Sequence[Any],
+                find_neighbors(
+                    deployed_index_id=self._deployed_index_id,
+                    queries=[list(embedding)],
+                    num_neighbors=top_k,
+                    timeout=settings.request_timeout_seconds,
+                ),
             )
         except TypeError:
-            responses = endpoint.find_neighbors(
-                deployed_index_id=self._deployed_index_id,
-                queries=[list(embedding)],
-                num_neighbors=top_k,
+            responses = cast(
+                Sequence[Any],
+                find_neighbors(
+                    deployed_index_id=self._deployed_index_id,
+                    queries=[list(embedding)],
+                    num_neighbors=top_k,
+                ),
             )
 
         if not responses:
             return []
 
         response = responses[0]
-        neighbors = getattr(response, "neighbors", [])
+        neighbors = cast(Sequence[Any], getattr(response, "neighbors", []))
         if not neighbors:
             return []
 

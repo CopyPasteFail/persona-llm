@@ -1,7 +1,16 @@
+"""Mock API app with deterministic LLM and optional deterministic retrieval.
+
+Note: the mock app still runs the full RAG pipeline (embed, vector search,
+filtering, then LLM generation). The LLM answer is deterministic, but retrieval
+still happens. In deterministic mode, embedding/vector are stubs that return
+fixed values, and the chunk store uses _DETERMINISTIC_CHUNKS (not real data).
+"""
+
 from __future__ import annotations
 
 import logging
 from contextlib import asynccontextmanager
+import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
@@ -18,8 +27,10 @@ from .keys import JsonKeyStore, set_key_store
 logger = logging.getLogger("api.mock")
 SEARCH_TOP_K = 8
 
-_llm_backend = llm_backends.get_llm_backend(default="deterministic")
-_DETERMINISTIC_CHUNKS = [
+_llm_backend: llm_backends.LlmBackend = llm_backends.get_llm_backend(
+    default_backend="deterministic"
+)
+_DETERMINISTIC_CHUNKS: List[Dict[str, Any]] = [
     {"id": "mock:1", "text": "deterministic mock chunk", "metadata": {}}
 ]
 
@@ -82,7 +93,16 @@ async def lifespan(_app: FastAPI):
         retrieval.configure_vector_client(_DeterministicVectorClient())
         retrieval.configure_chunk_store(_DETERMINISTIC_CHUNKS)
     else:
-        retrieval.configure_embedding_client(None)
+        model_name = (
+            os.getenv("EMBEDDING_MODEL")
+            or os.getenv("DATAPOINTS_MODEL")
+            or "text-embedding-004"
+        )
+        retrieval.configure_vertex_embedding_client(
+            project=settings.PROJECT_ID,
+            region=settings.REGION,
+            model_name=model_name,
+        )
         retrieval.configure_vector_client(None)
         retrieval.configure_chunk_store(None)
 

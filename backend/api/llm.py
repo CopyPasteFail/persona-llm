@@ -517,15 +517,20 @@ def _summarize_safety_ratings(ratings: Any) -> str:
 def _summarize_usage_metadata(usage_metadata: Any) -> str:
     """Summarize usage metadata for debugging failures."""
     summary_parts: list[str] = []
-    prompt_tokens = getattr(usage_metadata, "prompt_token_count", None)
-    if prompt_tokens is None and isinstance(usage_metadata, dict):
-        prompt_tokens = usage_metadata.get("prompt_token_count")
-    total_tokens = getattr(usage_metadata, "total_token_count", None)
-    if total_tokens is None and isinstance(usage_metadata, dict):
-        total_tokens = usage_metadata.get("total_token_count")
-    thoughts_tokens = getattr(usage_metadata, "thoughts_token_count", None)
-    if thoughts_tokens is None and isinstance(usage_metadata, dict):
-        thoughts_tokens = usage_metadata.get("thoughts_token_count")
+    usage_mapping: Optional[Mapping[str, Any]] = None
+    if isinstance(usage_metadata, Mapping):
+        usage_mapping = cast(Mapping[str, Any], usage_metadata)
+    usage_object = cast(object, usage_metadata)
+
+    prompt_tokens = getattr(usage_object, "prompt_token_count", None)
+    if prompt_tokens is None and usage_mapping is not None:
+        prompt_tokens = usage_mapping.get("prompt_token_count")
+    total_tokens = getattr(usage_object, "total_token_count", None)
+    if total_tokens is None and usage_mapping is not None:
+        total_tokens = usage_mapping.get("total_token_count")
+    thoughts_tokens = getattr(usage_object, "thoughts_token_count", None)
+    if thoughts_tokens is None and usage_mapping is not None:
+        thoughts_tokens = usage_mapping.get("thoughts_token_count")
 
     if prompt_tokens is not None:
         summary_parts.append(f"prompt={prompt_tokens}")

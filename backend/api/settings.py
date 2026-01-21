@@ -7,6 +7,7 @@ to validate shapes and ranges before the app boots.
 from __future__ import annotations
 import os
 from pathlib import Path
+from typing import overload
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
@@ -23,9 +24,10 @@ class Settings(BaseModel):
     DEPLOYED_INDEX_ID: str | None = Field(default=None)
     BUCKET_NAME: str | None = Field(default=None)
     DATASET_URI: str | None = Field(default=None)
+    DATASET_POINTER_PATH: str | None = Field(default=None)
     CHUNKS_PATH: str | None = Field(default=None)
     VECTOR_BACKEND: str = Field(default="local")
-    LLM_BACKEND: str = Field(default="vertex")
+    LLM_BACKEND: str = Field(...)
     API_KEY: str = Field(...)
     JWT_SECRET: str | None = Field(default=None)
     JWT_SESSION_TTL_SECONDS: int = Field(default=3600, ge=300, le=86400)
@@ -115,6 +117,7 @@ REQUIRED_ENV_VARS = [
     "PERSONA_NAME",
     "PROJECT_ID",
     "REGION",
+    "LLM_BACKEND",
     "API_KEY",
     "MAX_OUTPUT_TOKENS",
     "REQ_TIMEOUT_MS",
@@ -154,6 +157,12 @@ def _require_env(name: str) -> str:
     if value is None or value == "":
         raise RuntimeError(f"Missing required env var: {name}")
     return value
+
+@overload
+def _env_int(name: str, default: None = None) -> int | None: ...
+
+@overload
+def _env_int(name: str, default: int) -> int: ...
 
 def _env_int(name: str, default: int | None = None) -> int | None:
     value = os.getenv(name)
@@ -210,9 +219,10 @@ def load_settings() -> Settings:
             DEPLOYED_INDEX_ID=os.getenv("DEPLOYED_INDEX_ID"),
             BUCKET_NAME=bucket_name,
             DATASET_URI=(dataset_uri or None),
+            DATASET_POINTER_PATH=os.getenv("DATASET_POINTER_PATH"),
             CHUNKS_PATH=chunk_path,
             VECTOR_BACKEND=vector_backend,
-            LLM_BACKEND=os.getenv("LLM_BACKEND") or "vertex",
+            LLM_BACKEND=_require_env("LLM_BACKEND"),
             API_KEY=_require_env("API_KEY"),
             JWT_SECRET=os.getenv("JWT_SECRET"),
             JWT_SESSION_TTL_SECONDS=_env_int("JWT_SESSION_TTL_SECONDS", 3600),
@@ -232,4 +242,5 @@ def load_settings() -> Settings:
         fields = [err["loc"][0] for err in e.errors()]
         raise RuntimeError(f"Invalid settings. Fix env vars: {sorted(set(fields))}")
 
-settings = load_settings()
+settings: Settings = load_settings()
+__all__ = ["Settings", "settings"]

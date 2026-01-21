@@ -56,6 +56,16 @@ async def lifespan(_app_instance: FastAPI) -> AsyncIterator[None]:
     """
     global is_ready, is_init_done
     try:
+        model_name = (
+            os.getenv("EMBEDDING_MODEL")
+            or os.getenv("DATAPOINTS_MODEL")
+            or "text-embedding-004"
+        )
+        retrieval.configure_vertex_embedding_client(
+            project=settings.PROJECT_ID,
+            region=settings.REGION,
+            model_name=model_name,
+        )
         cache = dataset_cache.reload_cache()
         retrieval.configure_chunk_store(cache.chunks_by_id)
         is_ready = bool(cache.chunks_by_id)

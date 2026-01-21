@@ -298,7 +298,7 @@ def _write_dataset_manifest(
     num_datapoints: int,
 ) -> Path:
     """Write the dataset manifest required by the runtime loader."""
-    manifest = {
+    manifest: dict[str, object] = {
         "version": version,
         "created_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         "datapoints_file": _DATASET_DATAPOINTS_FILENAME,
