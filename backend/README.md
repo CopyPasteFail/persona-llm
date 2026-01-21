@@ -56,7 +56,7 @@ Provide these through your shell or a private folder loader. Do not commit secre
 Common placeholders:
 - `API_KEY` remains the server secret (JWT signing fallback) and optional header for protected admin endpoints.
 - `BUCKET_NAME` selects the active dataset version in GCS via the internal pointer (required unless `DATASET_URI` is set).
-- `DATASET_URI` optionally overrides the dataset root (e.g., `gs://bucket` or `file:/path`); when unset, `BUCKET_NAME` is used.
+- `DATASET_URI` optionally overrides the dataset root (e.g., `gs://bucket` or `file:/abs/path`; file paths must be absolute); when unset, `BUCKET_NAME` is used.
 - `VECTOR_BACKEND=local|matching_engine` controls vector search; Matching Engine IDs are required only for `matching_engine`.
 - `LLM_BACKEND=vertex|deterministic` controls LLM selection (mock defaults to deterministic; use Vertex with ADC).
 - `OPS_SECRET` protects `/ops/*` endpoints when `OPS_AUTH=enabled`.

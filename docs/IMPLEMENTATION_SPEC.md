@@ -27,7 +27,7 @@ Backend configuration is loaded from a dotenv file rather than a global `PRIVATE
   - `OPS_SECRET`: Required when `OPS_AUTH=enabled` for `/ops/*` endpoints.
   - `API_KEY`: Shared secret for JWT signing fallback and any internal calls; **not** an access key.
   - `MAX_INPUT_TOKENS`: Input context budget for LLM calls (defaults to 8000 if unset).
-  - `MAX_OUTPUT_TOKENS`: Output budget for LLM calls.
+  - `MAX_OUTPUT_TOKENS`: Output budget for LLM calls (hard limit enforced in settings; must be <= 4000).
 - `REQ_TIMEOUT_MS`: Request timeout in milliseconds.
   - Applied to outbound calls that accept timeouts (GCS chunk download, Matching Engine queries, Gemini generation). Some SDK calls may ignore this if they lack timeout support.
 

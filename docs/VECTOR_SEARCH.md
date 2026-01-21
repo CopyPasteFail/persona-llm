@@ -9,7 +9,7 @@
 ## Dataset source (applies to both backends)
 - `DATASET_URI` selects where dataset artifacts are read from (when unset, `BUCKET_NAME` is used).
   - `gs://my-bucket` (GCS bucket root)
-  - `file:/abs/or/relative/path` (local filesystem root)
+  - `file:/abs/path` (local filesystem root; must be absolute)
   - Omit `DATASET_URI` to default to `BUCKET_NAME` (GCS).
 - Layout under the root is the same for all sources:
   - `datasets/current.json`
