@@ -4,6 +4,7 @@ PYTHON ?= python3.13
 VENV := .venv
 PY := $(VENV)/bin/python
 PIP := $(VENV)/bin/pip
+TEST_ENV ?= LLM_BACKEND=deterministic
 
 include ../make/env.mk
 
@@ -110,7 +111,7 @@ dataset-pointer-update:
 	printf '{ "version": "%s" }\n' "$(DATASET_VERSION)" | gcloud storage cp - "gs://$(BUCKET_NAME)/$(DATASET_FOLDER)/current.json"
 
 test-build_datapoints: $(VENV)/bin/activate
-	$(PY) -m pytest -q tests/test_build_datapoints.py
+	$(TEST_ENV) $(PY) -m pytest -q tests/test_build_datapoints.py
 
 test-smoke: $(VENV)/bin/activate
 	LLM_BACKEND=deterministic $(PY) -m pytest -q $(PYTEST_ARGS) tests/test_smoke.py
@@ -118,7 +119,7 @@ test-smoke: $(VENV)/bin/activate
 test-core: test-smoke test-voice test-auth-key-login test-security-session test-keys-store test-llm-prompt test-create-access-key-cli test-build_datapoints test-retrieval-vector test-load-backend-env test-pack-and-push-processing
 
 test-voice: $(VENV)/bin/activate
-	$(PY) -m pytest -q tests/test_persona_voice.py tests/test_normalize_question_punct.py
+	$(TEST_ENV) $(PY) -m pytest -q tests/test_persona_voice.py tests/test_normalize_question_punct.py
 
 test-int: $(VENV)/bin/activate
 	$(PY) -m pytest -q -rs -m integration tests/test_integration_real_backend.py
@@ -132,31 +133,31 @@ test-vector-live: $(VENV)/bin/activate
 	RUN_VERTEX_SEARCH_TEST=1 VERTEX_TEST_EMBEDDING="$$embedding" $(PY) -m pytest -q tests/test_vector_search_integration.py
 
 test-retrieval-vector: $(VENV)/bin/activate
-	$(PY) -m pytest -q tests/test_retrieval_vector.py
+	$(TEST_ENV) $(PY) -m pytest -q tests/test_retrieval_vector.py
 
 test-auth-key-login: $(VENV)/bin/activate
-	$(PY) -m pytest -q tests/test_auth_key_login.py
+	$(TEST_ENV) $(PY) -m pytest -q tests/test_auth_key_login.py
 
 test-create-access-key-cli: $(VENV)/bin/activate
-	PYTHONPATH=.. $(PY) -m pytest -q tests/test_create_access_key_cli.py
+	PYTHONPATH=.. $(TEST_ENV) $(PY) -m pytest -q tests/test_create_access_key_cli.py
 
 create-access-key: $(VENV)/bin/activate
 	$(PY) scripts/create_access_key.py $(ARGS)
 
 test-keys-store: $(VENV)/bin/activate
-	$(PY) -m pytest -q tests/test_keys_store.py
+	$(TEST_ENV) $(PY) -m pytest -q tests/test_keys_store.py
 
 test-llm-prompt: $(VENV)/bin/activate
-	$(PY) -m pytest -q tests/test_llm_prompt.py
+	$(TEST_ENV) $(PY) -m pytest -q tests/test_llm_prompt.py
 
 test-security-session: $(VENV)/bin/activate
-	$(PY) -m pytest -q tests/test_security_session.py
+	$(TEST_ENV) $(PY) -m pytest -q tests/test_security_session.py
 
 test-load-backend-env: $(VENV)/bin/activate
-	$(PY) -m pytest -q tests/test_load_backend_env.py
+	$(TEST_ENV) $(PY) -m pytest -q tests/test_load_backend_env.py
 
 test-pack-and-push-processing: $(VENV)/bin/activate
-	$(PY) -m pytest -q tests/test_pack_and_push_processing.py
+	$(TEST_ENV) $(PY) -m pytest -q tests/test_pack_and_push_processing.py
 
 check: $(VENV)/bin/activate
 	$(PY) -c "import api.main, api.mock, api.retrieval, api.llm, api.settings"
