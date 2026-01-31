@@ -53,6 +53,7 @@ _MAX_TOPIC_BOOST = 0.06
 _VECTOR_WEIGHT = 0.7
 _BM25_WEIGHT = 0.3
 _DEBUG_NEIGHBOR_SAMPLE = 5
+_DEBUG_BM25_SAMPLE = 5
 
 # BM25 parameters.
 _BM25_K1 = 1.5
@@ -935,6 +936,24 @@ def apply_filters_and_boosting(candidates: List[Dict[str, Any]]) -> List[Dict[st
         )
 
     ranked.sort(key=lambda item: item["score"], reverse=True)
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug(
+            {
+                "event": "retrieval.bm25_debug",
+                "query": question,
+                "vector_weight": _VECTOR_WEIGHT,
+                "bm25_weight": _BM25_WEIGHT,
+                "candidates": [
+                    {
+                        "chunk_id": item["id"],
+                        "bm25_score": item["bm25_score"],
+                        "vector_score": item["vector_score"],
+                        "score": item["score"],
+                    }
+                    for item in ranked[:_DEBUG_BM25_SAMPLE]
+                ],
+            }
+        )
     return ranked[:_MAX_CONTEXT_CHUNKS]
 
 
