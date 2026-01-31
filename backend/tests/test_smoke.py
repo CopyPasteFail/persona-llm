@@ -191,7 +191,7 @@ async def test_chat_handles_gemini_empty_response(
         Patch the chat orchestrator to raise GeminiEmptyResponseError using an
         empty Gemini response, then call /chat.
     Expected result format:
-        Status is 200 and answer is an empty string.
+        Status is 200 and answer is the configured token-starvation message.
     """
 
     def _build_empty_gemini_response(max_output_tokens: int) -> SimpleNamespace:
@@ -227,7 +227,7 @@ async def test_chat_handles_gemini_empty_response(
     access_key_store.add_plain_key(TEST_ACCESS_KEY, label="test")
     monkeypatch.setattr(main_app_module, "is_ready", True)
     monkeypatch.setattr(rag_chat_orchestrator, "run_rag_chat", _raise_empty_response)
-    transport = ASGITransport(app=main_app_module.app, lifespan="off")
+    transport = ASGITransport(app=main_app_module.app)
     async with AsyncClient(transport=transport, base_url=BASE_URL) as http_client:
         login_response = await http_client.post(
             KEY_LOGIN_ENDPOINT,
@@ -243,4 +243,4 @@ async def test_chat_handles_gemini_empty_response(
 
     assert response.status_code == HTTP_OK, response.text
     response_data: dict[str, Any] = response.json()
-    assert response_data["answer"] == ""
+    assert response_data["answer"] == main_app_module.TOKEN_STARVATION_MESSAGE

@@ -59,6 +59,8 @@ Common placeholders:
 - `DATASET_URI` optionally overrides the dataset root (e.g., `gs://bucket` or `file:/abs/path`; file paths must be absolute); when unset, `BUCKET_NAME` is used.
 - `VECTOR_BACKEND=local|matching_engine` controls vector search; Matching Engine IDs are required only for `matching_engine`.
 - `LLM_BACKEND=vertex|deterministic` controls LLM selection (mock defaults to deterministic; use Vertex with ADC).
+- `THINKING_BUDGET_TOKENS` (optional) caps Gemini 2.5 "thinking" tokens for chat responses (the backend uses the `google-genai` SDK for Gemini calls).
+- `INCLUDE_THOUGHTS=false|true` controls whether the API returns thought parts (defaults to false).
 - `OPS_SECRET` protects `/ops/*` endpoints when `OPS_AUTH=enabled`.
 - Project, region, and model identifiers if using Vertex; names are placeholders only.
 Legacy note: `make be-pack_and_push` is only needed for older `CHUNKS_PATH` deployments.

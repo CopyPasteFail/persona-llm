@@ -190,19 +190,19 @@ def configure_embedding_client(client: Optional[_EmbeddingClient]) -> None:
 
 def configure_vertex_embedding_client(*, project: str, region: str, model_name: str) -> None:
     """
-    Configure a Vertex embedding client explicitly (used by app startup).
+    Configure an embedding client explicitly (used by app startup).
 
     Inputs:
         project: GCP project id.
         region: GCP region for Vertex.
-        model_name: Vertex embedding model name.
+        model_name: Embedding model name (e.g. text-embedding-004, gemini-embedding-001).
     Outputs:
-        None. Installs a configured Vertex embedding client.
+        None. Installs a configured embedding client.
     Edge cases:
         Raises if configuration is invalid when used for the first embed call.
     """
     configure_embedding_client(
-        _VertexEmbeddingClient(project=project, region=region, model_name=model_name)
+        _GenaiEmbeddingClient(project=project, region=region, model_name=model_name)
     )
 
 
@@ -1002,41 +1002,46 @@ def has_signal(selected: List[Dict[str, Any]]) -> bool:
     return bool(selected)
 
 
-class _VertexEmbeddingClient:
-    """Lazy Vertex AI Text Embedding wrapper."""
+class _GenaiEmbeddingClient:
+    """Lazy google-genai embedding wrapper (Vertex mode)."""
 
     def __init__(self, *, project: str, region: str, model_name: str) -> None:
         self._project = project
         self._region = region
         self._model_name = model_name
-        self._model: Any = None
+        self._client: Any = None
         self._lock = threading.Lock()
 
-    def _ensure_model(self) -> Any:
+    def _ensure_client(self) -> Any:
         """
-        Initialize and cache the Vertex embedding model.
+        Initialize and cache a google-genai client.
 
         Inputs:
             None.
         Outputs:
-            A Vertex TextEmbeddingModel instance.
+            A genai.Client instance configured for Vertex mode.
         Edge cases:
             Lazily initializes to avoid import-time failures.
         Concurrency:
             Protected by a lock to ensure single initialization.
         """
         with self._lock:
-            if self._model is None:
-                from vertexai import init  # type: ignore[import-not-found]
-                from vertexai.language_models import TextEmbeddingModel  # type: ignore[import-not-found]
+            if self._client is None:
+                from google import genai  # type: ignore[import-not-found]
+                from google.genai import types  # type: ignore[import-not-found]
 
-                init(project=self._project, location=self._region)
-                self._model = TextEmbeddingModel.from_pretrained(self._model_name)
-            return self._model
+                http_options = types.HttpOptions(timeout=settings.REQ_TIMEOUT_MS)
+                self._client = genai.Client(
+                    vertexai=True,
+                    project=self._project,
+                    location=self._region,
+                    http_options=http_options,
+                )
+            return self._client
 
     def embed(self, text: str) -> Optional[Sequence[float]]:
         """
-        Embed text using the configured Vertex model.
+        Embed text using the configured model via google-genai.
 
         Inputs:
             text: Raw text to embed.
@@ -1045,13 +1050,22 @@ class _VertexEmbeddingClient:
         Edge cases:
             Raises RuntimeError if the response lacks an embedding payload.
         """
-        model = self._ensure_model()
-        responses = model.get_embeddings([text], auto_truncate=True)
-        if not responses:
+        normalized_text = (text or "").strip()
+        if not normalized_text:
             return cast(List[float], [])
-        embedding = responses[0]
-        for attr in ("values", "embedding", "embedding_values"):
-            values = getattr(embedding, attr, None)
-            if values is not None:
-                return [float(value) for value in cast(Iterable[Any], values)]
-        raise RuntimeError("Embedding response missing values field")
+
+        from google.genai import types  # type: ignore[import-not-found]
+
+        client = self._ensure_client()
+        response = client.models.embed_content(
+            model=self._model_name,
+            contents=[types.Part.from_text(text=normalized_text)],
+            config=types.EmbedContentConfig(auto_truncate=True),
+        )
+        embeddings = getattr(response, "embeddings", None) or []
+        if not embeddings:
+            return cast(List[float], [])
+        values = getattr(embeddings[0], "values", None)
+        if values is None:
+            raise RuntimeError("Embedding response missing values field")
+        return [float(value) for value in cast(Iterable[Any], values)]

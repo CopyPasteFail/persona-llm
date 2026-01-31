@@ -27,13 +27,16 @@ PROMPT_MESSAGES_KEY = "messages"
 PROMPT_ROLE_KEY = "role"
 PROMPT_CONTENT_KEY = "content"
 USAGE_PROMPT_TOKEN_KEYS = ("prompt_token_count", "prompt_tokens")
-USAGE_CANDIDATE_TOKEN_KEYS = ("candidates_token_count", "candidates_tokens")
+USAGE_CANDIDATE_TOKEN_KEYS = (
+    "candidates_token_count",
+    "candidates_tokens",
+    "response_token_count",
+    "response_tokens",
+)
 USAGE_TOTAL_TOKEN_KEYS = ("total_token_count", "total_tokens")
 USAGE_THOUGHTS_TOKEN_KEYS = ("thoughts_token_count", "thoughts_tokens")
 FINISH_REASON_MAX_TOKENS = "MAX_TOKENS"
 TOKEN_STARVATION_THRESHOLD_FRACTION = 0.85
-VERTEX_TEXT_PREVIEW_HEAD_CHARS = 100
-VERTEX_TEXT_PREVIEW_TAIL_CHARS = 100
 
 Chunk = dict[str, Any]
 UsageMetadata = dict[str, int]
@@ -98,42 +101,6 @@ def _estimate_tokens(text: str) -> int:
 def _llm_debug_enabled() -> bool:
     value = os.getenv("LLM_DEBUG", "").strip().lower()
     return value in {"1", "true", "yes", "on"}
-
-
-def _log_vertex_response_summary(response: Any, extracted_text: str) -> None:
-    """
-    Log a bounded summary of the first Vertex candidate and extracted text.
-
-    Inputs: raw Vertex response object and the extracted response text.
-    Outputs: None; emits a debug log with finish reason, parts presence,
-    and preview metadata.
-    Edge cases: handles missing candidates/content/parts safely.
-    """
-    candidates: Sequence[Any] = cast(
-        Sequence[Any],
-        getattr(response, "candidates", None) or [],
-    )
-    candidate = candidates[0] if candidates else None
-    content = getattr(candidate, "content", None) if candidate else None
-    parts = getattr(content, "parts", None) if content is not None else None
-    has_parts = bool(parts)
-    finish_reason = _extract_finish_reason(response)
-    head_preview = extracted_text[:VERTEX_TEXT_PREVIEW_HEAD_CHARS]
-    tail_preview = (
-        extracted_text[-VERTEX_TEXT_PREVIEW_TAIL_CHARS:]
-        if extracted_text
-        else ""
-    )
-    logger.debug(
-        {
-            "event": "vertex_response_summary",
-            "finish_reason": finish_reason,
-            "has_candidate_parts": has_parts,
-            "extracted_text_length": len(extracted_text),
-            "extracted_text_head": head_preview,
-            "extracted_text_tail": tail_preview,
-        }
-    )
 
 
 def _build_user_prompt(question: str, context_block: str) -> str:
@@ -294,24 +261,25 @@ def _get_llm_client() -> _GeminiClient:
     Return a cached LLM client, creating one if needed.
 
     Output: a Gemini client ready for generate calls.
-    Edge cases: if no client is configured, a default Gemini Flash client is created.
+    Edge cases: if no client is configured, a default google-genai Gemini client is created.
     Concurrency: this cache is not protected by a lock, so concurrent first access may create
     more than one client, but the module variable is updated once set.
     """
     global _llm_client
     if _llm_client is None:
         model_name = (settings.LLM_MODEL_NAME or DEFAULT_MODEL_NAME).strip()
-        _llm_client = _GeminiFlashClient(
+        _llm_client = _GeminiGenaiClient(
             project=settings.PROJECT_ID,
             region=settings.REGION,
             model_name=model_name,
+            thinking_budget_tokens=settings.THINKING_BUDGET_TOKENS,
         )
     return _llm_client
 
 
 def call_gemini_flash(payload: PromptPayload, max_output_tokens: int) -> tuple[str, UsageMetadata]:
     """
-    Call Gemini Flash via the Vertex AI Python SDK.
+    Call Gemini via the google-genai SDK (Vertex mode).
 
     Inputs: prompt payload and max output tokens.
     Output: answer text plus usage
@@ -344,45 +312,66 @@ def call_gemini_flash(payload: PromptPayload, max_output_tokens: int) -> tuple[s
     )
 
 
-class _GeminiFlashClient:
+class _GeminiGenaiClient:
     """
-    Lazy Vertex Gemini Flash wrapper with basic safety + usage extraction.
+    Gemini client using the `google-genai` SDK (Vertex mode) for generation.
 
-    This wrapper defers SDK initialization until the first request and keeps
-    minimal configuration state for reuse.
+    This client replaces the deprecated `vertexai.generative_models` Gemini API.
+    It supports optional thinking-budget tuning for Gemini 2.5 models.
     """
 
-    def __init__(self, *, project: str, region: str, model_name: str) -> None:
+    def __init__(
+        self,
+        *,
+        project: str,
+        region: str,
+        model_name: str,
+        thinking_budget_tokens: int | None,
+    ) -> None:
         """
-        Initialize a lazy Gemini Flash client.
+        Initialize a google-genai Gemini client.
 
-        Inputs: GCP project, region, and model name.
-        Output: none.
-        Edge case: initialization is deferred until the first call to generate.
+        Inputs:
+            project: GCP project id.
+            region: Vertex region (location).
+            model_name: Model name (e.g. gemini-2.5-flash).
+            thinking_budget_tokens: Optional token budget for the model's thinking.
+
+        Output: None. Client construction is lazy and synchronized.
+        Edge cases: a zero budget is allowed and can mean "no thinking" when supported.
         """
         self._project = project
         self._region = region
         self._model_name = model_name
-        self._vertex_ready = False
+        self._thinking_budget_tokens = (
+            int(thinking_budget_tokens) if thinking_budget_tokens is not None else None
+        )
+        self._client: Any | None = None
         self._lock = threading.Lock()
 
-    def _ensure_vertex_init(self) -> None:
+    def _ensure_client(self) -> Any:
         """
-        Initialize the Vertex AI SDK exactly once.
+        Create the google-genai client exactly once.
 
-        Output: none.
-        Edge cases: concurrent callers synchronize via a lock; a
-        second caller returns after the first completes.
+        Output: initialized genai.Client instance.
+        Edge cases: concurrent callers synchronize via a lock.
         """
-        if self._vertex_ready:
-            return
+        if self._client is not None:
+            return self._client
         with self._lock:
-            if self._vertex_ready:
-                return
-            from vertexai import init as vertexai_init  # type: ignore[import-not-found]
+            if self._client is not None:
+                return self._client
+            from google import genai  # type: ignore[import-not-found]
+            from google.genai import types  # type: ignore[import-not-found]
 
-            vertexai_init(project=self._project, location=self._region)
-            self._vertex_ready = True
+            http_options = types.HttpOptions(timeout=settings.REQ_TIMEOUT_MS)
+            self._client = genai.Client(
+                vertexai=True,
+                project=self._project,
+                location=self._region,
+                http_options=http_options,
+            )
+            return self._client
 
     def generate(
         self,
@@ -392,96 +381,96 @@ class _GeminiFlashClient:
         max_output_tokens: int,
     ) -> tuple[str, UsageMetadata]:
         """
-        Generate a response from Gemini Flash.
+        Generate a response using google-genai in Vertex mode.
 
         Inputs: system prompt, user message list, and output token limit.
-        Output: the response text and usage metadata.
-        Edge cases: empty user messages or
-        only empty content results in a runtime error.
-        Concurrency: safe to call
-        across threads due to lazy SDK init lock.
+        Output: extracted response text and usage metadata.
+        Edge cases: empty user messages raise; empty extracted text raises
+        GeminiEmptyResponseError with finish/usage metadata when available.
         """
-        self._ensure_vertex_init()
         if not user_messages:
-            raise RuntimeError("Gemini client requires at least one user message")
-
-        from vertexai.preview.generative_models import (  # type: ignore[import-not-found]
-            Content,
-            GenerativeModel,
-            GenerationConfig,
-            Part,
-        )
-        from google.api_core import exceptions as google_exceptions
-
-        contents = [
-            Content(role="user", parts=[Part.from_text(text.strip())])
-            for text in user_messages
-            if text and text.strip()
-        ]
-        if not contents:
+            raise RuntimeError("Gemini client received no user messages")
+        joined_user_text_pieces: list[str] = []
+        for message_text in user_messages:
+            cleaned = message_text.strip() if message_text else ""
+            if cleaned:
+                joined_user_text_pieces.append(cleaned)
+        joined_user_text = "\n\n".join(joined_user_text_pieces)
+        if not joined_user_text:
             raise RuntimeError("Gemini client received only empty user messages")
 
-        config = GenerationConfig(
+        from google.genai import types  # type: ignore[import-not-found]
+        from google.api_core import exceptions as google_exceptions
+
+        config = types.GenerateContentConfig(
+            system_instruction=system_prompt or None,
             max_output_tokens=max_output_tokens,
             temperature=DEFAULT_GENERATION_TEMPERATURE,
             top_p=DEFAULT_GENERATION_TOP_P,
         )
+        if self._thinking_budget_tokens is not None:
+            config.thinking_config = types.ThinkingConfig(
+                include_thoughts=settings.INCLUDE_THOUGHTS,
+                thinking_budget=self._thinking_budget_tokens,
+            )
 
         if _llm_debug_enabled():
             logger.debug(
                 {
                     "event": "llm_prompt_debug",
+                    "sdk": "google-genai",
                     "model": self._model_name,
                     "system_prompt": system_prompt,
                     "user_messages": list(user_messages),
                     "max_output_tokens": max_output_tokens,
+                    "thinking_budget_tokens": self._thinking_budget_tokens,
                 }
             )
 
-        def _generate_with_model(model_name: str) -> Any:
-            model = GenerativeModel(
-                model_name,
-                system_instruction=system_prompt or None,
-            )
-            model_any = cast(Any, model)
-            request_options = {"timeout": settings.request_timeout_seconds}
-            try:
-                return model_any.generate_content(
-                    contents,
-                    generation_config=config,
-                    request_options=request_options,
-                )
-            except TypeError:
-                return model_any.generate_content(
-                    contents,
-                    generation_config=config,
-                )
-
-        response: Any
+        client = self._ensure_client()
         try:
-            response = _generate_with_model(self._model_name)
-        except google_exceptions.NotFound as exc:
-            if (
-                self._model_name != FALLBACK_MODEL_NAME
-                and "Publisher Model" in str(exc)
-                and "not found" in str(exc)
-            ):
-                response = _generate_with_model(FALLBACK_MODEL_NAME)
-            else:
+            response = client.models.generate_content(
+                model=self._model_name,
+                contents=[
+                    types.Content(
+                        role=ROLE_USER,
+                        parts=[types.Part.from_text(text=joined_user_text)],
+                    )
+                ],
+                config=config,
+            )
+        except google_exceptions.NotFound:
+            if self._model_name == FALLBACK_MODEL_NAME:
                 raise
+            response = client.models.generate_content(
+                model=FALLBACK_MODEL_NAME,
+                contents=[
+                    types.Content(
+                        role=ROLE_USER,
+                        parts=[types.Part.from_text(text=joined_user_text)],
+                    )
+                ],
+                config=config,
+            )
 
         extracted_text = _extract_response_text(response, max_output_tokens)
         usage_metadata = _extract_usage(response)
         if logger.isEnabledFor(logging.DEBUG):
-            _log_vertex_response_summary(response, extracted_text)
             logger.debug(
                 {
-                    "event": "vertex_usage_summary",
+                    "event": "genai_usage_summary",
                     "finish_reason": _extract_finish_reason(response),
-                    "prompt_token_count": usage_metadata.get("prompt_token_count"),
-                    "total_token_count": usage_metadata.get("total_token_count"),
-                    "thoughts_token_count": usage_metadata.get("thoughts_token_count"),
+                    "prompt_token_count": getattr(
+                        getattr(response, "usage_metadata", None), "prompt_token_count", None
+                    ),
+                    "total_token_count": getattr(
+                        getattr(response, "usage_metadata", None), "total_token_count", None
+                    ),
+                    "thoughts_token_count": getattr(
+                        getattr(response, "usage_metadata", None), "thoughts_token_count", None
+                    ),
                     "max_output_tokens": max_output_tokens,
+                    "thinking_budget_tokens": self._thinking_budget_tokens,
                 }
             )
         return extracted_text, usage_metadata
@@ -498,7 +487,7 @@ def _extract_response_text(response: Any, max_output_tokens: int | None = None) 
     """
     try:
         text = response.text
-    except ValueError as exc:
+    except (AttributeError, ValueError, TypeError) as exc:
         safety_info = _format_safety_info(response, max_output_tokens=max_output_tokens)
         message = "Gemini response contained no text"
         if safety_info:
@@ -732,24 +721,18 @@ def _extract_usage(response: Any) -> dict[str, int]:
     usage metadata is unavailable or malformed.
     Edge cases: handles dict- and attribute-style responses.
     """
-    usage_meta: Optional[Mapping[str, Any]] = None
     usage: dict[str, int] = {}
 
-    response_mapping: Optional[Mapping[str, Any]] = None
+    usage_metadata: Any | None = None
     if isinstance(response, Mapping):
         response_mapping = cast(Mapping[str, Any], response)
-
-    if response_mapping is not None:
-        usage_meta = cast(Optional[Mapping[str, Any]], response_mapping.get("usage_metadata"))
+        usage_metadata = response_mapping.get("usage_metadata")
     else:
-        response_object = cast(object, response)
-        response_usage = getattr(response_object, "usage_metadata", None)
-        if isinstance(response_usage, Mapping):
-            usage_meta = cast(Mapping[str, Any], response_usage)
+        usage_metadata = getattr(cast(object, response), "usage_metadata", None)
 
-    if usage_meta:
-        prompt_tokens = _usage_value(usage_meta, USAGE_PROMPT_TOKEN_KEYS)
-        candidate_tokens = _usage_value(usage_meta, USAGE_CANDIDATE_TOKEN_KEYS)
+    if usage_metadata is not None:
+        prompt_tokens = _usage_value(usage_metadata, USAGE_PROMPT_TOKEN_KEYS)
+        candidate_tokens = _usage_value(usage_metadata, USAGE_CANDIDATE_TOKEN_KEYS)
         if prompt_tokens is not None:
             usage["input_tokens"] = prompt_tokens
         if candidate_tokens is not None:

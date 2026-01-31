@@ -38,6 +38,8 @@ class Settings(BaseModel):
     SESSION_COOKIE_PATH: str = Field(default="/")
     MAX_INPUT_TOKENS: int = Field(default=8000, ge=1, le=10000)
     MAX_OUTPUT_TOKENS: int = Field(..., ge=1, le=4000)
+    THINKING_BUDGET_TOKENS: int | None = Field(default=None, ge=0, le=20000)
+    INCLUDE_THOUGHTS: bool = Field(default=False)
     REQ_TIMEOUT_MS: int = Field(..., ge=1000, le=60000)
     MOCK_ACCESS_KEYS_PATH: str | None = Field(default=None)
     OPS_AUTH: str = Field(default="enabled")
@@ -233,6 +235,8 @@ def load_settings() -> Settings:
             SESSION_COOKIE_PATH=os.getenv("SESSION_COOKIE_PATH") or "/",
             MAX_INPUT_TOKENS=max_input_tokens or 8000,
             MAX_OUTPUT_TOKENS=max_output_tokens,
+            THINKING_BUDGET_TOKENS=_env_int("THINKING_BUDGET_TOKENS"),
+            INCLUDE_THOUGHTS=_env_bool("INCLUDE_THOUGHTS", False),
             REQ_TIMEOUT_MS=int(_require_env("REQ_TIMEOUT_MS")),
             MOCK_ACCESS_KEYS_PATH=os.getenv("MOCK_ACCESS_KEYS_PATH"),
             OPS_AUTH=os.getenv("OPS_AUTH") or "enabled",
