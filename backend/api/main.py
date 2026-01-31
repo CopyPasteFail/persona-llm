@@ -236,6 +236,11 @@ async def chat(
                 "ip": getattr(request.client, "host", None),
                 "chunks": [citation.id for citation in response.citations],
                 "usage": response.usage.model_dump(),
+                "usage_detail": chat_result.usage_detail,
+                "llm_limits": {
+                    "max_output_tokens": settings.MAX_OUTPUT_TOKENS,
+                    "thinking_budget_tokens": settings.THINKING_BUDGET_TOKENS,
+                },
                 "key_id": session.key_id,
             }
         )

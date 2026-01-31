@@ -39,7 +39,7 @@ FINISH_REASON_MAX_TOKENS = "MAX_TOKENS"
 TOKEN_STARVATION_THRESHOLD_FRACTION = 0.85
 
 Chunk = dict[str, Any]
-UsageMetadata = dict[str, int]
+UsageMetadata = dict[str, int | str]
 
 logger = logging.getLogger(__name__)
 
@@ -455,24 +455,6 @@ class _GeminiGenaiClient:
 
         extracted_text = _extract_response_text(response, max_output_tokens)
         usage_metadata = _extract_usage(response)
-        if logger.isEnabledFor(logging.DEBUG):
-            logger.debug(
-                {
-                    "event": "genai_usage_summary",
-                    "finish_reason": _extract_finish_reason(response),
-                    "prompt_token_count": getattr(
-                        getattr(response, "usage_metadata", None), "prompt_token_count", None
-                    ),
-                    "total_token_count": getattr(
-                        getattr(response, "usage_metadata", None), "total_token_count", None
-                    ),
-                    "thoughts_token_count": getattr(
-                        getattr(response, "usage_metadata", None), "thoughts_token_count", None
-                    ),
-                    "max_output_tokens": max_output_tokens,
-                    "thinking_budget_tokens": self._thinking_budget_tokens,
-                }
-            )
         return extracted_text, usage_metadata
 
 
@@ -712,7 +694,7 @@ def _summarize_usage_metadata(usage_metadata: Any) -> str:
     return ",".join(summary_parts)
 
 
-def _extract_usage(response: Any) -> dict[str, int]:
+def _extract_usage(response: Any) -> dict[str, int | str]:
     """
     Extract usage metadata from a Gemini API response.
 
@@ -721,7 +703,7 @@ def _extract_usage(response: Any) -> dict[str, int]:
     usage metadata is unavailable or malformed.
     Edge cases: handles dict- and attribute-style responses.
     """
-    usage: dict[str, int] = {}
+    usage: dict[str, int | str] = {}
 
     usage_metadata: Any | None = None
     if isinstance(response, Mapping):
@@ -734,12 +716,18 @@ def _extract_usage(response: Any) -> dict[str, int]:
         prompt_tokens = _usage_value(usage_metadata, USAGE_PROMPT_TOKEN_KEYS)
         candidate_tokens = _usage_value(usage_metadata, USAGE_CANDIDATE_TOKEN_KEYS)
         thoughts_tokens = _usage_value(usage_metadata, USAGE_THOUGHTS_TOKEN_KEYS)
+        total_tokens = _usage_value(usage_metadata, USAGE_TOTAL_TOKEN_KEYS)
         if prompt_tokens is not None:
             usage["input_tokens"] = prompt_tokens
         if candidate_tokens is not None:
             usage["output_tokens"] = candidate_tokens
         if thoughts_tokens is not None:
             usage["thoughts_tokens"] = thoughts_tokens
+        if total_tokens is not None:
+            usage["total_tokens"] = total_tokens
+    finish_reason = _extract_finish_reason(response)
+    if finish_reason:
+        usage["finish_reason"] = finish_reason
 
     return usage
 

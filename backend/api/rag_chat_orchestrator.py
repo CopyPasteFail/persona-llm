@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Protocol, Sequence
+from typing import Any, Dict, List, Optional, Protocol, Sequence, TypedDict
 
 from . import llm
 from .llm_backends import LlmBackend
@@ -46,6 +46,17 @@ class ChatResult:
     response: ChatResponse
     selected_chunks: List[Dict[str, Any]]
     normalized_question: str
+    usage_detail: "UsageDetail"
+
+
+class UsageDetail(TypedDict):
+    """Backend-only usage detail from provider metadata.
+
+    Fields are optional in provider responses, so values may be None.
+    """
+
+    total_tokens: int | None
+    finish_reason: str | None
 
 
 def run_rag_chat(
@@ -70,7 +81,7 @@ def run_rag_chat(
     - max_output_tokens: Max tokens to request for the response.
 
     Output:
-    - ChatResult containing the response, selected chunks, and normalized question.
+    - ChatResult containing the response, selected chunks, usage detail, and normalized question.
 
     Edge cases:
     - Empty/whitespace question is normalized before retrieval.
@@ -103,6 +114,7 @@ def run_rag_chat(
             ),
             selected_chunks=[],
             normalized_question=normalized_question,
+            usage_detail=_empty_usage_detail(),
         )
 
     prompt_payload = llm.build_llm_prompt(
@@ -123,6 +135,7 @@ def run_rag_chat(
         question=normalized_question,
         answer=answer_final,
     )
+    usage_detail = _usage_detail_from_llm_meta(usage_meta)
 
     return ChatResult(
         response=ChatResponse(
@@ -133,10 +146,11 @@ def run_rag_chat(
         ),
         selected_chunks=selected_chunks,
         normalized_question=normalized_question,
+        usage_detail=usage_detail,
     )
 
 
-def _usage_from_llm_meta(meta: Dict[str, int], *, question: str, answer: str) -> Usage:
+def _usage_from_llm_meta(meta: Dict[str, Any], *, question: str, answer: str) -> Usage:
     """Build usage metrics from LLM metadata with deterministic fallbacks.
 
     Inputs:
@@ -167,6 +181,36 @@ def _usage_from_llm_meta(meta: Dict[str, int], *, question: str, answer: str) ->
         input_tokens=input_tokens,
         output_tokens=output_tokens,
         thoughts_tokens=thoughts_tokens_value,
+    )
+
+
+def _usage_detail_from_llm_meta(meta: Dict[str, Any]) -> UsageDetail:
+    """Build backend-only usage detail from provider metadata.
+
+    Inputs:
+    - meta: Dictionary containing token counts and finish reason from the LLM backend.
+
+    Output:
+    - UsageDetail with best-effort values for total tokens and finish reason.
+
+    Edge cases:
+    - Missing values return None.
+    """
+    total_tokens_value = meta.get("total_tokens")
+    total_tokens = int(total_tokens_value) if total_tokens_value is not None else None
+    finish_reason_value = meta.get("finish_reason")
+    finish_reason = str(finish_reason_value) if finish_reason_value is not None else None
+    return UsageDetail(
+        total_tokens=total_tokens,
+        finish_reason=finish_reason,
+    )
+
+
+def _empty_usage_detail() -> UsageDetail:
+    """Return an empty usage detail payload for non-LLM responses."""
+    return UsageDetail(
+        total_tokens=None,
+        finish_reason=None,
     )
 
 
