@@ -272,6 +272,18 @@ async def chat(
                 "key_id": getattr(session, "key_id", None),
             },
         )
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
+                {
+                    "event": "chat.empty_text_usage",
+                    "request_id": request_id,
+                    "finish_reason": exc.finish_reason,
+                    "prompt_token_count": exc.prompt_token_count,
+                    "total_token_count": exc.total_token_count,
+                    "thoughts_token_count": exc.thoughts_token_count,
+                    "max_output_tokens": settings.MAX_OUTPUT_TOKENS,
+                }
+            )
         return ChatResponse(
             answer=TOKEN_STARVATION_MESSAGE
             if empty_answer_classification == EMPTY_ANSWER_CLASS_TOKEN_STARVATION

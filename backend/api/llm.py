@@ -471,9 +471,20 @@ class _GeminiFlashClient:
                 raise
 
         extracted_text = _extract_response_text(response, max_output_tokens)
+        usage_metadata = _extract_usage(response)
         if logger.isEnabledFor(logging.DEBUG):
             _log_vertex_response_summary(response, extracted_text)
-        return extracted_text, _extract_usage(response)
+            logger.debug(
+                {
+                    "event": "vertex_usage_summary",
+                    "finish_reason": _extract_finish_reason(response),
+                    "prompt_token_count": usage_metadata.get("prompt_token_count"),
+                    "total_token_count": usage_metadata.get("total_token_count"),
+                    "thoughts_token_count": usage_metadata.get("thoughts_token_count"),
+                    "max_output_tokens": max_output_tokens,
+                }
+            )
+        return extracted_text, usage_metadata
 
 
 def _extract_response_text(response: Any, max_output_tokens: int | None = None) -> str:
