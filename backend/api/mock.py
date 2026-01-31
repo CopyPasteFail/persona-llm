@@ -170,4 +170,6 @@ def chat(
         max_input_tokens=settings.MAX_INPUT_TOKENS,
         max_output_tokens=settings.MAX_OUTPUT_TOKENS,
     )
-    return chat_result.response
+    response = chat_result.response
+    response.model = settings.LLM_MODEL_NAME
+    return response

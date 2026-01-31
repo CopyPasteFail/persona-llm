@@ -733,10 +733,13 @@ def _extract_usage(response: Any) -> dict[str, int]:
     if usage_metadata is not None:
         prompt_tokens = _usage_value(usage_metadata, USAGE_PROMPT_TOKEN_KEYS)
         candidate_tokens = _usage_value(usage_metadata, USAGE_CANDIDATE_TOKEN_KEYS)
+        thoughts_tokens = _usage_value(usage_metadata, USAGE_THOUGHTS_TOKEN_KEYS)
         if prompt_tokens is not None:
             usage["input_tokens"] = prompt_tokens
         if candidate_tokens is not None:
             usage["output_tokens"] = candidate_tokens
+        if thoughts_tokens is not None:
+            usage["thoughts_tokens"] = thoughts_tokens
 
     return usage
 

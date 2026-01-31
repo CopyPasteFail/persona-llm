@@ -161,7 +161,13 @@ def _usage_from_llm_meta(meta: Dict[str, int], *, question: str, answer: str) ->
         input_tokens = fallback_input
     if output_tokens <= 0:
         output_tokens = fallback_output
-    return Usage(input_tokens=input_tokens, output_tokens=output_tokens)
+    thoughts_tokens = meta.get("thoughts_tokens")
+    thoughts_tokens_value = int(thoughts_tokens) if thoughts_tokens is not None else None
+    return Usage(
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        thoughts_tokens=thoughts_tokens_value,
+    )
 
 
 def _chunk_to_citation(chunk: Dict[str, Any]) -> Citation:

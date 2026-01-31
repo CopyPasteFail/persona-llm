@@ -209,6 +209,7 @@ async def chat(
             max_output_tokens=settings.MAX_OUTPUT_TOKENS,
         )
         response = chat_result.response
+        response.model = settings.LLM_MODEL_NAME
 
         if not chat_result.selected_chunks:
             _log_chat_answer_preview(
@@ -293,8 +294,9 @@ async def chat(
             if empty_answer_classification == EMPTY_ANSWER_CLASS_TOKEN_STARVATION
             else "",
             citations=[],
-            usage=Usage(input_tokens=0, output_tokens=0),
+            usage=Usage(input_tokens=0, output_tokens=0, thoughts_tokens=None),
             input_token_limit=settings.MAX_INPUT_TOKENS,
+            model=settings.LLM_MODEL_NAME,
         )
     except Exception as exc:
         logger.exception(

@@ -138,14 +138,17 @@ export type ChatRequest = {
 export type ChatResponse = {
   answer: string;
   citations?: Array<{ id: string; title?: string; url?: string }>;
-  usage?: { input_tokens?: number; output_tokens?: number };
+  usage?: { input_tokens?: number; output_tokens?: number; thoughts_tokens?: number };
   input_token_limit?: number;
+  model?: string;
 };
 
 export type KeyLoginResponse = {
   access_token: string;
   token_type: string;
   expires_at: string;
+  model?: string;
+  input_token_limit?: number;
 };
 
 /**

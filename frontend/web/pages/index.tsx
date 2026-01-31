@@ -19,8 +19,10 @@ export default function IndexPage() {
   const [accessKey, setAccessKey] = useState("");
   const [sessionToken, setSessionToken] = useState<string | null>(null);
   const [cookieSessionActive, setCookieSessionActive] = useState(false);
+  const [sessionModelName, setSessionModelName] = useState<string | null>(null);
+  const [sessionInputTokenLimit, setSessionInputTokenLimit] = useState<number | null>(null);
   const [messages, setMessages] = useState<
-    Array<{ role: "user" | "assistant"; content: string; usage?: Usage; inputTokenLimit?: number }>
+    Array<{ role: "user" | "assistant"; content: string; usage?: Usage }>
   >([]);
 
   const isCookieSession = isCookieMode();
@@ -68,6 +70,8 @@ export default function IndexPage() {
     }
     setSessionToken(null);
     setCookieSessionActive(false);
+    setSessionModelName(null);
+    setSessionInputTokenLimit(null);
     setError(null);
     setMessages([]);
     setQuestion("");
@@ -101,8 +105,13 @@ export default function IndexPage() {
         role: "assistant",
         content: data.answer,
         usage: data.usage,
-        inputTokenLimit: data.input_token_limit,
       }]);
+      if (data.model) {
+        setSessionModelName(data.model);
+      }
+      if (typeof data.input_token_limit === "number") {
+        setSessionInputTokenLimit(data.input_token_limit);
+      }
       setQuestion("");
     } catch (err: any) {
       const message = err?.message || "Something went wrong";
@@ -129,6 +138,12 @@ export default function IndexPage() {
       } else if (typeof window !== "undefined") {
         window.localStorage.setItem("sessionToken", res.access_token);
         setSessionToken(res.access_token);
+      }
+      if (res.model) {
+        setSessionModelName(res.model);
+      }
+      if (typeof res.input_token_limit === "number") {
+        setSessionInputTokenLimit(res.input_token_limit);
       }
       setAccessKey("");
     } catch (err: any) {
@@ -229,6 +244,15 @@ export default function IndexPage() {
               ref={streamRef}
               className="flex-1 overflow-y-auto rounded-2xl border border-zinc-800 bg-zinc-900/30 p-4 space-y-4"
             >
+              <div className="sticky top-0 z-10 -mx-4 -mt-4 mb-3 border-b border-zinc-800/80 bg-zinc-950/90 px-4 py-2 text-[11px] text-zinc-400 backdrop-blur">
+                <div className="flex flex-wrap items-center gap-3">
+                  <span className="uppercase tracking-wide text-zinc-500">Session</span>
+                  <span>Model: {sessionModelName ?? "—"}</span>
+                  <span>
+                    Token limit: {typeof sessionInputTokenLimit === "number" ? sessionInputTokenLimit : "—"}
+                  </span>
+                </div>
+              </div>
               {messages.length === 0 && (
                 <div className="text-sm text-zinc-400">
                   Try a starter:
@@ -247,7 +271,7 @@ export default function IndexPage() {
                 </div>
               )}
               {messages.map((m, i) => (
-                <Bubble key={i} role={m.role} usage={m.usage} inputTokenLimit={m.inputTokenLimit}>
+                <Bubble key={i} role={m.role} usage={m.usage}>
                   {m.content}
                 </Bubble>
               ))}
@@ -288,12 +312,10 @@ function Bubble({
   role,
   children,
   usage,
-  inputTokenLimit,
 }: {
   role: "user" | "assistant";
   children: any;
   usage?: Usage;
-  inputTokenLimit?: number;
 }) {
   const isUser = role === "user";
   return (
@@ -309,7 +331,7 @@ function Bubble({
           <div className="mt-2 flex gap-2 text-[10px] text-zinc-500">
             <span>in: {usage.input_tokens}</span>
             <span>out: {usage.output_tokens}</span>
-            {typeof inputTokenLimit === "number" && <span>limit: {inputTokenLimit}</span>}
+            <span>thoughts: {usage.thoughts_tokens ?? 0}</span>
           </div>
         )}
       </div>
