@@ -11,10 +11,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Iterator, List, Mapping, MutableMapping, Sequence, cast
 
-import vertexai  # type: ignore[reportMissingTypeStubs]
-from vertexai.language_models import (  # type: ignore[reportMissingTypeStubs]
-    TextEmbeddingModel,
-)
+from google import genai  # type: ignore[import-not-found]
+from google.genai import types  # type: ignore[import-not-found]
 
 CURRENT_DIR = Path(__file__).resolve().parent
 PARENT_DIR = CURRENT_DIR.parent
@@ -52,6 +50,7 @@ _ENV_DATAPOINTS_MODEL = "DATAPOINTS_MODEL"
 _ENV_DATAPOINTS_DIMENSIONS = "DATAPOINTS_DIMENSIONS"
 _ENV_DATAPOINTS_BATCH_SIZE = "DATAPOINTS_BATCH_SIZE"
 _ENV_PRIVATE_DIR = "PRIVATE_DIR"
+_ENV_REQ_TIMEOUT_MS = "REQ_TIMEOUT_MS"
 
 _DEFAULT_PRIVATE_DIR_NAME = "private"
 _DEFAULT_PERSONA_CHUNKS_FILENAME = "chunks.jsonl"
@@ -59,6 +58,7 @@ _DEFAULT_CHUNK_SCHEMA_FILENAME = "chunk.schema.json"
 _DEFAULT_DATAPOINTS_GZIP = "0"
 _DEFAULT_DATAPOINTS_MAX_CHARS = 2200
 _DEFAULT_DATAPOINTS_BATCH_SIZE = 16
+_DEFAULT_REQ_TIMEOUT_MS = 20000
 _DEFAULT_GCP_PROJECT_ENV_KEYS = (
     "GOOGLE_CLOUD_PROJECT",
     "GCLOUD_PROJECT",
@@ -190,10 +190,10 @@ def _build_restricts(metadata: Mapping[str, object]) -> list[dict[str, object]]:
 
 
 def _embedding_values(embedding: object) -> List[float]:
-    """Extract embedding vector values from Vertex AI responses.
+    """Extract embedding vector values from Gen AI embedding responses.
 
     Inputs:
-    - embedding: Vertex AI embedding object with one of the expected fields.
+    - embedding: Gen AI embedding object with one of the expected fields.
 
     Output:
     - List of float values representing the embedding.
@@ -209,6 +209,24 @@ def _embedding_values(embedding: object) -> List[float]:
     if values is None:
         raise RuntimeError("Embedding response missing values field")
     return list(values)
+
+
+def _extract_embeddings(response: object) -> Sequence[object]:
+    """Extract embeddings from a Gen AI SDK response object.
+
+    Inputs:
+    - response: SDK response returned by embed_content.
+
+    Output:
+    - Sequence of embedding objects.
+
+    Edge cases:
+    - Raises RuntimeError when embeddings are missing or empty.
+    """
+    embeddings = getattr(response, "embeddings", None)
+    if not embeddings:
+        raise RuntimeError("Embedding response missing embeddings list")
+    return cast(Sequence[object], embeddings)
 
 
 def _l2_normalize(vector: Iterable[float]) -> List[float]:
@@ -397,11 +415,8 @@ def main() -> None:
 
     maybe_set_service_account(environment_variables)
 
-    vertexai.init(project=project_id, location=environment_variables[_ENV_REGION])
-    print(
-        "Using Vertex project "
-        f"'{project_id}' in region '{environment_variables[_ENV_REGION]}'"
-    )
+    region = environment_variables[_ENV_REGION]
+    print(f"Using Vertex project '{project_id}' in region '{region}'")
     model_name = (
         os.getenv(_ENV_DATAPOINTS_MODEL, "").strip() or _DEFAULT_EMBEDDING_MODEL
     )
@@ -415,7 +430,15 @@ def main() -> None:
             f"{_ENV_DATAPOINTS_DIMENSIONS} must be a positive integer"
         )
     print(f"Embedding model '{model_name}' @ {dimensions} dims")
-    model = TextEmbeddingModel.from_pretrained(model_name)
+    http_options = types.HttpOptions(
+        timeout=_env_int(_ENV_REQ_TIMEOUT_MS, _DEFAULT_REQ_TIMEOUT_MS)
+    )
+    client = genai.Client(
+        vertexai=True,
+        project=project_id,
+        location=region,
+        http_options=http_options,
+    )
     max_output_dimension = _MODEL_MAX_OUTPUT_DIMENSIONS.get(
         model_name, _GENERIC_MAX_OUTPUT_DIMENSION
     )
@@ -452,14 +475,20 @@ def main() -> None:
                 )
             texts.append(text_value)
 
-        if embedding_output_dimension is None:
-            responses = model.get_embeddings(texts)
-        else:
-            responses = model.get_embeddings(
-                texts,
+        embed_config = (
+            types.EmbedContentConfig(
                 output_dimensionality=embedding_output_dimension,
             )
-        embeddings.extend(_embedding_values(resp) for resp in responses)
+            if embedding_output_dimension is not None
+            else None
+        )
+        response = client.models.embed_content(
+            model=model_name,
+            contents=texts,
+            config=embed_config,
+        )
+        response_embeddings = _extract_embeddings(response)
+        embeddings.extend(_embedding_values(resp) for resp in response_embeddings)
 
     if len(embeddings) != len(records):
         raise RuntimeError(
