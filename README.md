@@ -407,6 +407,13 @@ Run the integrated backend and frontend together:
 make local-integrated
 ```
 
+Or separately the frontend and backend with debug:
+```bash
+source .venv/bin/activate
+APP_LOG_LEVEL=debug RETRIEVAL_DEBUG=1 make be-run
+make fe-dev:local
+```
+
 App: http://localhost:3000
 
 ---
