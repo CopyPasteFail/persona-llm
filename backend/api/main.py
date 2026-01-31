@@ -24,6 +24,7 @@ ALLOWED_HEADERS = ["*"]
 ALLOWED_METHODS = ["GET", "POST"]
 EVENT_CHAT_FAILED = "chat_failed"
 EVENT_CHAT_NO_SIGNAL = "chat.no_signal"
+EVENT_CHAT_ANSWER_PREVIEW = "chat.answer_preview"
 EVENT_CHAT_SUCCESS = "chat.success"
 CHAT_UNAVAILABLE_DETAIL = "chat_unavailable"
 HEALTH_STATUS_OK = "ok"
@@ -32,6 +33,14 @@ NOT_READY_DETAIL = "not ready"
 PLACEHOLDER_ORIGIN = "https://placeholder.web.app"
 SEARCH_TOP_K = 8
 SERVICE_UNAVAILABLE_STATUS = 503
+ANSWER_PREVIEW_HEAD_CHARS = 200
+ANSWER_PREVIEW_TAIL_CHARS = 200
+EMPTY_ANSWER_CLASS_TOKEN_STARVATION = "token_starvation"
+EMPTY_ANSWER_CLASS_NO_RELEVANT_CONTEXT = "no_relevant_context"
+EMPTY_ANSWER_CLASS_UNKNOWN = "empty_text_unknown"
+TOKEN_STARVATION_MESSAGE = (
+    "I couldn\u2019t finish the reply. Try again, or ask for a shorter answer."
+)
 
 is_ready = False
 is_init_done = False
@@ -41,6 +50,32 @@ _log_level = getattr(logging, _log_level_name, logging.INFO)
 logging.basicConfig(level=_log_level)
 
 _llm_backend = llm_backends.get_llm_backend(default_backend="vertex")
+
+
+def _log_chat_answer_preview(answer_text: str, request_id: str, *, context: str) -> None:
+    """Log answer length and a bounded preview before returning a ChatResponse.
+
+    Inputs: answer text, request id, and a context label for the caller.
+    Outputs: None; emits a debug log when enabled.
+    Edge cases: empty answers emit zero-length previews.
+    Concurrency: stateless; safe for concurrent calls.
+    """
+    if not logger.isEnabledFor(logging.DEBUG):
+        return
+    head_preview = answer_text[:ANSWER_PREVIEW_HEAD_CHARS]
+    tail_preview = (
+        answer_text[-ANSWER_PREVIEW_TAIL_CHARS:] if answer_text else ""
+    )
+    logger.debug(
+        {
+            "event": EVENT_CHAT_ANSWER_PREVIEW,
+            "request_id": request_id,
+            "context": context,
+            "answer_length": len(answer_text),
+            "answer_head": head_preview,
+            "answer_tail": tail_preview,
+        }
+    )
 
 @asynccontextmanager
 async def lifespan(_app_instance: FastAPI) -> AsyncIterator[None]:
@@ -172,6 +207,11 @@ async def chat(
         response = chat_result.response
 
         if not chat_result.selected_chunks:
+            _log_chat_answer_preview(
+                response.answer,
+                request_id,
+                context=EVENT_CHAT_NO_SIGNAL,
+            )
             logger.debug(
                 {
                     "event": EVENT_CHAT_NO_SIGNAL,
@@ -195,11 +235,22 @@ async def chat(
             }
         )
 
+        _log_chat_answer_preview(
+            response.answer,
+            request_id,
+            context=EVENT_CHAT_SUCCESS,
+        )
         return response
 
     except HTTPException:
         raise
     except GeminiEmptyResponseError as exc:
+        empty_answer_classification = (
+            EMPTY_ANSWER_CLASS_TOKEN_STARVATION
+            if exc.is_token_starvation
+            else EMPTY_ANSWER_CLASS_UNKNOWN
+        )
+        # TODO: Detect EMPTY_ANSWER_CLASS_NO_RELEVANT_CONTEXT when RAG yields no usable context.
         if exc.is_token_starvation:
             message = (
                 "Gemini returned no text, likely token starvation "
@@ -222,7 +273,9 @@ async def chat(
             },
         )
         return ChatResponse(
-            answer="",
+            answer=TOKEN_STARVATION_MESSAGE
+            if empty_answer_classification == EMPTY_ANSWER_CLASS_TOKEN_STARVATION
+            else "",
             citations=[],
             usage=Usage(input_tokens=0, output_tokens=0),
             input_token_limit=settings.MAX_INPUT_TOKENS,

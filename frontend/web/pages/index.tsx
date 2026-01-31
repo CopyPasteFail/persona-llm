@@ -5,6 +5,8 @@ import { ApiError, getSessionToken, isCookieMode, keyLogin, logout, postChat } f
 type Usage = NonNullable<ChatResponse["usage"]>;
 
 const API = process.env.NEXT_PUBLIC_API_URL as string | undefined;
+const NO_ANSWER_MESSAGE =
+  "I couldn\u2019t answer that this time. Try rephrasing or narrowing the question.";
 
 export default function IndexPage() {
   const [ready, setReady] = useState(true);
@@ -87,7 +89,14 @@ export default function IndexPage() {
 
     try {
       const data = await postChat({ question: question.trim() });
-      if (!data?.answer) throw new Error("Backend returned no answer");
+      if (!data?.answer) {
+        setMessages(prev => [...prev, {
+          role: "assistant",
+          content: NO_ANSWER_MESSAGE,
+        }]);
+        setQuestion("");
+        return;
+      }
       setMessages(prev => [...prev, {
         role: "assistant",
         content: data.answer,

@@ -32,6 +32,8 @@ USAGE_TOTAL_TOKEN_KEYS = ("total_token_count", "total_tokens")
 USAGE_THOUGHTS_TOKEN_KEYS = ("thoughts_token_count", "thoughts_tokens")
 FINISH_REASON_MAX_TOKENS = "MAX_TOKENS"
 TOKEN_STARVATION_THRESHOLD_FRACTION = 0.85
+VERTEX_TEXT_PREVIEW_HEAD_CHARS = 100
+VERTEX_TEXT_PREVIEW_TAIL_CHARS = 100
 
 Chunk = dict[str, Any]
 UsageMetadata = dict[str, int]
@@ -96,6 +98,42 @@ def _estimate_tokens(text: str) -> int:
 def _llm_debug_enabled() -> bool:
     value = os.getenv("LLM_DEBUG", "").strip().lower()
     return value in {"1", "true", "yes", "on"}
+
+
+def _log_vertex_response_summary(response: Any, extracted_text: str) -> None:
+    """
+    Log a bounded summary of the first Vertex candidate and extracted text.
+
+    Inputs: raw Vertex response object and the extracted response text.
+    Outputs: None; emits a debug log with finish reason, parts presence,
+    and preview metadata.
+    Edge cases: handles missing candidates/content/parts safely.
+    """
+    candidates: Sequence[Any] = cast(
+        Sequence[Any],
+        getattr(response, "candidates", None) or [],
+    )
+    candidate = candidates[0] if candidates else None
+    content = getattr(candidate, "content", None) if candidate else None
+    parts = getattr(content, "parts", None) if content is not None else None
+    has_parts = bool(parts)
+    finish_reason = _extract_finish_reason(response)
+    head_preview = extracted_text[:VERTEX_TEXT_PREVIEW_HEAD_CHARS]
+    tail_preview = (
+        extracted_text[-VERTEX_TEXT_PREVIEW_TAIL_CHARS:]
+        if extracted_text
+        else ""
+    )
+    logger.debug(
+        {
+            "event": "vertex_response_summary",
+            "finish_reason": finish_reason,
+            "has_candidate_parts": has_parts,
+            "extracted_text_length": len(extracted_text),
+            "extracted_text_head": head_preview,
+            "extracted_text_tail": tail_preview,
+        }
+    )
 
 
 def _build_user_prompt(question: str, context_block: str) -> str:
@@ -432,7 +470,10 @@ class _GeminiFlashClient:
             else:
                 raise
 
-        return _extract_response_text(response, max_output_tokens), _extract_usage(response)
+        extracted_text = _extract_response_text(response, max_output_tokens)
+        if logger.isEnabledFor(logging.DEBUG):
+            _log_vertex_response_summary(response, extracted_text)
+        return extracted_text, _extract_usage(response)
 
 
 def _extract_response_text(response: Any, max_output_tokens: int | None = None) -> str:
