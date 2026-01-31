@@ -31,8 +31,10 @@ Backend configuration is loaded from a dotenv file rather than a global `PRIVATE
   - `API_KEY`: Shared secret for JWT signing fallback and any internal calls; **not** an access key.
   - `MAX_INPUT_TOKENS`: Input context budget for LLM calls (defaults to 8000 if unset).
   - `MAX_OUTPUT_TOKENS`: Output budget for LLM calls (hard limit enforced in settings; must be <= 4000).
-- `REQ_TIMEOUT_MS`: Request timeout in milliseconds.
-  - Applied to outbound calls that accept timeouts (GCS chunk download, Matching Engine queries, Gemini generation). Some SDK calls may ignore this if they lack timeout support.
+  - `THINKING_BUDGET_TOKENS`: Optional cap for Gemini "thinking" tokens.
+  - `INCLUDE_THOUGHTS`: `false` (default) or `true` to return thought parts.
+  - `REQ_TIMEOUT_MS`: Request timeout in milliseconds.
+    - Applied to outbound calls that accept timeouts (GCS chunk download, Matching Engine queries, Gemini generation). Some SDK calls may ignore this if they lack timeout support.
 
 `OPS_SECRET` should not be committed; set it via the private overlay, `gcloud run services update --set-env-vars OPS_SECRET=...`, or Secret Manager.
 
@@ -81,10 +83,17 @@ Backend configuration is loaded from a dotenv file rather than a global `PRIVATE
 - `citations`: List[Citation]
 - `usage`: Usage
 - `input_token_limit`: Optional[int] (echoes the configured MAX_INPUT_TOKENS)
+- `model`: Optional[str] (resolved model name)
+
+`usage` fields:
+- `input_tokens`: int
+- `output_tokens`: int
+- `thoughts_tokens`: Optional[int]
 
 ### Auth
 - `/chat` requires authentication via `Authorization: Bearer <token>`.
 - Tokens are issued by `/auth/key-login` and may also be stored in a session cookie when enabled.
+  - Key login response includes `model` and `input_token_limit` for the active session.
 
 ### Minimal examples
 See [backend/README.md#curl-examples](here) for the runnable curl commands and current local ports.

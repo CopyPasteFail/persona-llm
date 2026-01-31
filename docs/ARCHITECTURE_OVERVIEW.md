@@ -11,7 +11,7 @@ Terminology: see [GLOSSARY.md](./GLOSSARY.md).
 - Vector search: local in-process cosine search by default, optional Vertex AI Matching Engine (Tree-AH, dot product; use unit-normalized vectors for cosine equivalence)
 - Embeddings: Vertex AI embedding model configured via `DATAPOINTS_MODEL` (default `text-embedding-004` at 768d; `gemini-embedding-001` is 3072d)
 - Dataset cache: versioned dataset folder in GCS + pointer file (atomic swap), loaded into memory at startup
-- LLM: Gemini 2.0 Flash with strict grounding and short answer style
+- LLM: Gemini 2.5 Flash with strict grounding and short answer style
 - Monitoring: Cloud Logging and Cloud Monitoring metrics. Budget alerts only
 
 ## Ingestion overview
@@ -25,7 +25,7 @@ The ingestion pipeline validates persona content, chunks it, embeds it, and uplo
 
 **Real path**
 1. Cloud Run API loads `datasets/current.json` from `BUCKET_NAME`, resolves the version folder, and caches `datapoints.jsonl`, `chunks.jsonl.gz`, and `manifest.json` in-process.
-2. User question goes to backend, embed query, vector search top K 8 (local by default or Matching Engine when configured), apply mild boosting and filters.
+2. User question goes to backend, embed query, vector search top K 4 (local by default or Matching Engine when configured), apply mild boosting and filters.
 3. Build a strict grounded prompt, call Gemini Flash, return `{answer, citations, usage}`.
 
 ## Why this design works
