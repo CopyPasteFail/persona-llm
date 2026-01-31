@@ -62,16 +62,20 @@ def _log_chat_answer_preview(answer_text: str, request_id: str, *, context: str)
     """
     if not logger.isEnabledFor(logging.DEBUG):
         return
+    answer_length = len(answer_text)
     head_preview = answer_text[:ANSWER_PREVIEW_HEAD_CHARS]
-    tail_preview = (
-        answer_text[-ANSWER_PREVIEW_TAIL_CHARS:] if answer_text else ""
+    should_skip_tail = (
+        answer_length <= ANSWER_PREVIEW_HEAD_CHARS + ANSWER_PREVIEW_TAIL_CHARS
     )
+    tail_preview = ""
+    if answer_text and not should_skip_tail:
+        tail_preview = answer_text[-ANSWER_PREVIEW_TAIL_CHARS:]
     logger.debug(
         {
             "event": EVENT_CHAT_ANSWER_PREVIEW,
             "request_id": request_id,
             "context": context,
-            "answer_length": len(answer_text),
+            "answer_length": answer_length,
             "answer_head": head_preview,
             "answer_tail": tail_preview,
         }
