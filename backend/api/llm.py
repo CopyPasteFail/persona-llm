@@ -21,6 +21,7 @@ DEFAULT_MODEL_NAME = "gemini-2.5-flash"
 FALLBACK_MODEL_NAME = "gemini-1.5-flash"
 DEFAULT_GENERATION_TEMPERATURE = 0.2
 DEFAULT_GENERATION_TOP_P = 0.9
+THINKING_BUDGET_DISABLED = 0
 ROLE_SYSTEM = "system"
 ROLE_USER = "user"
 PROMPT_MESSAGES_KEY = "messages"
@@ -237,6 +238,7 @@ class _GeminiClient(Protocol):
         system_prompt: str,
         user_messages: Sequence[str],
         max_output_tokens: int,
+        thinking_budget_tokens: int | None = None,
     ) -> tuple[str, UsageMetadata]:
         ...
 
@@ -277,11 +279,16 @@ def _get_llm_client() -> _GeminiClient:
     return _llm_client
 
 
-def call_gemini_flash(payload: PromptPayload, max_output_tokens: int) -> tuple[str, UsageMetadata]:
+def call_gemini_flash(
+    payload: PromptPayload,
+    max_output_tokens: int,
+    *,
+    thinking_budget_tokens: int | None = None,
+) -> tuple[str, UsageMetadata]:
     """
     Call Gemini via the google-genai SDK (Vertex mode).
 
-    Inputs: prompt payload and max output tokens.
+    Inputs: prompt payload, max output tokens, and an optional thinking budget override.
     Output: answer text plus usage
     metadata if provided by the API. Edge cases: missing user content raises a
     runtime error; empty system content is allowed and omitted.
@@ -309,6 +316,7 @@ def call_gemini_flash(payload: PromptPayload, max_output_tokens: int) -> tuple[s
         system_prompt=system_prompt,
         user_messages=user_messages,
         max_output_tokens=max_output_tokens,
+        thinking_budget_tokens=thinking_budget_tokens,
     )
 
 
@@ -379,11 +387,13 @@ class _GeminiGenaiClient:
         system_prompt: str,
         user_messages: Sequence[str],
         max_output_tokens: int,
+        thinking_budget_tokens: int | None = None,
     ) -> tuple[str, UsageMetadata]:
         """
         Generate a response using google-genai in Vertex mode.
 
-        Inputs: system prompt, user message list, and output token limit.
+        Inputs: system prompt, user message list, output token limit, and optional
+        per-request thinking budget override.
         Output: extracted response text and usage metadata.
         Edge cases: empty user messages raise; empty extracted text raises
         GeminiEmptyResponseError with finish/usage metadata when available.
@@ -402,17 +412,13 @@ class _GeminiGenaiClient:
         from google.genai import types  # type: ignore[import-not-found]
         from google.api_core import exceptions as google_exceptions
 
-        config = types.GenerateContentConfig(
-            system_instruction=system_prompt or None,
-            max_output_tokens=max_output_tokens,
-            temperature=DEFAULT_GENERATION_TEMPERATURE,
-            top_p=DEFAULT_GENERATION_TOP_P,
-        )
-        if self._thinking_budget_tokens is not None:
-            config.thinking_config = types.ThinkingConfig(
-                include_thoughts=settings.INCLUDE_THOUGHTS,
-                thinking_budget=self._thinking_budget_tokens,
+        config, effective_thinking_budget_tokens, include_thoughts_effective = (
+            self._build_generate_config(
+                system_prompt=system_prompt,
+                max_output_tokens=max_output_tokens,
+                thinking_budget_tokens=thinking_budget_tokens,
             )
+        )
 
         if _llm_debug_enabled():
             logger.debug(
@@ -423,7 +429,9 @@ class _GeminiGenaiClient:
                     "system_prompt": system_prompt,
                     "user_messages": list(user_messages),
                     "max_output_tokens": max_output_tokens,
-                    "thinking_budget_tokens": self._thinking_budget_tokens,
+                    "thinking_budget_tokens": effective_thinking_budget_tokens,
+                    "thinking_config_attached": True,
+                    "include_thoughts_effective": include_thoughts_effective,
                 }
             )
 
@@ -456,6 +464,65 @@ class _GeminiGenaiClient:
         extracted_text = _extract_response_text(response, max_output_tokens)
         usage_metadata = _extract_usage(response)
         return extracted_text, usage_metadata
+
+    def _build_generate_config(
+        self,
+        *,
+        system_prompt: str,
+        max_output_tokens: int,
+        thinking_budget_tokens: int | None,
+        types_module: Any | None = None,
+    ) -> tuple[Any, int, bool]:
+        """
+        Build a GenerateContentConfig with explicit thinking configuration.
+
+        Inputs:
+            system_prompt: The system instruction string.
+            max_output_tokens: Upper bound for response tokens.
+            thinking_budget_tokens: Optional per-request override.
+
+        Outputs:
+            Tuple containing:
+            - config: GenerateContentConfig with thinking_config always attached.
+            - effective_thinking_budget_tokens: Resolved thinking budget as an int.
+            - include_thoughts_effective: Final include_thoughts setting.
+
+        Edge cases:
+            - When both the override and client default are None, the budget is
+              forced to THINKING_BUDGET_DISABLED to explicitly disable thinking.
+            - When the effective budget is 0, include_thoughts is forced False.
+        """
+        if types_module is None:
+            from google.genai import types as types_module  # type: ignore[import-not-found]
+
+        config = types_module.GenerateContentConfig(
+            system_instruction=system_prompt or None,
+            max_output_tokens=max_output_tokens,
+            temperature=DEFAULT_GENERATION_TEMPERATURE,
+            top_p=DEFAULT_GENERATION_TOP_P,
+        )
+        raw_budget = (
+            self._thinking_budget_tokens
+            if thinking_budget_tokens is None
+            else int(thinking_budget_tokens)
+        )
+        effective_thinking_budget_tokens = (
+            THINKING_BUDGET_DISABLED if raw_budget is None else int(raw_budget)
+        )
+        include_thoughts_effective = (
+            settings.INCLUDE_THOUGHTS
+            if effective_thinking_budget_tokens > 0
+            else False
+        )
+        config.thinking_config = types_module.ThinkingConfig(
+            include_thoughts=include_thoughts_effective,
+            thinking_budget=effective_thinking_budget_tokens,
+        )
+        return (
+            config,
+            effective_thinking_budget_tokens,
+            include_thoughts_effective,
+        )
 
 
 def _extract_response_text(response: Any, max_output_tokens: int | None = None) -> str:

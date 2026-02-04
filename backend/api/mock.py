@@ -169,6 +169,8 @@ def chat(
         persona_name=settings.PERSONA_NAME,
         max_input_tokens=settings.MAX_INPUT_TOKENS,
         max_output_tokens=settings.MAX_OUTPUT_TOKENS,
+        enable_thinking_gating=settings.ENABLE_THINKING_GATING,
+        default_thinking_budget_tokens=settings.THINKING_BUDGET_TOKENS,
     )
     response = chat_result.response
     response.model = settings.LLM_MODEL_NAME

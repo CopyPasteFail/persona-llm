@@ -27,7 +27,10 @@ class LlmBackend(Protocol):
     """
 
     def generate(
-        self, prompt_payload: llm.PromptPayload, max_output_tokens: int
+        self,
+        prompt_payload: llm.PromptPayload,
+        max_output_tokens: int,
+        thinking_budget_tokens: int | None = None,
     ) -> tuple[str, llm.UsageMetadata]:
         """Generate a response from the given prompt payload.
 
@@ -35,6 +38,8 @@ class LlmBackend(Protocol):
             prompt_payload: Structured messages and metadata used to build a
                 model request.
             max_output_tokens: Upper bound for model output tokens.
+            thinking_budget_tokens: Optional per-request override for the model's
+                thinking budget.
 
         Returns:
             A tuple of the generated response string and usage metadata.
@@ -46,7 +51,10 @@ class VertexLlmBackend:
     """Gemini Flash backend via Vertex AI."""
 
     def generate(
-        self, prompt_payload: llm.PromptPayload, max_output_tokens: int
+        self,
+        prompt_payload: llm.PromptPayload,
+        max_output_tokens: int,
+        thinking_budget_tokens: int | None = None,
     ) -> tuple[str, llm.UsageMetadata]:
         """Generate a response using the Gemini Flash model.
 
@@ -54,18 +62,27 @@ class VertexLlmBackend:
             prompt_payload: Structured messages and metadata used to build a
                 model request.
             max_output_tokens: Upper bound for model output tokens.
+            thinking_budget_tokens: Optional per-request override for the model's
+                thinking budget.
 
         Returns:
             A tuple of the generated response string and usage metadata.
         """
-        return llm.call_gemini_flash(prompt_payload, max_output_tokens)
+        return llm.call_gemini_flash(
+            prompt_payload,
+            max_output_tokens,
+            thinking_budget_tokens=thinking_budget_tokens,
+        )
 
 
 class DeterministicLlmBackend:
     """Deterministic LLM backend for mock responses."""
 
     def generate(
-        self, prompt_payload: llm.PromptPayload, max_output_tokens: int
+        self,
+        prompt_payload: llm.PromptPayload,
+        max_output_tokens: int,
+        thinking_budget_tokens: int | None = None,
     ) -> tuple[str, llm.UsageMetadata]:
         """Generate a deterministic mock response for testing.
 
@@ -74,6 +91,8 @@ class DeterministicLlmBackend:
                 model request.
             max_output_tokens: Upper bound for model output tokens. This is
                 unused because the response is fixed and deterministic.
+            thinking_budget_tokens: Optional per-request override for the model's
+                thinking budget.
 
         Returns:
             A tuple of the deterministic response string and usage metadata.

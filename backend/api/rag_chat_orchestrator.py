@@ -19,6 +19,29 @@ UNABLE_TO_GENERATE_ANSWER = "TLDR: Unable to generate an answer.\nWrap: Try agai
 
 ELLIPSIS_SUFFIX = "..."
 SNIPPET_CHAR_LIMIT = 320
+SIMPLE_QUESTION_CHAR_LIMIT = 120
+SIMPLE_QUESTION_MAX_QUESTION_MARKS = 1
+SIMPLE_QUESTION_KEYWORDS = (
+    "compare",
+    "tradeoff",
+    "design",
+    "debug",
+    "why",
+    "how",
+    "step",
+    "recommend",
+    "pros",
+    "cons",
+    "architecture",
+    "root cause",
+)
+SIMPLE_QUESTION_PREFIXES = (
+    "do you have experience",
+    "what is",
+    "define",
+    "list",
+    "summarize",
+)
 
 
 class RetrievalPipeline(Protocol):
@@ -47,6 +70,7 @@ class ChatResult:
     selected_chunks: List[Dict[str, Any]]
     normalized_question: str
     usage_detail: "UsageDetail"
+    thinking_budget_tokens_effective: int | None
 
 
 class UsageDetail(TypedDict):
@@ -68,6 +92,8 @@ def run_rag_chat(
     persona_name: str,
     max_input_tokens: Optional[int],
     max_output_tokens: int,
+    enable_thinking_gating: bool,
+    default_thinking_budget_tokens: int | None,
 ) -> ChatResult:
     """Run a RAG chat flow and return the selected context plus response.
 
@@ -79,6 +105,8 @@ def run_rag_chat(
     - persona_name: Persona name used for prompt generation.
     - max_input_tokens: Optional token budget for the prompt.
     - max_output_tokens: Max tokens to request for the response.
+    - enable_thinking_gating: Whether per-request thinking gating is enabled.
+    - default_thinking_budget_tokens: Default thinking budget from settings.
 
     Output:
     - ChatResult containing the response, selected chunks, usage detail, and normalized question.
@@ -98,6 +126,12 @@ def run_rag_chat(
     query_embedding = retrieval.embed_query(normalized_question)
     candidate_chunks = retrieval.search_vector_store(query_embedding, top_k=top_k)
     selected_chunks = retrieval.apply_filters_and_boosting(candidate_chunks)
+    thinking_budget_tokens_effective = _resolve_thinking_budget_tokens(
+        normalized_question,
+        selected_chunks_count=len(selected_chunks),
+        enable_thinking_gating=enable_thinking_gating,
+        default_thinking_budget_tokens=default_thinking_budget_tokens,
+    )
 
     if not retrieval.has_signal(selected_chunks):
         answer = NO_SIGNAL_ANSWER
@@ -115,6 +149,7 @@ def run_rag_chat(
             selected_chunks=[],
             normalized_question=normalized_question,
             usage_detail=_empty_usage_detail(),
+            thinking_budget_tokens_effective=thinking_budget_tokens_effective,
         )
 
     prompt_payload = llm.build_llm_prompt(
@@ -126,6 +161,7 @@ def run_rag_chat(
     answer_text, usage_meta = llm_backend.generate(
         prompt_payload,
         max_output_tokens=max_output_tokens,
+        thinking_budget_tokens=thinking_budget_tokens_effective,
     )
     answer_final = answer_text.strip() or UNABLE_TO_GENERATE_ANSWER
 
@@ -147,6 +183,100 @@ def run_rag_chat(
         selected_chunks=selected_chunks,
         normalized_question=normalized_question,
         usage_detail=usage_detail,
+        thinking_budget_tokens_effective=thinking_budget_tokens_effective,
+    )
+
+
+def choose_thinking_budget_tokens(
+    question: str,
+    *,
+    default_budget: int,
+    selected_chunks_count: int,
+) -> int:
+    """
+    Decide the thinking budget for a request using a deterministic heuristic.
+
+    Inputs:
+    - question: Normalized question string.
+    - default_budget: Thinking budget to use for non-simple questions.
+    - selected_chunks_count: Count of selected retrieval chunks (reserved for future use).
+
+    Output:
+    - Thinking budget tokens; zero means "disable thinking."
+
+    Edge cases:
+    - Simple questions return 0.
+    - Non-simple questions return the default budget.
+    """
+    if _is_simple_question(question):
+        return 0
+    return int(default_budget)
+
+
+def _is_simple_question(question: str) -> bool:
+    """
+    Determine whether a question should skip model thinking.
+
+    Inputs:
+    - question: Normalized question string.
+
+    Output:
+    - True when the question is short and does not contain reasoning keywords,
+      or when it uses a known simple prefix.
+
+    Edge cases:
+    - Empty questions are treated as simple.
+    - Prefix matching is case-insensitive and ignores surrounding whitespace.
+    """
+    normalized_question = (question or "").strip()
+    if not normalized_question:
+        return True
+
+    if len(normalized_question) >= SIMPLE_QUESTION_CHAR_LIMIT:
+        return False
+
+    question_marks = normalized_question.count("?")
+    if question_marks > SIMPLE_QUESTION_MAX_QUESTION_MARKS:
+        return False
+
+    lowered = normalized_question.lower()
+    if any(lowered.startswith(prefix) for prefix in SIMPLE_QUESTION_PREFIXES):
+        return True
+
+    return not any(keyword in lowered for keyword in SIMPLE_QUESTION_KEYWORDS)
+
+
+def _resolve_thinking_budget_tokens(
+    question: str,
+    *,
+    selected_chunks_count: int,
+    enable_thinking_gating: bool,
+    default_thinking_budget_tokens: int | None,
+) -> int | None:
+    """
+    Resolve the effective thinking budget for the request.
+
+    Inputs:
+    - question: Normalized question string.
+    - selected_chunks_count: Count of selected retrieval chunks.
+    - enable_thinking_gating: Feature flag for per-request gating.
+    - default_thinking_budget_tokens: Default budget from settings.
+
+    Output:
+    - Effective thinking budget or None to use the client default.
+
+    Edge cases:
+    - Returns None when no default budget is configured.
+    - When gating is disabled, returns the default budget unchanged.
+    """
+    if default_thinking_budget_tokens is None:
+        return None
+    if not enable_thinking_gating:
+        return int(default_thinking_budget_tokens)
+    return choose_thinking_budget_tokens(
+        question,
+        default_budget=int(default_thinking_budget_tokens),
+        selected_chunks_count=selected_chunks_count,
     )
 
 

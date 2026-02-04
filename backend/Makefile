@@ -13,7 +13,7 @@ DATASET_VERSION ?= $(notdir $(patsubst %/,%,$(DATASET_DIR)))
 DATASET_FOLDER := datasets
 DATASET_GCS_PREFIX ?= $(DATASET_FOLDER)/$(DATASET_VERSION)
 
-.PHONY: help install run run-debug mock test-smoke test-core test-voice test-int test-cors-deploy test-vector-live test-build_datapoints test-auth-key-login test-create-access-key-cli test-keys-store test-llm-prompt test-security-session test-load-backend-env test-pack-and-push-processing check envs clean build_datapoints create-access-key dataset-version-check dataset-chunks dataset-datapoints dataset-upload dataset-pointer-update
+.PHONY: help install run run-debug mock test-smoke test-core test-voice test-int test-cors-deploy test-vector-live test-build_datapoints test-auth-key-login test-create-access-key-cli test-keys-store test-llm-prompt test-thinking-gating test-security-session test-load-backend-env test-pack-and-push-processing check envs clean build_datapoints create-access-key dataset-version-check dataset-chunks dataset-datapoints dataset-upload dataset-pointer-update
 
 help:
 	@echo "Targets:"
@@ -32,6 +32,7 @@ help:
 	@echo "  create-access-key - run access key CLI (pass ARGS='create ...')"
 	@echo "  test-keys-store - run key store tests"
 	@echo "  test-llm-prompt - run LLM prompt construction tests"
+	@echo "  test-thinking-gating - run thinking-budget gating tests"
 	@echo "  test-security-session - run session security tests"
 	@echo "  test-load-backend-env - run load_backend_env tests"
 	@echo "  test-pack-and-push-processing - run pack_and_push processing tests"
@@ -149,6 +150,9 @@ test-keys-store: $(VENV)/bin/activate
 
 test-llm-prompt: $(VENV)/bin/activate
 	$(TEST_ENV) $(PY) -m pytest -q tests/test_llm_prompt.py
+
+test-thinking-gating: $(VENV)/bin/activate
+	$(TEST_ENV) $(PY) -m pytest -q tests/test_thinking_gating.py
 
 test-security-session: $(VENV)/bin/activate
 	$(TEST_ENV) $(PY) -m pytest -q tests/test_security_session.py

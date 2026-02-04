@@ -154,6 +154,13 @@ make be-test-voice
   make be-test-retrieval-vector
   ```
 
+- `backend/tests/test_thinking_gating.py`  
+  Verifies deterministic thinking-budget gating, including the heuristic for simple questions and the per-request override plumbing into the LLM backend.
+  Command:
+  ```bash
+  make be-test-thinking-gating
+  ```
+
 ### Integration tests (live services)
 - `backend/tests/test_integration_real_backend.py`  
   Runs against an integrated backend (`uvicorn api.main:app`) with live credentials.

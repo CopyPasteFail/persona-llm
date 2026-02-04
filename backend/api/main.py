@@ -207,6 +207,8 @@ async def chat(
             persona_name=settings.PERSONA_NAME,
             max_input_tokens=settings.MAX_INPUT_TOKENS,
             max_output_tokens=settings.MAX_OUTPUT_TOKENS,
+            enable_thinking_gating=settings.ENABLE_THINKING_GATING,
+            default_thinking_budget_tokens=settings.THINKING_BUDGET_TOKENS,
         )
         response = chat_result.response
         response.model = settings.LLM_MODEL_NAME
@@ -224,6 +226,8 @@ async def chat(
                     "elapsed_ms": int((time.time() - request_start_time) * 1000),
                     "ip": getattr(request.client, "host", None),
                     "key_id": getattr(session, "key_id", None),
+                    "thinking_budget_tokens_effective": chat_result.thinking_budget_tokens_effective,
+                    "thinking_gating_enabled": settings.ENABLE_THINKING_GATING,
                 }
             )
             return response
@@ -241,6 +245,8 @@ async def chat(
                     "max_output_tokens": settings.MAX_OUTPUT_TOKENS,
                     "thinking_budget_tokens": settings.THINKING_BUDGET_TOKENS,
                 },
+                "thinking_budget_tokens_effective": chat_result.thinking_budget_tokens_effective,
+                "thinking_gating_enabled": settings.ENABLE_THINKING_GATING,
                 "key_id": session.key_id,
             }
         )
