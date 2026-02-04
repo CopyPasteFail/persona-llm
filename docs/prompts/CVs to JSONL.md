@@ -5,8 +5,8 @@ You are converting TWO ATTACHED CV FILES into JSONL lines that conform to the Pe
 ## Files
 
 * I will attach two files right now.
-* File with name containing \["infra","sre","devops","platform"] → role=infra.
-* File with name containing \["product","pm","tpm","po"] → role=product.
+* File with name containing ["infra","sre","devops","platform"] → role=infra.
+* File with name containing ["product","pm","tpm","po"] → role=product.
 * If ambiguous, infer from content.
 
 ## Output
@@ -30,7 +30,7 @@ You are converting TWO ATTACHED CV FILES into JSONL lines that conform to the Pe
 * `lang`: "en".
 * `updated_at`: one UTC ISO timestamp across all lines.
 * `source_uri`: `"file://<filename>"`.
-* `permissions`: \["public"].
+* `permissions`: ["public"].
 * `extras`:
 
   * `employer`: company/institution if applicable.
@@ -39,10 +39,11 @@ You are converting TWO ATTACHED CV FILES into JSONL lines that conform to the Pe
 
 ## Chunking Rules
 
-* Target \~450 tokens (\~2.2k chars).
-* If any bullet **or paragraph** >2.2k chars, split by sentence boundaries (never mid-sentence).
-* Atomic unit = bullet; pack adjacent bullets only if same employer/role/topic and under \~450 tokens.
-* **Overlap**: Add \~10% overlap by sentence within the same role/employer block.
+* Target ~150–250 tokens per chunk (~300–900 chars). Prefer ~500–700 chars.
+* Hard max per chunk: ~900 chars. Never exceed this unless the original single bullet/sentence is longer (then split by sentence boundaries).
+* Atomic unit = one bullet OR one sentence-level achievement/responsibility. Do not pack many bullets together.
+* Pack adjacent bullets only if same employer/role/topic AND the resulting chunk stays under ~250 tokens (~900 chars) AND contains no more than 2–3 atomic facts.
+* **Overlap**: Add ~1 sentence overlap within the same role/employer block (keep it small, do not exceed the ~900 char cap).
 * **Never overlap across roles, employers, or across sections.**
 * Convert to first person. Remove PII. Do not invent dates.
 
@@ -149,7 +150,6 @@ You are converting TWO ATTACHED CV FILES into JSONL lines that conform to the Pe
 ```
 
 ---
-
 
 ## File Structure Example
 
