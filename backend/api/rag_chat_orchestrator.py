@@ -6,8 +6,8 @@ from typing import Any, Dict, List, Optional, Protocol, Sequence, TypedDict
 from . import llm
 from .llm_backends import LlmBackend
 from .settings import (
-    DEFAULT_SIGNAL_BM25_THRESHOLD,
-    DEFAULT_SIGNAL_WEIGHTED_SCORE_THRESHOLD,
+    DEFAULT_BM25_THRESHOLD,
+    DEFAULT_WEIGHTED_SCORE_THRESHOLD,
 )
 from .types import ChatResponse, Citation, Usage
 
@@ -85,8 +85,8 @@ class ChatResult:
     top1_weighted_score: float | None
     top1_bm25_score: float | None
     top1_vector_score: float | None
-    signal_weighted_score_threshold: float
-    signal_bm25_threshold: float
+    weighted_score_threshold: float
+    bm25_threshold: float
 
 
 class UsageDetail(TypedDict):
@@ -143,8 +143,8 @@ def run_rag_chat(
     enable_thinking_gating: bool,
     default_thinking_budget_tokens: int | None,
     enable_signal_gating: bool = False,
-    signal_weighted_score_threshold: float = DEFAULT_SIGNAL_WEIGHTED_SCORE_THRESHOLD,
-    signal_bm25_threshold: float = DEFAULT_SIGNAL_BM25_THRESHOLD,
+    weighted_score_threshold: float = DEFAULT_WEIGHTED_SCORE_THRESHOLD,
+    bm25_threshold: float = DEFAULT_BM25_THRESHOLD,
 ) -> ChatResult:
     """Run a RAG chat flow and return the selected context plus response.
 
@@ -159,8 +159,8 @@ def run_rag_chat(
     - enable_thinking_gating: Whether per-request thinking gating is enabled.
     - default_thinking_budget_tokens: Default thinking budget from settings.
     - enable_signal_gating: Whether deterministic retrieval signal gating is enabled.
-    - signal_weighted_score_threshold: Top-1 blended score threshold for retrieval signal.
-    - signal_bm25_threshold: Top-1 BM25 threshold for retrieval signal.
+    - weighted_score_threshold: Top-1 blended score threshold for retrieval signal.
+    - bm25_threshold: Top-1 BM25 threshold for retrieval signal.
 
     Output:
     - ChatResult containing the response, selected chunks, usage detail, and normalized question.
@@ -188,8 +188,8 @@ def run_rag_chat(
     )
     signal_shadow_decision = _compute_signal_shadow_decision(
         selected_chunks,
-        weighted_score_threshold=signal_weighted_score_threshold,
-        bm25_threshold=signal_bm25_threshold,
+        weighted_score_threshold=weighted_score_threshold,
+        bm25_threshold=bm25_threshold,
     )
     should_skip_llm = signal_shadow_decision.would_skip_llm
     if not enable_signal_gating:
@@ -218,8 +218,8 @@ def run_rag_chat(
             top1_weighted_score=signal_shadow_decision.top1_weighted_score,
             top1_bm25_score=signal_shadow_decision.top1_bm25_score,
             top1_vector_score=signal_shadow_decision.top1_vector_score,
-            signal_weighted_score_threshold=signal_shadow_decision.weighted_score_threshold,
-            signal_bm25_threshold=signal_shadow_decision.bm25_threshold,
+            weighted_score_threshold=signal_shadow_decision.weighted_score_threshold,
+            bm25_threshold=signal_shadow_decision.bm25_threshold,
         )
 
     prompt_payload = llm.build_llm_prompt(
@@ -260,8 +260,8 @@ def run_rag_chat(
         top1_weighted_score=signal_shadow_decision.top1_weighted_score,
         top1_bm25_score=signal_shadow_decision.top1_bm25_score,
         top1_vector_score=signal_shadow_decision.top1_vector_score,
-        signal_weighted_score_threshold=signal_shadow_decision.weighted_score_threshold,
-        signal_bm25_threshold=signal_shadow_decision.bm25_threshold,
+        weighted_score_threshold=signal_shadow_decision.weighted_score_threshold,
+        bm25_threshold=signal_shadow_decision.bm25_threshold,
     )
 
 

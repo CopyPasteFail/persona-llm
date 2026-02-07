@@ -81,8 +81,8 @@ def test_compute_signal_shadow_decision_returns_no_candidates_for_empty_selectio
     """Shadow decision should skip LLM and report no_candidates when no chunks exist."""
     decision = rag_chat_orchestrator._compute_signal_shadow_decision(  # pyright: ignore[reportPrivateUsage]
         [],
-        weighted_score_threshold=rag_chat_orchestrator.DEFAULT_SIGNAL_WEIGHTED_SCORE_THRESHOLD,
-        bm25_threshold=rag_chat_orchestrator.DEFAULT_SIGNAL_BM25_THRESHOLD,
+        weighted_score_threshold=rag_chat_orchestrator.DEFAULT_WEIGHTED_SCORE_THRESHOLD,
+        bm25_threshold=rag_chat_orchestrator.DEFAULT_BM25_THRESHOLD,
     )
 
     assert decision.would_skip_llm is True
@@ -97,8 +97,8 @@ def test_compute_signal_shadow_decision_returns_pass_for_strong_signal() -> None
     strong_chunk = _build_chunk(score=STRONG_SIGNAL_SCORE, bm25_score=WEAK_SIGNAL_BM25)
     decision = rag_chat_orchestrator._compute_signal_shadow_decision(  # pyright: ignore[reportPrivateUsage]
         [strong_chunk],
-        weighted_score_threshold=rag_chat_orchestrator.DEFAULT_SIGNAL_WEIGHTED_SCORE_THRESHOLD,
-        bm25_threshold=rag_chat_orchestrator.DEFAULT_SIGNAL_BM25_THRESHOLD,
+        weighted_score_threshold=rag_chat_orchestrator.DEFAULT_WEIGHTED_SCORE_THRESHOLD,
+        bm25_threshold=rag_chat_orchestrator.DEFAULT_BM25_THRESHOLD,
     )
 
     assert decision.would_skip_llm is False
@@ -112,8 +112,8 @@ def test_compute_signal_shadow_decision_returns_score_below_for_weak_signal() ->
     weak_chunk = _build_chunk(score=WEAK_SIGNAL_SCORE, bm25_score=WEAK_SIGNAL_BM25)
     decision = rag_chat_orchestrator._compute_signal_shadow_decision(  # pyright: ignore[reportPrivateUsage]
         [weak_chunk],
-        weighted_score_threshold=rag_chat_orchestrator.DEFAULT_SIGNAL_WEIGHTED_SCORE_THRESHOLD,
-        bm25_threshold=rag_chat_orchestrator.DEFAULT_SIGNAL_BM25_THRESHOLD,
+        weighted_score_threshold=rag_chat_orchestrator.DEFAULT_WEIGHTED_SCORE_THRESHOLD,
+        bm25_threshold=rag_chat_orchestrator.DEFAULT_BM25_THRESHOLD,
     )
 
     assert decision.would_skip_llm is True
