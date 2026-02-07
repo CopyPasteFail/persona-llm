@@ -173,7 +173,7 @@ This section applies only when `VECTOR_BACKEND=matching_engine`.
    - **Vector search**: embed query, run local cosine search by default or call Vertex Matching Engine when configured.
    - **BM25 scoring**: run query keywords against in-memory index; get lexical scores.
    - **Rerank/boost**:
-     - Blend scores: `0.7 * ANN + 0.3 * BM25 + role/topic boosts`.
+     - Weight scores: `0.7 * ANN + 0.3 * BM25 + role/topic boosts`.
      - If classified, boost chunks with matching role tag.
    - **Trim**: keep top ~8 chunks (aligns with intended architecture).
    - **Prompt LLM**: feed 8 chunks into Gemini Flash, generate strict, grounded first-person answer.

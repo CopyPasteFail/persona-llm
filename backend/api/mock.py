@@ -173,7 +173,7 @@ def chat(
         default_thinking_budget_tokens=settings.THINKING_BUDGET_TOKENS,
         enable_signal_gating=settings.ENABLE_SIGNAL_GATING,
         weighted_score_threshold=settings.WEIGHTED_SCORE_THRESHOLD,
-        bm25_threshold=settings.BM25_THRESHOLD,
+        bm25_score_threshold=settings.BM25_SCORE_THRESHOLD,
     )
     response = chat_result.response
     response.model = settings.LLM_MODEL_NAME

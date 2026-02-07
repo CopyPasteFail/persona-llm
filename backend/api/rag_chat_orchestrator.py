@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional, Protocol, Sequence, TypedDict
 from . import llm
 from .llm_backends import LlmBackend
 from .settings import (
-    DEFAULT_BM25_THRESHOLD,
+    DEFAULT_BM25_SCORE_THRESHOLD,
     DEFAULT_WEIGHTED_SCORE_THRESHOLD,
 )
 from .types import ChatResponse, Citation, Usage
@@ -86,7 +86,7 @@ class ChatResult:
     top1_bm25_score: float | None
     top1_vector_score: float | None
     weighted_score_threshold: float
-    bm25_threshold: float
+    bm25_score_threshold: float
 
 
 class UsageDetail(TypedDict):
@@ -109,8 +109,8 @@ class SignalGateShadowDecision:
     - top1_weighted_score: Top candidates weighted score.
     - top1_bm25_score: Top candidate lexical BM25 score.
     - top1_vector_score: Top candidate vector similarity score.
-    - weighted_score_threshold: Blended score threshold used for evaluation.
-    - bm25_threshold: BM25 threshold used for evaluation.
+    - weighted_score_threshold: Weighted score threshold used for evaluation.
+    - bm25_score_threshold: BM25 threshold used for evaluation.
 
     Output:
     - Immutable decision payload consumed by chat orchestration and logs.
@@ -128,7 +128,7 @@ class SignalGateShadowDecision:
     top1_bm25_score: float | None
     top1_vector_score: float | None
     weighted_score_threshold: float
-    bm25_threshold: float
+    bm25_score_threshold: float
 
 
 def run_rag_chat(
@@ -144,7 +144,7 @@ def run_rag_chat(
     default_thinking_budget_tokens: int | None,
     enable_signal_gating: bool = False,
     weighted_score_threshold: float = DEFAULT_WEIGHTED_SCORE_THRESHOLD,
-    bm25_threshold: float = DEFAULT_BM25_THRESHOLD,
+    bm25_score_threshold: float = DEFAULT_BM25_SCORE_THRESHOLD,
 ) -> ChatResult:
     """Run a RAG chat flow and return the selected context plus response.
 
@@ -159,8 +159,8 @@ def run_rag_chat(
     - enable_thinking_gating: Whether per-request thinking gating is enabled.
     - default_thinking_budget_tokens: Default thinking budget from settings.
     - enable_signal_gating: Whether deterministic retrieval signal gating is enabled.
-    - weighted_score_threshold: Top-1 blended score threshold for retrieval signal.
-    - bm25_threshold: Top-1 BM25 threshold for retrieval signal.
+    - weighted_score_threshold: Top-1 weighted score threshold for retrieval signal.
+    - bm25_score_threshold: Top-1 BM25 threshold for retrieval signal.
 
     Output:
     - ChatResult containing the response, selected chunks, usage detail, and normalized question.
@@ -189,7 +189,7 @@ def run_rag_chat(
     signal_shadow_decision = _compute_signal_shadow_decision(
         selected_chunks,
         weighted_score_threshold=weighted_score_threshold,
-        bm25_threshold=bm25_threshold,
+        bm25_score_threshold=bm25_score_threshold,
     )
     should_skip_llm = signal_shadow_decision.would_skip_llm
     if not enable_signal_gating:
@@ -219,7 +219,7 @@ def run_rag_chat(
             top1_bm25_score=signal_shadow_decision.top1_bm25_score,
             top1_vector_score=signal_shadow_decision.top1_vector_score,
             weighted_score_threshold=signal_shadow_decision.weighted_score_threshold,
-            bm25_threshold=signal_shadow_decision.bm25_threshold,
+            bm25_score_threshold=signal_shadow_decision.bm25_score_threshold,
         )
 
     prompt_payload = llm.build_llm_prompt(
@@ -261,7 +261,7 @@ def run_rag_chat(
         top1_bm25_score=signal_shadow_decision.top1_bm25_score,
         top1_vector_score=signal_shadow_decision.top1_vector_score,
         weighted_score_threshold=signal_shadow_decision.weighted_score_threshold,
-        bm25_threshold=signal_shadow_decision.bm25_threshold,
+        bm25_score_threshold=signal_shadow_decision.bm25_score_threshold,
     )
 
 
@@ -451,14 +451,14 @@ def _compute_signal_shadow_decision(
     selected_chunks: List[Dict[str, Any]],
     *,
     weighted_score_threshold: float,
-    bm25_threshold: float,
+    bm25_score_threshold: float,
 ) -> SignalGateShadowDecision:
     """Compute deterministic signal-gating decision without applying it.
 
     Inputs:
     - selected_chunks: Ranked retrieval chunks from filtering and boosting.
     - weighted_score_threshold: Minimum acceptable top-1 weighted score.
-    - bm25_threshold: Minimum acceptable top-1 BM25 score.
+    - bm25_score_threshold: Minimum acceptable top-1 BM25 score.
 
     Output:
     - SignalGateShadowDecision with would-skip verdict, reason, top-1 score
@@ -472,7 +472,7 @@ def _compute_signal_shadow_decision(
     - Pure computation with no shared state mutations.
     """
     normalized_weighted_score_threshold = float(weighted_score_threshold)
-    normalized_bm25_threshold = float(bm25_threshold)
+    normalized_bm25_score_threshold = float(bm25_score_threshold)
     top_chunk = selected_chunks[0] if selected_chunks else {}
     top1_weighted_score = _optional_float(top_chunk.get("score"))
     top1_bm25_score = _optional_float(top_chunk.get("bm25_score"))
@@ -486,16 +486,16 @@ def _compute_signal_shadow_decision(
             top1_bm25_score=None,
             top1_vector_score=None,
             weighted_score_threshold=normalized_weighted_score_threshold,
-            bm25_threshold=normalized_bm25_threshold,
+            bm25_score_threshold=normalized_bm25_score_threshold,
         )
 
     passes_weighted_score_threshold = (
         top1_weighted_score is not None and top1_weighted_score >= normalized_weighted_score_threshold
     )
-    passes_bm25_threshold = (
-        top1_bm25_score is not None and top1_bm25_score >= normalized_bm25_threshold
+    passes_bm25_score_threshold = (
+        top1_bm25_score is not None and top1_bm25_score >= normalized_bm25_score_threshold
     )
-    has_signal = passes_weighted_score_threshold or passes_bm25_threshold
+    has_signal = passes_weighted_score_threshold or passes_bm25_score_threshold
     reason = (
         SIGNAL_GATE_REASON_PASS
         if has_signal
@@ -509,7 +509,7 @@ def _compute_signal_shadow_decision(
         top1_bm25_score=top1_bm25_score,
         top1_vector_score=top1_vector_score,
         weighted_score_threshold=normalized_weighted_score_threshold,
-        bm25_threshold=normalized_bm25_threshold,
+        bm25_score_threshold=normalized_bm25_score_threshold,
     )
 
 

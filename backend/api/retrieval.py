@@ -871,7 +871,7 @@ def _ensure_chunk_store_loaded() -> None:
 
 def apply_filters_and_boosting(candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
-    Apply hybrid scoring that blends ANN distance, BM25 lexical signal, and metadata boosts.
+    Apply hybrid scoring that weights ANN distance, BM25 lexical signal, and metadata boosts.
 
     Inputs:
         candidates: Vector search results, each with at least id and distance.
@@ -909,19 +909,19 @@ def apply_filters_and_boosting(candidates: List[Dict[str, Any]]) -> List[Dict[st
         distance = float(candidate.get("distance", 0.0))
         vector_score = _distance_to_similarity(distance)
         bm25_raw = bm25_scores.get(chunk_id, 0.0)
-        blended = vector_weight * vector_score + bm25_weight * _normalize_bm25(
+        weighted = vector_weight * vector_score + bm25_weight * _normalize_bm25(
             bm25_raw
         )
 
         metadata = cast(Dict[str, Any], chunk.get("metadata") or {})
         role = _chunk_role(metadata)
         if role_hint and role and role == role_hint:
-            blended += _ROLE_BOOST
+            weighted += _ROLE_BOOST
 
         if topic_tokens:
             matches = len(_chunk_topics(metadata) & topic_tokens)
             if matches:
-                blended += min(_TOPIC_BOOST * matches, _MAX_TOPIC_BOOST)
+                weighted += min(_TOPIC_BOOST * matches, _MAX_TOPIC_BOOST)
 
         ranked.append(
             {
@@ -931,7 +931,7 @@ def apply_filters_and_boosting(candidates: List[Dict[str, Any]]) -> List[Dict[st
                 "distance": distance,
                 "vector_score": vector_score,
                 "bm25_score": bm25_raw,
-                "score": blended,
+                "score": weighted,
             }
         )
 

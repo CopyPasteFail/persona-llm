@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field, ValidationError, field_validator
 PERSONA_MAX_CHARS = 50
 PERSONA_MAX_WORDS = 4
 DEFAULT_WEIGHTED_SCORE_THRESHOLD = 0.55
-DEFAULT_BM25_THRESHOLD = 3.0
+DEFAULT_BM25_SCORE_THRESHOLD = 3.0
 DEFAULT_RETRIEVAL_VECTOR_WEIGHT = 0.7
 DEFAULT_RETRIEVAL_BM25_WEIGHT = 0.3
 
@@ -51,8 +51,8 @@ class Settings(BaseModel):
         default=DEFAULT_WEIGHTED_SCORE_THRESHOLD,
         ge=0.0,
     )
-    BM25_THRESHOLD: float = Field(
-        default=DEFAULT_BM25_THRESHOLD,
+    BM25_SCORE_THRESHOLD: float = Field(
+        default=DEFAULT_BM25_SCORE_THRESHOLD,
         ge=0.0,
     )
     RETRIEVAL_VECTOR_WEIGHT: float = Field(
@@ -273,8 +273,8 @@ def load_settings() -> Settings:
             WEIGHTED_SCORE_THRESHOLD=_env_float(
                 "WEIGHTED_SCORE_THRESHOLD", DEFAULT_WEIGHTED_SCORE_THRESHOLD
             ),
-            BM25_THRESHOLD=_env_float(
-                "BM25_THRESHOLD", DEFAULT_BM25_THRESHOLD
+            BM25_SCORE_THRESHOLD=_env_float(
+                "BM25_SCORE_THRESHOLD", DEFAULT_BM25_SCORE_THRESHOLD
             ),
             RETRIEVAL_VECTOR_WEIGHT=_env_float(
                 "RETRIEVAL_VECTOR_WEIGHT", DEFAULT_RETRIEVAL_VECTOR_WEIGHT

@@ -95,7 +95,7 @@
 - Zero extra infra when kept in-process.  
 - Example: query “experience with KEDA” → BM25 ensures chunks literally mentioning *KEDA* are promoted, even if embeddings underweight it.  
 
-**Cons:** Slightly more code to maintain scoring/blending logic.  
+**Cons:** Slightly more code to maintain scoring/weighting logic.  
 
 **Decision:** Keep BM25 as a first-class retrieval signal alongside ANN (build/refresh strategy covered in Decision 8).
 
@@ -119,7 +119,7 @@
 
 ## 7. Hybrid Retrieval and Rerank (Wide → Narrow)
 
-**What:** Pull ~50 ANN candidates, blend with BM25 + tag boosts, trim to ~8 for the LLM.  
+**What:** Pull ~50 ANN candidates, weight with BM25 + tag boosts, trim to ~8 for the LLM.  
 **Alternative:** Fetch exactly 8 from ANN only.
 
 **Pros:**  

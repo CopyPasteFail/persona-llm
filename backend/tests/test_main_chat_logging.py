@@ -98,7 +98,7 @@ async def test_chat_success_log_includes_signal_shadow_fields(
             top1_bm25_score=1.0,
             top1_vector_score=0.6,
             weighted_score_threshold=0.62,
-            bm25_threshold=3.0,
+            bm25_score_threshold=3.0,
         )
 
     access_key_store.add_plain_key(TEST_ACCESS_KEY, label="logging")
@@ -140,7 +140,7 @@ async def test_chat_success_log_includes_signal_shadow_fields(
     assert "signal_top1_bm25_score" not in success_payload
     assert "signal_top1_vector_score" not in success_payload
     assert "weighted_score_threshold" in success_payload
-    assert "bm25_threshold" in success_payload
+    assert "bm25_score_threshold" in success_payload
     assert success_payload["signal_would_skip_llm"] is True
     assert (
         success_payload["signal_gate_reason"]

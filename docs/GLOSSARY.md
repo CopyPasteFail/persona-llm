@@ -20,7 +20,7 @@
 - **Persona**: The human profile the system answers as, grounded in the provided dataset.
 - **Prompt**: The structured input to the LLM, including instructions and retrieved context.
 - **RAG (Retrieval-Augmented Generation)**: An approach that retrieves relevant context and conditions the model on it before generating an answer.
-- **Reranking / score blending**: Adjusting and combining retrieval scores (vector + BM25 + boosts) before selecting top results.
+- **Reranking / score weighting**: Adjusting and combining retrieval scores (vector + BM25 + boosts) before selecting top results.
 - **Role/topic tags**: Metadata applied to chunks (for example `role:infra`, `topic:kubernetes`) used for filtering and boosting.
 - **Token**: The model’s unit of text processing; both input and output are measured in tokens.
 - **Top-K**: The number of highest-scoring results kept after retrieval.

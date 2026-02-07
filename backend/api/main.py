@@ -211,7 +211,7 @@ async def chat(
             default_thinking_budget_tokens=settings.THINKING_BUDGET_TOKENS,
             enable_signal_gating=settings.ENABLE_SIGNAL_GATING,
             weighted_score_threshold=settings.WEIGHTED_SCORE_THRESHOLD,
-            bm25_threshold=settings.BM25_THRESHOLD,
+            bm25_score_threshold=settings.BM25_SCORE_THRESHOLD,
         )
         response = chat_result.response
         response.model = settings.LLM_MODEL_NAME
@@ -239,7 +239,7 @@ async def chat(
                     "top1_bm25_score": chat_result.top1_bm25_score,
                     "top1_vector_score": chat_result.top1_vector_score,
                     "weighted_score_threshold": chat_result.weighted_score_threshold,
-                    "bm25_threshold": chat_result.bm25_threshold,
+                    "bm25_score_threshold": chat_result.bm25_score_threshold,
                 }
             )
             return response
@@ -267,7 +267,7 @@ async def chat(
                 "top1_bm25_score": chat_result.top1_bm25_score,
                 "top1_vector_score": chat_result.top1_vector_score,
                 "weighted_score_threshold": chat_result.weighted_score_threshold,
-                "bm25_threshold": chat_result.bm25_threshold,
+                "bm25_score_threshold": chat_result.bm25_score_threshold,
                 "key_id": session.key_id,
             }
         )

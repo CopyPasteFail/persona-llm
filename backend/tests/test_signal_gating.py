@@ -11,6 +11,8 @@ WEAK_SIGNAL_SCORE = 0.56
 WEAK_SIGNAL_BM25 = 1.4
 STRONG_SIGNAL_SCORE = 0.66
 STRONG_SIGNAL_BM25 = 7.5
+TEST_WEIGHTED_SCORE_THRESHOLD = 0.62
+TEST_BM25_SCORE_THRESHOLD = 3.0
 DEFAULT_TOP_K = 4
 MAX_INPUT_TOKENS = 1000
 MAX_OUTPUT_TOKENS = 128
@@ -81,8 +83,8 @@ def test_compute_signal_shadow_decision_returns_no_candidates_for_empty_selectio
     """Shadow decision should skip LLM and report no_candidates when no chunks exist."""
     decision = rag_chat_orchestrator._compute_signal_shadow_decision(  # pyright: ignore[reportPrivateUsage]
         [],
-        weighted_score_threshold=rag_chat_orchestrator.DEFAULT_WEIGHTED_SCORE_THRESHOLD,
-        bm25_threshold=rag_chat_orchestrator.DEFAULT_BM25_THRESHOLD,
+        weighted_score_threshold=TEST_WEIGHTED_SCORE_THRESHOLD,
+        bm25_score_threshold=TEST_BM25_SCORE_THRESHOLD,
     )
 
     assert decision.would_skip_llm is True
@@ -97,8 +99,8 @@ def test_compute_signal_shadow_decision_returns_pass_for_strong_signal() -> None
     strong_chunk = _build_chunk(score=STRONG_SIGNAL_SCORE, bm25_score=WEAK_SIGNAL_BM25)
     decision = rag_chat_orchestrator._compute_signal_shadow_decision(  # pyright: ignore[reportPrivateUsage]
         [strong_chunk],
-        weighted_score_threshold=rag_chat_orchestrator.DEFAULT_WEIGHTED_SCORE_THRESHOLD,
-        bm25_threshold=rag_chat_orchestrator.DEFAULT_BM25_THRESHOLD,
+        weighted_score_threshold=TEST_WEIGHTED_SCORE_THRESHOLD,
+        bm25_score_threshold=TEST_BM25_SCORE_THRESHOLD,
     )
 
     assert decision.would_skip_llm is False
@@ -112,8 +114,8 @@ def test_compute_signal_shadow_decision_returns_score_below_for_weak_signal() ->
     weak_chunk = _build_chunk(score=WEAK_SIGNAL_SCORE, bm25_score=WEAK_SIGNAL_BM25)
     decision = rag_chat_orchestrator._compute_signal_shadow_decision(  # pyright: ignore[reportPrivateUsage]
         [weak_chunk],
-        weighted_score_threshold=rag_chat_orchestrator.DEFAULT_WEIGHTED_SCORE_THRESHOLD,
-        bm25_threshold=rag_chat_orchestrator.DEFAULT_BM25_THRESHOLD,
+        weighted_score_threshold=TEST_WEIGHTED_SCORE_THRESHOLD,
+        bm25_score_threshold=TEST_BM25_SCORE_THRESHOLD,
     )
 
     assert decision.would_skip_llm is True
@@ -142,6 +144,8 @@ def _run_chat(
         enable_thinking_gating=False,
         default_thinking_budget_tokens=None,
         enable_signal_gating=enable_signal_gating,
+        weighted_score_threshold=TEST_WEIGHTED_SCORE_THRESHOLD,
+        bm25_score_threshold=TEST_BM25_SCORE_THRESHOLD,
     )
     return chat_result, llm_backend
 
