@@ -29,7 +29,7 @@ class _StubRetrieval:
     ) -> List[Dict[str, Any]]:
         return [{"id": "chunk-1", "text": "stub chunk", "metadata": {}}]
 
-    def has_signal(self, selected: List[Dict[str, Any]]) -> bool:
+    def has_selected_chunks(self, selected: List[Dict[str, Any]]) -> bool:
         return bool(selected)
 
 

@@ -92,7 +92,7 @@ async def test_chat_success_log_includes_signal_shadow_fields(
             usage_detail={"total_tokens": 30, "finish_reason": "STOP"},
             thinking_budget_tokens_effective=0,
             llm_gate_enabled=False,
-            would_call_llm_if_gated=True,
+            would_call_llm_if_gated=False,
             llm_gate_reason=rag_chat_orchestrator.llm_gate_reason_SCORE_BELOW_THRESHOLD,
             top1_weighted_score=0.5,
             top1_bm25_score=1.0,
@@ -141,7 +141,7 @@ async def test_chat_success_log_includes_signal_shadow_fields(
     assert "signal_top1_vector_score" not in success_payload
     assert "weighted_score_threshold" in success_payload
     assert "bm25_score_threshold" in success_payload
-    assert success_payload["would_call_llm_if_gated"] is True
+    assert success_payload["would_call_llm_if_gated"] is False
     assert (
         success_payload["llm_gate_reason"]
         == rag_chat_orchestrator.llm_gate_reason_SCORE_BELOW_THRESHOLD

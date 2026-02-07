@@ -36,6 +36,8 @@ Optional fields:
 Each row includes:
 - `dataset_file`, `id`, `question`, `mode`, `elapsed_ms`
 - `would_call_llm_if_gated`, `llm_gate_reason`
+  - `would_call_llm_if_gated=true` means threshold gating would call the LLM.
+  - `would_call_llm_if_gated=false` means threshold gating would skip the LLM.
 - `top1_weighted_score`, `top1_bm25_score`, `top1_vector_score`
 - `weighted_score_threshold`, `bm25_score_threshold`
 - `selected_chunk_ids`

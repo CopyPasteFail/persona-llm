@@ -41,7 +41,7 @@ class _StaticRetrieval:
     ) -> List[Dict[str, Any]]:
         return list(self._selected_chunks)
 
-    def has_signal(self, selected: List[Dict[str, Any]]) -> bool:
+    def has_selected_chunks(self, selected: List[Dict[str, Any]]) -> bool:
         return bool(selected)
 
 
@@ -80,14 +80,14 @@ def _build_chunk(
 
 
 def test_compute_llm_gate_decision_returns_no_candidates_for_empty_selection() -> None:
-    """Shadow decision should skip LLM and report no_candidates when no chunks exist."""
+    """Shadow decision should not call LLM and report no_candidates when no chunks exist."""
     decision = rag_chat_orchestrator._compute_llm_gate_decision(  # pyright: ignore[reportPrivateUsage]
         [],
         weighted_score_threshold=TEST_WEIGHTED_SCORE_THRESHOLD,
         bm25_score_threshold=TEST_BM25_SCORE_THRESHOLD,
     )
 
-    assert decision.would_skip_llm is True
+    assert decision.would_call_llm is False
     assert decision.reason == rag_chat_orchestrator.llm_gate_reason_NO_CANDIDATES
     assert decision.top1_weighted_score is None
     assert decision.top1_bm25_score is None
@@ -103,14 +103,14 @@ def test_compute_llm_gate_decision_returns_pass_for_strong_signal() -> None:
         bm25_score_threshold=TEST_BM25_SCORE_THRESHOLD,
     )
 
-    assert decision.would_skip_llm is False
+    assert decision.would_call_llm is True
     assert decision.reason == rag_chat_orchestrator.llm_gate_reason_PASS
     assert decision.top1_weighted_score == STRONG_WEIGHTED_SCORE
     assert decision.top1_bm25_score == WEAK_BM25_SCORE
 
 
 def test_compute_llm_gate_decision_returns_score_below_for_weak_signal() -> None:
-    """Shadow decision should skip LLM when both top-1 score and BM25 are weak."""
+    """Shadow decision should not call LLM when both top-1 score and BM25 are weak."""
     weak_chunk = _build_chunk(score=WEAK_WEIGHTED_SCORE, bm25_score=WEAK_BM25_SCORE)
     decision = rag_chat_orchestrator._compute_llm_gate_decision(  # pyright: ignore[reportPrivateUsage]
         [weak_chunk],
@@ -118,7 +118,7 @@ def test_compute_llm_gate_decision_returns_score_below_for_weak_signal() -> None
         bm25_score_threshold=TEST_BM25_SCORE_THRESHOLD,
     )
 
-    assert decision.would_skip_llm is True
+    assert decision.would_call_llm is False
     assert (
         decision.reason == rag_chat_orchestrator.llm_gate_reason_SCORE_BELOW_THRESHOLD
     )
@@ -219,5 +219,5 @@ def test_llm_gating_flag_controls_whether_weak_signal_skips_llm() -> None:
     assert gated_result.response.answer == rag_chat_orchestrator.NO_SIGNAL_ANSWER
     assert ungated_backend.call_count == 1
     assert ungated_result.response.answer != rag_chat_orchestrator.NO_SIGNAL_ANSWER
-    assert gated_result.would_call_llm_if_gated is True
-    assert ungated_result.would_call_llm_if_gated is True
+    assert gated_result.would_call_llm_if_gated is False
+    assert ungated_result.would_call_llm_if_gated is False

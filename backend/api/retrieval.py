@@ -1007,7 +1007,7 @@ def build_context_prompt(question: str, selected: List[Dict[str, Any]]) -> str:
     return "\n\n".join(sections)
 
 
-def has_signal(selected: List[Dict[str, Any]]) -> bool:
+def has_selected_chunks(selected: List[Dict[str, Any]]) -> bool:
     """
     Decide whether any context signals are present.
 

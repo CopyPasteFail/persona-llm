@@ -67,7 +67,7 @@ class RetrievalPipeline(Protocol):
         self, candidates: List[Dict[str, Any]]
     ) -> List[Dict[str, Any]]: ...
 
-    def has_signal(self, selected: List[Dict[str, Any]]) -> bool: ...
+    def has_selected_chunks(self, selected: List[Dict[str, Any]]) -> bool: ...
 
 
 @dataclass(frozen=True)
@@ -104,7 +104,7 @@ class LlmGateShadowDecision:
     """Deterministic llm-gating shadow decision from top-ranked retrieval.
 
     Inputs:
-    - would_skip_llm: Whether threshold gating would skip the LLM call.
+    - would_call_llm: Whether threshold gating would call the LLM.
     - reason: Stable decision reason for logs and telemetry.
     - top1_weighted_score: Top candidates weighted score.
     - top1_bm25_score: Top candidate lexical BM25 score.
@@ -122,7 +122,7 @@ class LlmGateShadowDecision:
     - Pure value object; safe for concurrent reads.
     """
 
-    would_skip_llm: bool
+    would_call_llm: bool
     reason: str
     top1_weighted_score: float | None
     top1_bm25_score: float | None
@@ -191,11 +191,11 @@ def run_rag_chat(
         weighted_score_threshold=weighted_score_threshold,
         bm25_score_threshold=bm25_score_threshold,
     )
-    should_skip_llm = signal_shadow_decision.would_skip_llm
+    would_call_llm = signal_shadow_decision.would_call_llm
     if not enable_llm_call_gating:
-        should_skip_llm = not retrieval.has_signal(selected_chunks)
+        would_call_llm = retrieval.has_selected_chunks(selected_chunks)
 
-    if should_skip_llm:
+    if not would_call_llm:
         answer = NO_SIGNAL_ANSWER
         usage = Usage(
             input_tokens=max(1, len(normalized_question) // APPROX_CHARS_PER_TOKEN),
@@ -213,7 +213,7 @@ def run_rag_chat(
             usage_detail=_empty_usage_detail(),
             thinking_budget_tokens_effective=thinking_budget_tokens_effective,
             llm_gate_enabled=enable_llm_call_gating,
-            would_call_llm_if_gated=signal_shadow_decision.would_skip_llm,
+            would_call_llm_if_gated=signal_shadow_decision.would_call_llm,
             llm_gate_reason=signal_shadow_decision.reason,
             top1_weighted_score=signal_shadow_decision.top1_weighted_score,
             top1_bm25_score=signal_shadow_decision.top1_bm25_score,
@@ -255,7 +255,7 @@ def run_rag_chat(
         usage_detail=usage_detail,
         thinking_budget_tokens_effective=thinking_budget_tokens_effective,
         llm_gate_enabled=enable_llm_call_gating,
-        would_call_llm_if_gated=signal_shadow_decision.would_skip_llm,
+        would_call_llm_if_gated=signal_shadow_decision.would_call_llm,
         llm_gate_reason=signal_shadow_decision.reason,
         top1_weighted_score=signal_shadow_decision.top1_weighted_score,
         top1_bm25_score=signal_shadow_decision.top1_bm25_score,
@@ -461,11 +461,11 @@ def compute_llm_gate_decision(
     - bm25_score_threshold: Minimum acceptable top-1 BM25 score.
 
     Output:
-    - LlmGateShadowDecision with would-skip verdict, reason, top-1 metrics,
+    - LlmGateShadowDecision with would-call verdict, reason, top-1 metrics,
       and threshold values.
 
     Edge cases:
-    - Empty selections return would_skip_llm=True with `no_candidates`.
+    - Empty selections return would_call_llm=False with `no_candidates`.
     - Missing/non-numeric score fields are treated as absent and fail thresholds.
 
     Concurrency/atomicity:
@@ -493,11 +493,11 @@ def _compute_llm_gate_decision(
     - bm25_score_threshold: Minimum acceptable top-1 BM25 score.
 
     Output:
-    - LlmGateShadowDecision with would-skip verdict, reason, top-1 score
+    - LlmGateShadowDecision with would-call verdict, reason, top-1 score
       metadata, and threshold values used.
 
     Edge cases:
-    - Empty selections return would_skip_llm=True with `no_candidates`.
+    - Empty selections return would_call_llm=False with `no_candidates`.
     - Missing/non-numeric score fields are treated as absent and fail thresholds.
 
     Concurrency/atomicity:
@@ -512,7 +512,7 @@ def _compute_llm_gate_decision(
 
     if not selected_chunks:
         return LlmGateShadowDecision(
-            would_skip_llm=True,
+            would_call_llm=False,
             reason=llm_gate_reason_NO_CANDIDATES,
             top1_weighted_score=None,
             top1_bm25_score=None,
@@ -527,15 +527,17 @@ def _compute_llm_gate_decision(
     passes_bm25_score_threshold = (
         top1_bm25_score is not None and top1_bm25_score >= normalized_bm25_score_threshold
     )
-    has_signal = passes_weighted_score_threshold or passes_bm25_score_threshold
+    would_call_llm = (
+        passes_weighted_score_threshold or passes_bm25_score_threshold
+    )
     reason = (
         llm_gate_reason_PASS
-        if has_signal
+        if would_call_llm
         else llm_gate_reason_SCORE_BELOW_THRESHOLD
     )
 
     return LlmGateShadowDecision(
-        would_skip_llm=not has_signal,
+        would_call_llm=would_call_llm,
         reason=reason,
         top1_weighted_score=top1_weighted_score,
         top1_bm25_score=top1_bm25_score,

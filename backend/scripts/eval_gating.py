@@ -1,4 +1,4 @@
-"""Replay one or more JSONL datasets through RAG and record gating metrics."""
+"""Replay one or more JSONL datasets through RAG and record call-gating metrics."""
 
 from __future__ import annotations
 
@@ -608,7 +608,7 @@ def _build_orchestrator_result_row(
     - Result row including LLM gating metrics plus usage or answer preview fields.
 
     Edge cases:
-    - If retrieval has no signal, orchestrator returns the no-signal response and
+    - If retrieval has no call-worthy retrieval signal, orchestrator returns the no-signal response and
       usage fallbacks; this row still includes gating metrics.
 
     Concurrency/atomicity:
@@ -736,7 +736,7 @@ def _build_result_row(
         top_k=INTEGRATED_BACKEND_SEARCH_TOP_K,
     )
     selected_chunks = runtime.retrieval_module.apply_filters_and_boosting(candidate_chunks)
-    signal_shadow_decision = runtime.rag_chat_orchestrator.compute_llm_gate_decision(
+    gate_shadow_decision = runtime.rag_chat_orchestrator.compute_llm_gate_decision(
         selected_chunks,
         weighted_score_threshold=weighted_score_threshold_effective,
         bm25_score_threshold=bm25_score_threshold_effective,
@@ -755,13 +755,13 @@ def _build_result_row(
         "question": dataset_row.question,
         "mode": MODE_INTEGRATED_RETRIEVAL_ONLY,
         "elapsed_ms": elapsed_ms,
-        "would_call_llm_if_gated": signal_shadow_decision.would_skip_llm,
-        "llm_gate_reason": signal_shadow_decision.reason,
-        "top1_weighted_score": signal_shadow_decision.top1_weighted_score,
-        "top1_bm25_score": signal_shadow_decision.top1_bm25_score,
-        "top1_vector_score": signal_shadow_decision.top1_vector_score,
-        "weighted_score_threshold": signal_shadow_decision.weighted_score_threshold,
-        "bm25_score_threshold": signal_shadow_decision.bm25_score_threshold,
+        "would_call_llm_if_gated": gate_shadow_decision.would_call_llm,
+        "llm_gate_reason": gate_shadow_decision.reason,
+        "top1_weighted_score": gate_shadow_decision.top1_weighted_score,
+        "top1_bm25_score": gate_shadow_decision.top1_bm25_score,
+        "top1_vector_score": gate_shadow_decision.top1_vector_score,
+        "weighted_score_threshold": gate_shadow_decision.weighted_score_threshold,
+        "bm25_score_threshold": gate_shadow_decision.bm25_score_threshold,
         "selected_chunk_ids": selected_chunk_ids,
         "selected_count": len(selected_chunk_ids),
         "candidates_count": len(candidate_chunks),
@@ -870,13 +870,13 @@ def _print_summary(result_rows: Sequence[dict[str, Any]]) -> None:
             1
             for row in rows_with_supported_expected
             if row.get("expected") in {EXPECTED_LABEL_CALL, EXPECTED_LABEL_BORDERLINE}
-            and bool(row.get("would_call_llm_if_gated"))
+            and not bool(row.get("would_call_llm_if_gated"))
         )
         false_calls = sum(
             1
             for row in rows_with_supported_expected
             if row.get("expected") == EXPECTED_LABEL_SKIP
-            and not bool(row.get("would_call_llm_if_gated"))
+            and bool(row.get("would_call_llm_if_gated"))
         )
 
         print(
@@ -889,8 +889,8 @@ def _print_summary(result_rows: Sequence[dict[str, Any]]) -> None:
         str(row.get("llm_gate_reason") or "") for row in result_rows
     )
     print("llm_gate_reason_distribution:")
-    for signal_reason in sorted(reason_counts):
-        print(f"  {signal_reason}: {reason_counts[signal_reason]}")
+    for gate_reason in sorted(reason_counts):
+        print(f"  {gate_reason}: {reason_counts[gate_reason]}")
 
 
 def run(argv: Sequence[str] | None = None) -> int:
