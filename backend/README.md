@@ -143,4 +143,4 @@ Strict allowlist. Integrated mode allows `http://localhost:3000` and `https://<p
 Per IP, 10 per minute and 100 per day on `/chat`. `/health` is never limited.
 
 ## Tests
-See `docs/TESTING.md` for the full test catalog, how to run tests, and integration requirements.
+See [TESTING.md](../docs/TESTING.md) for the full test catalog, how to run tests, and integration requirements.
