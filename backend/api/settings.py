@@ -13,6 +13,10 @@ from pydantic import BaseModel, Field, ValidationError, field_validator
 
 PERSONA_MAX_CHARS = 50
 PERSONA_MAX_WORDS = 4
+DEFAULT_SIGNAL_SCORE_THRESHOLD = 0.62
+DEFAULT_SIGNAL_BM25_THRESHOLD = 3.0
+DEFAULT_RETRIEVAL_VECTOR_WEIGHT = 0.7
+DEFAULT_RETRIEVAL_BM25_WEIGHT = 0.3
 
 class Settings(BaseModel):
     """Strongly-typed backend config with range/length guards."""
@@ -42,6 +46,25 @@ class Settings(BaseModel):
     INCLUDE_THOUGHTS: bool = Field(default=False)
     REQ_TIMEOUT_MS: int = Field(..., ge=1000, le=60000)
     ENABLE_THINKING_GATING: bool = Field(default=False)
+    ENABLE_SIGNAL_GATING: bool = Field(default=False)
+    SIGNAL_SCORE_THRESHOLD: float = Field(
+        default=DEFAULT_SIGNAL_SCORE_THRESHOLD,
+        ge=0.0,
+    )
+    SIGNAL_BM25_THRESHOLD: float = Field(
+        default=DEFAULT_SIGNAL_BM25_THRESHOLD,
+        ge=0.0,
+    )
+    RETRIEVAL_VECTOR_WEIGHT: float = Field(
+        default=DEFAULT_RETRIEVAL_VECTOR_WEIGHT,
+        ge=0.0,
+        le=1.0,
+    )
+    RETRIEVAL_BM25_WEIGHT: float = Field(
+        default=DEFAULT_RETRIEVAL_BM25_WEIGHT,
+        ge=0.0,
+        le=1.0,
+    )
     MOCK_ACCESS_KEYS_PATH: str | None = Field(default=None)
     OPS_AUTH: str = Field(default="enabled")
     OPS_SECRET: str | None = Field(default=None)
@@ -184,6 +207,12 @@ def _env_bool(name: str, default: bool) -> bool:
         return False
     return default
 
+def _env_float(name: str, default: float) -> float:
+    value = os.getenv(name)
+    if value is None or value == "":
+        return default
+    return float(value)
+
 def load_settings() -> Settings:
     """Load dotenvs when present, verify required envs, and return typed Settings."""
     env_path, common_env_path = _load_env_files_if_available()
@@ -240,6 +269,19 @@ def load_settings() -> Settings:
             INCLUDE_THOUGHTS=_env_bool("INCLUDE_THOUGHTS", False),
             REQ_TIMEOUT_MS=int(_require_env("REQ_TIMEOUT_MS")),
             ENABLE_THINKING_GATING=_env_bool("ENABLE_THINKING_GATING", False),
+            ENABLE_SIGNAL_GATING=_env_bool("ENABLE_SIGNAL_GATING", False),
+            SIGNAL_SCORE_THRESHOLD=_env_float(
+                "SIGNAL_SCORE_THRESHOLD", DEFAULT_SIGNAL_SCORE_THRESHOLD
+            ),
+            SIGNAL_BM25_THRESHOLD=_env_float(
+                "SIGNAL_BM25_THRESHOLD", DEFAULT_SIGNAL_BM25_THRESHOLD
+            ),
+            RETRIEVAL_VECTOR_WEIGHT=_env_float(
+                "RETRIEVAL_VECTOR_WEIGHT", DEFAULT_RETRIEVAL_VECTOR_WEIGHT
+            ),
+            RETRIEVAL_BM25_WEIGHT=_env_float(
+                "RETRIEVAL_BM25_WEIGHT", DEFAULT_RETRIEVAL_BM25_WEIGHT
+            ),
             MOCK_ACCESS_KEYS_PATH=os.getenv("MOCK_ACCESS_KEYS_PATH"),
             OPS_AUTH=os.getenv("OPS_AUTH") or "enabled",
             OPS_SECRET=os.getenv("OPS_SECRET"),

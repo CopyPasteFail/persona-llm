@@ -209,6 +209,9 @@ async def chat(
             max_output_tokens=settings.MAX_OUTPUT_TOKENS,
             enable_thinking_gating=settings.ENABLE_THINKING_GATING,
             default_thinking_budget_tokens=settings.THINKING_BUDGET_TOKENS,
+            enable_signal_gating=settings.ENABLE_SIGNAL_GATING,
+            signal_score_threshold=settings.SIGNAL_SCORE_THRESHOLD,
+            signal_bm25_threshold=settings.SIGNAL_BM25_THRESHOLD,
         )
         response = chat_result.response
         response.model = settings.LLM_MODEL_NAME
@@ -228,6 +231,17 @@ async def chat(
                     "key_id": getattr(session, "key_id", None),
                     "thinking_budget_tokens_effective": chat_result.thinking_budget_tokens_effective,
                     "thinking_gating_enabled": settings.ENABLE_THINKING_GATING,
+                    "signal_gate_enabled": settings.ENABLE_SIGNAL_GATING,
+                    "signal_would_skip_llm": chat_result.signal_would_skip_llm,
+                    "signal_gate_reason": chat_result.signal_gate_reason,
+                    "top1_score": chat_result.top1_score,
+                    "top1_bm25_score": chat_result.top1_bm25_score,
+                    "top1_vector_score": chat_result.top1_vector_score,
+                    "signal_top1_score": chat_result.top1_score,
+                    "signal_top1_bm25_score": chat_result.top1_bm25_score,
+                    "signal_top1_vector_score": chat_result.top1_vector_score,
+                    "signal_score_threshold": chat_result.signal_score_threshold,
+                    "signal_bm25_threshold": chat_result.signal_bm25_threshold,
                 }
             )
             return response
@@ -247,6 +261,17 @@ async def chat(
                 },
                 "thinking_budget_tokens_effective": chat_result.thinking_budget_tokens_effective,
                 "thinking_gating_enabled": settings.ENABLE_THINKING_GATING,
+                "signal_gate_enabled": settings.ENABLE_SIGNAL_GATING,
+                "signal_would_skip_llm": chat_result.signal_would_skip_llm,
+                "signal_gate_reason": chat_result.signal_gate_reason,
+                "top1_score": chat_result.top1_score,
+                "top1_bm25_score": chat_result.top1_bm25_score,
+                "top1_vector_score": chat_result.top1_vector_score,
+                "signal_top1_score": chat_result.top1_score,
+                "signal_top1_bm25_score": chat_result.top1_bm25_score,
+                "signal_top1_vector_score": chat_result.top1_vector_score,
+                "signal_score_threshold": chat_result.signal_score_threshold,
+                "signal_bm25_threshold": chat_result.signal_bm25_threshold,
                 "key_id": session.key_id,
             }
         )

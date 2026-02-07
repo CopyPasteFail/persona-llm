@@ -92,6 +92,13 @@ No frontend test suite is wired up yet.
   make be-test-security-session
   ```
 
+- `backend/tests/test_main_chat_logging.py`  
+  Verifies the `chat.success` structured log payload includes additive signal-gating shadow fields without changing response behavior when gating is disabled.
+  Command:
+  ```bash
+  make be-test-main-chat-logging
+  ```
+
 ### Backend voice tests
 - `backend/tests/test_persona_voice.py`  
   Ensures the mock `/chat` endpoint produces first-person phrasing. It asserts the response structure and does a content sanity check (TLDR presence, no stray filter lines, and presence of first-person pronouns).
@@ -159,6 +166,13 @@ make be-test-voice
   Command:
   ```bash
   make be-test-thinking-gating
+  ```
+
+- `backend/tests/test_signal_gating.py`  
+  Covers deterministic signal-gating decisions in the RAG orchestrator, including weak-signal fallback, strong-signal pass-through, and enabled/disabled gate behavior.
+  Command:
+  ```bash
+  make be-test-signal-gating
   ```
 
 ### Integration tests (live services)

@@ -13,7 +13,7 @@ DATASET_VERSION ?= $(notdir $(patsubst %/,%,$(DATASET_DIR)))
 DATASET_FOLDER := datasets
 DATASET_GCS_PREFIX ?= $(DATASET_FOLDER)/$(DATASET_VERSION)
 
-.PHONY: help install run run-debug mock test-smoke test-core test-voice test-int test-cors-deploy test-vector-live test-build_datapoints test-auth-key-login test-create-access-key-cli test-keys-store test-llm-prompt test-thinking-gating test-security-session test-load-backend-env test-pack-and-push-processing check envs clean build_datapoints create-access-key dataset-version-check dataset-chunks dataset-datapoints dataset-upload dataset-pointer-update
+.PHONY: help install run run-debug mock test-smoke test-core test-voice test-int test-cors-deploy test-vector-live test-build_datapoints test-auth-key-login test-create-access-key-cli test-keys-store test-llm-prompt test-thinking-gating test-signal-gating test-main-chat-logging test-security-session test-load-backend-env test-pack-and-push-processing check envs clean build_datapoints create-access-key dataset-version-check dataset-chunks dataset-datapoints dataset-upload dataset-pointer-update
 
 help:
 	@echo "Targets:"
@@ -33,6 +33,8 @@ help:
 	@echo "  test-keys-store - run key store tests"
 	@echo "  test-llm-prompt - run LLM prompt construction tests"
 	@echo "  test-thinking-gating - run thinking-budget gating tests"
+	@echo "  test-signal-gating - run deterministic signal-gating tests"
+	@echo "  test-main-chat-logging - run chat success structured logging tests"
 	@echo "  test-security-session - run session security tests"
 	@echo "  test-load-backend-env - run load_backend_env tests"
 	@echo "  test-pack-and-push-processing - run pack_and_push processing tests"
@@ -117,7 +119,7 @@ test-build_datapoints: $(VENV)/bin/activate
 test-smoke: $(VENV)/bin/activate
 	LLM_BACKEND=deterministic $(PY) -m pytest -q $(PYTEST_ARGS) tests/test_smoke.py
 
-test-core: test-smoke test-voice test-auth-key-login test-security-session test-keys-store test-llm-prompt test-create-access-key-cli test-build_datapoints test-retrieval-vector test-load-backend-env test-pack-and-push-processing
+test-core: test-smoke test-voice test-auth-key-login test-security-session test-keys-store test-llm-prompt test-create-access-key-cli test-build_datapoints test-retrieval-vector test-thinking-gating test-signal-gating test-main-chat-logging test-load-backend-env test-pack-and-push-processing
 
 test-voice: $(VENV)/bin/activate
 	$(TEST_ENV) $(PY) -m pytest -q tests/test_persona_voice.py tests/test_normalize_question_punct.py
@@ -153,6 +155,12 @@ test-llm-prompt: $(VENV)/bin/activate
 
 test-thinking-gating: $(VENV)/bin/activate
 	$(TEST_ENV) $(PY) -m pytest -q tests/test_thinking_gating.py
+
+test-signal-gating: $(VENV)/bin/activate
+	$(TEST_ENV) $(PY) -m pytest -q tests/test_signal_gating.py
+
+test-main-chat-logging: $(VENV)/bin/activate
+	$(TEST_ENV) $(PY) -m pytest -q tests/test_main_chat_logging.py
 
 test-security-session: $(VENV)/bin/activate
 	$(TEST_ENV) $(PY) -m pytest -q tests/test_security_session.py

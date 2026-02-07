@@ -50,8 +50,6 @@ _MAX_CONTEXT_CHUNKS = 8
 _ROLE_BOOST = 0.05
 _TOPIC_BOOST = 0.02
 _MAX_TOPIC_BOOST = 0.06
-_VECTOR_WEIGHT = 0.7
-_BM25_WEIGHT = 0.3
 _DEBUG_NEIGHBOR_SAMPLE = 5
 _DEBUG_BM25_SAMPLE = 5
 
@@ -896,6 +894,8 @@ def apply_filters_and_boosting(candidates: List[Dict[str, Any]]) -> List[Dict[st
     bm25_scores = _bm25_index.score(_tokenize(question)) if _bm25_index and question else {}
     role_hint = _classify_query_role(question)
     topic_tokens = set(_tokenize(question))
+    vector_weight = float(settings.RETRIEVAL_VECTOR_WEIGHT)
+    bm25_weight = float(settings.RETRIEVAL_BM25_WEIGHT)
 
     ranked: List[Dict[str, Any]] = []
     for candidate in candidates:
@@ -909,7 +909,7 @@ def apply_filters_and_boosting(candidates: List[Dict[str, Any]]) -> List[Dict[st
         distance = float(candidate.get("distance", 0.0))
         vector_score = _distance_to_similarity(distance)
         bm25_raw = bm25_scores.get(chunk_id, 0.0)
-        blended = _VECTOR_WEIGHT * vector_score + _BM25_WEIGHT * _normalize_bm25(
+        blended = vector_weight * vector_score + bm25_weight * _normalize_bm25(
             bm25_raw
         )
 
@@ -941,8 +941,8 @@ def apply_filters_and_boosting(candidates: List[Dict[str, Any]]) -> List[Dict[st
             {
                 "event": "retrieval.bm25_debug",
                 "query": question,
-                "vector_weight": _VECTOR_WEIGHT,
-                "bm25_weight": _BM25_WEIGHT,
+                "vector_weight": vector_weight,
+                "bm25_weight": bm25_weight,
                 "candidates": [
                     {
                         "chunk_id": item["id"],

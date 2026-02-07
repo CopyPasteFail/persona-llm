@@ -171,6 +171,9 @@ def chat(
         max_output_tokens=settings.MAX_OUTPUT_TOKENS,
         enable_thinking_gating=settings.ENABLE_THINKING_GATING,
         default_thinking_budget_tokens=settings.THINKING_BUDGET_TOKENS,
+        enable_signal_gating=settings.ENABLE_SIGNAL_GATING,
+        signal_score_threshold=settings.SIGNAL_SCORE_THRESHOLD,
+        signal_bm25_threshold=settings.SIGNAL_BM25_THRESHOLD,
     )
     response = chat_result.response
     response.model = settings.LLM_MODEL_NAME
