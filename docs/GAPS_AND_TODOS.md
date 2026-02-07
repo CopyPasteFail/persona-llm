@@ -2,6 +2,7 @@
 - Strengthen retrieval in `api/retrieval.py`: expand tests around `embed_query`, `search_vector_store`, `apply_filters_and_boosting`, and `build_context_prompt`, and validate live client integration.
 - Add unit tests for dataset cache loading (pointer, manifest validation, normalization guards) and local vector search scoring.
 - Add regression tests + observability for the Gemini client (`api/llm.py::call_gemini_flash`): stubbed unit tests, usage parsing coverage, and explicit timeout/error handling.
+- Settings/runtime decoupling: `LLM_BACKEND` and `API_KEY` are currently required at settings load/import time (`api/settings.py`), even for retrieval-only eval paths that never call the LLM. Move these requirements to the LLM-serving path (`/chat`) so retrieval-only workflows can run without LLM env vars while preserving existing `/chat` behavior.
 - Rate limiting (enhancement): keep the FastAPI limiter for app-level protection and consistent behavior, add an edge/service-level limiter (Cloud Armor / API Gateway / load balancer) for stronger enforcement and DDoS resistance.
 - Rate limiting (enhancement): move rate-limit storage to a shared store (Redis/Firestore; currently per-pod in-memory) for multi-instance deployments.
 - Auth/session (enhancement): revoking an access key should immediately invalidate existing JWT sessions (not just block new logins).

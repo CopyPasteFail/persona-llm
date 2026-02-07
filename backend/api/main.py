@@ -14,8 +14,8 @@ from .types import ChatRequest, ChatResponse, Usage
 from .security import Session, check_rate_limit_dependency, get_current_session
 from .settings import settings
 from .auth import router as auth_router
-from . import dataset_cache, retrieval
-from . import llm_backends, ops_routes, rag_chat_orchestrator
+from . import retrieval
+from . import llm_backends, ops_routes, rag_chat_orchestrator, runtime_wiring
 from .llm import GeminiEmptyResponseError
 
 API_TITLE = "Persona LLM API"
@@ -96,18 +96,11 @@ async def lifespan(_app_instance: FastAPI) -> AsyncIterator[None]:
     """
     global is_ready, is_init_done
     try:
-        model_name = (
-            os.getenv("EMBEDDING_MODEL")
-            or os.getenv("DATAPOINTS_MODEL")
-            or "text-embedding-004"
-        )
-        retrieval.configure_vertex_embedding_client(
-            project=settings.PROJECT_ID,
+        cache = runtime_wiring.configure_integrated_retrieval_runtime(
+            retrieval_module=retrieval,
+            project_id=settings.PROJECT_ID,
             region=settings.REGION,
-            model_name=model_name,
         )
-        cache = dataset_cache.reload_cache()
-        retrieval.configure_chunk_store(cache.chunks_by_id)
         is_ready = bool(cache.chunks_by_id)
         if not is_ready:
             logger.warning("Chunk store loaded but empty; API remains unready.")
@@ -231,9 +224,9 @@ async def chat(
                     "key_id": getattr(session, "key_id", None),
                     "thinking_budget_tokens_effective": chat_result.thinking_budget_tokens_effective,
                     "thinking_gating_enabled": settings.ENABLE_THINKING_GATING,
-                    "signal_gate_enabled": settings.ENABLE_LLM_CALL_GATING,
-                    "signal_would_skip_llm": chat_result.signal_would_skip_llm,
-                    "signal_gate_reason": chat_result.signal_gate_reason,
+                    "llm_gate_enabled": settings.ENABLE_LLM_CALL_GATING,
+                    "would_call_llm_if_gated": chat_result.would_call_llm_if_gated,
+                    "llm_gate_reason": chat_result.llm_gate_reason,
                     # Canonical top-1 retrieval metrics; signal_top1_* aliases removed.
                     "top1_weighted_score": chat_result.top1_weighted_score,
                     "top1_bm25_score": chat_result.top1_bm25_score,
@@ -259,9 +252,9 @@ async def chat(
                 },
                 "thinking_budget_tokens_effective": chat_result.thinking_budget_tokens_effective,
                 "thinking_gating_enabled": settings.ENABLE_THINKING_GATING,
-                "signal_gate_enabled": settings.ENABLE_LLM_CALL_GATING,
-                "signal_would_skip_llm": chat_result.signal_would_skip_llm,
-                "signal_gate_reason": chat_result.signal_gate_reason,
+                "llm_gate_enabled": settings.ENABLE_LLM_CALL_GATING,
+                "would_call_llm_if_gated": chat_result.would_call_llm_if_gated,
+                "llm_gate_reason": chat_result.llm_gate_reason,
                 # Canonical top-1 retrieval metrics; signal_top1_* aliases removed.
                 "top1_weighted_score": chat_result.top1_weighted_score,
                 "top1_bm25_score": chat_result.top1_bm25_score,

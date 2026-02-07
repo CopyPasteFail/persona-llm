@@ -91,9 +91,9 @@ async def test_chat_success_log_includes_signal_shadow_fields(
             normalized_question=TEST_QUESTION,
             usage_detail={"total_tokens": 30, "finish_reason": "STOP"},
             thinking_budget_tokens_effective=0,
-            signal_gate_enabled=False,
-            signal_would_skip_llm=True,
-            signal_gate_reason=rag_chat_orchestrator.SIGNAL_GATE_REASON_SCORE_BELOW_THRESHOLD,
+            llm_gate_enabled=False,
+            would_call_llm_if_gated=True,
+            llm_gate_reason=rag_chat_orchestrator.llm_gate_reason_SCORE_BELOW_THRESHOLD,
             top1_weighted_score=0.5,
             top1_bm25_score=1.0,
             top1_vector_score=0.6,
@@ -130,9 +130,9 @@ async def test_chat_success_log_includes_signal_shadow_fields(
     assert len(success_payloads) == 1
     success_payload: dict[str, Any] = success_payloads[0]
 
-    assert "signal_gate_enabled" in success_payload
-    assert "signal_would_skip_llm" in success_payload
-    assert "signal_gate_reason" in success_payload
+    assert "llm_gate_enabled" in success_payload
+    assert "would_call_llm_if_gated" in success_payload
+    assert "llm_gate_reason" in success_payload
     assert "top1_weighted_score" in success_payload
     assert "top1_bm25_score" in success_payload
     assert "top1_vector_score" in success_payload
@@ -141,8 +141,8 @@ async def test_chat_success_log_includes_signal_shadow_fields(
     assert "signal_top1_vector_score" not in success_payload
     assert "weighted_score_threshold" in success_payload
     assert "bm25_score_threshold" in success_payload
-    assert success_payload["signal_would_skip_llm"] is True
+    assert success_payload["would_call_llm_if_gated"] is True
     assert (
-        success_payload["signal_gate_reason"]
-        == rag_chat_orchestrator.SIGNAL_GATE_REASON_SCORE_BELOW_THRESHOLD
+        success_payload["llm_gate_reason"]
+        == rag_chat_orchestrator.llm_gate_reason_SCORE_BELOW_THRESHOLD
     )

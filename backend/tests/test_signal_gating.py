@@ -88,7 +88,7 @@ def test_compute_signal_shadow_decision_returns_no_candidates_for_empty_selectio
     )
 
     assert decision.would_skip_llm is True
-    assert decision.reason == rag_chat_orchestrator.SIGNAL_GATE_REASON_NO_CANDIDATES
+    assert decision.reason == rag_chat_orchestrator.llm_gate_reason_NO_CANDIDATES
     assert decision.top1_weighted_score is None
     assert decision.top1_bm25_score is None
     assert decision.top1_vector_score is None
@@ -104,7 +104,7 @@ def test_compute_signal_shadow_decision_returns_pass_for_strong_signal() -> None
     )
 
     assert decision.would_skip_llm is False
-    assert decision.reason == rag_chat_orchestrator.SIGNAL_GATE_REASON_PASS
+    assert decision.reason == rag_chat_orchestrator.llm_gate_reason_PASS
     assert decision.top1_weighted_score == STRONG_SIGNAL_SCORE
     assert decision.top1_bm25_score == WEAK_SIGNAL_BM25
 
@@ -120,7 +120,7 @@ def test_compute_signal_shadow_decision_returns_score_below_for_weak_signal() ->
 
     assert decision.would_skip_llm is True
     assert (
-        decision.reason == rag_chat_orchestrator.SIGNAL_GATE_REASON_SCORE_BELOW_THRESHOLD
+        decision.reason == rag_chat_orchestrator.llm_gate_reason_SCORE_BELOW_THRESHOLD
     )
 
 
@@ -163,8 +163,8 @@ def test_signal_gating_returns_no_signal_for_weak_top1_weighted_scores() -> None
     assert chat_result.response.answer == rag_chat_orchestrator.NO_SIGNAL_ANSWER
     assert chat_result.response.citations == []
     assert (
-        chat_result.signal_gate_reason
-        == rag_chat_orchestrator.SIGNAL_GATE_REASON_SCORE_BELOW_THRESHOLD
+        chat_result.llm_gate_reason
+        == rag_chat_orchestrator.llm_gate_reason_SCORE_BELOW_THRESHOLD
     )
     assert chat_result.top1_weighted_score == WEAK_SIGNAL_SCORE
     assert chat_result.top1_bm25_score == WEAK_SIGNAL_BM25
@@ -197,8 +197,8 @@ def test_signal_gating_allows_signal_when_top1_weighted_score_or_bm25_is_strong(
     assert bm25_backend.call_count == 1
     assert score_result.response.answer != rag_chat_orchestrator.NO_SIGNAL_ANSWER
     assert bm25_result.response.answer != rag_chat_orchestrator.NO_SIGNAL_ANSWER
-    assert score_result.signal_gate_reason == rag_chat_orchestrator.SIGNAL_GATE_REASON_PASS
-    assert bm25_result.signal_gate_reason == rag_chat_orchestrator.SIGNAL_GATE_REASON_PASS
+    assert score_result.llm_gate_reason == rag_chat_orchestrator.llm_gate_reason_PASS
+    assert bm25_result.llm_gate_reason == rag_chat_orchestrator.llm_gate_reason_PASS
 
 
 def test_signal_gating_flag_controls_whether_weak_signal_skips_llm() -> None:
@@ -219,5 +219,5 @@ def test_signal_gating_flag_controls_whether_weak_signal_skips_llm() -> None:
     assert gated_result.response.answer == rag_chat_orchestrator.NO_SIGNAL_ANSWER
     assert ungated_backend.call_count == 1
     assert ungated_result.response.answer != rag_chat_orchestrator.NO_SIGNAL_ANSWER
-    assert gated_result.signal_would_skip_llm is True
-    assert ungated_result.signal_would_skip_llm is True
+    assert gated_result.would_call_llm_if_gated is True
+    assert ungated_result.would_call_llm_if_gated is True

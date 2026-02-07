@@ -25,12 +25,13 @@ DEFAULT_DATASET_PATH = (
 )
 DEFAULT_OUTPUT_DIRECTORY = Path("./out")
 DEFAULT_SEARCH_TOP_K = 8
-DEFAULT_EMBEDDING_MODEL_NAME = "text-embedding-004"
+INTEGRATED_BACKEND_SEARCH_TOP_K = 4
 EVAL_ENABLE_THINKING_GATING = True
 EVAL_ENABLE_LLM_CALL_GATING = True
 ANSWER_HEAD_CHAR_LIMIT = 120
 MODE_DETERMINISTIC = "deterministic"
 MODE_VERTEX = "vertex"
+MODE_INTEGRATED_RETRIEVAL_ONLY = "integrated_retrieval_only"
 EXPECTED_LABEL_CALL = "CALL"
 EXPECTED_LABEL_SKIP = "SKIP"
 EXPECTED_LABEL_BORDERLINE = "BORDERLINE"
@@ -91,9 +92,9 @@ class EvaluationRuntime:
     """Runtime bundle for orchestrator-based evaluation execution.
 
     Inputs:
-    - mode: Execution mode (`deterministic` or `vertex`).
+    - mode: Execution mode (`deterministic`, `vertex`, or `integrated_retrieval_only`).
     - retrieval_module: Configured retrieval module with embedding/vector/chunks.
-    - llm_backend: LLM backend implementation selected for this run.
+    - llm_backend: Optional LLM backend implementation selected for this run.
     - settings: Loaded backend settings object.
     - rag_chat_orchestrator: Orchestrator module exposing `run_rag_chat`.
 
@@ -110,7 +111,7 @@ class EvaluationRuntime:
 
     mode: str
     retrieval_module: Any
-    llm_backend: Any
+    llm_backend: Any | None
     settings: Any
     rag_chat_orchestrator: Any
 
@@ -162,9 +163,9 @@ def _build_parser() -> argparse.ArgumentParser:
         "--out",
         default=str(DEFAULT_OUTPUT_DIRECTORY),
         help=(
-            "Output directory for generated JSONL results. "
-            "Filename is auto-generated as gating_eval_output_YYYY-MM-DD_HH-MM-SS.jsonl. "
-            "Default: ./out"
+            "Output JSONL file path or directory. "
+            "If a directory is provided, filename is auto-generated as "
+            "gating_eval_output_YYYY-MM-DD_HH-MM-SS.jsonl. Default: ./out"
         ),
     )
     parser.add_argument(
@@ -174,9 +175,12 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--mode",
-        choices=[MODE_DETERMINISTIC, MODE_VERTEX],
+        choices=[MODE_DETERMINISTIC, MODE_VERTEX, MODE_INTEGRATED_RETRIEVAL_ONLY],
         default=MODE_DETERMINISTIC,
-        help="Runtime wiring mode. Default: deterministic (offline, no Vertex calls).",
+        help=(
+            "Runtime wiring mode. Default: deterministic (offline, no Vertex calls). "
+            "integrated_retrieval_only uses integrated retrieval path and skips LLM calls."
+        ),
     )
     parser.add_argument(
         "--weighted-score-threshold",
@@ -325,38 +329,61 @@ def _resolve_input_dataset_files(resolved_dataset_path: Path) -> list[Path]:
     return []
 
 
-def _resolve_output_directory(output_argument: str) -> Path:
-    """Resolve and validate output directory from CLI input.
+def _is_jsonl_output_path(path: Path) -> bool:
+    """Check whether a path looks like an explicit JSONL file output target.
+
+    Inputs:
+    - path: Candidate output path from CLI.
+
+    Outputs:
+    - True when the path suffix is `.jsonl`; False otherwise.
+
+    Edge cases:
+    - Suffix comparison is case-insensitive.
+
+    Concurrency/atomicity:
+    - Pure path inspection helper.
+    """
+
+    return path.suffix.lower() == DEFAULT_OUTPUT_FILENAME_EXTENSION
+
+
+def _resolve_output_path(output_argument: str) -> Path:
+    """Resolve and validate output target from CLI input.
 
     Inputs:
     - output_argument: Raw `--out` CLI value.
 
     Outputs:
-    - Directory path where timestamped output file will be created.
+    - Output JSONL file path.
 
     Edge cases:
-    - Existing file paths are rejected.
-    - Values ending in `.jsonl` are rejected because `--out` is directory-only.
+    - Paths ending with `.jsonl` are treated as explicit file targets.
+    - Non-`.jsonl` paths are treated as directories and receive an auto-generated filename.
+    - Existing directories cannot be used as explicit `.jsonl` file paths.
 
     Concurrency/atomicity:
-    - Pure path validation without filesystem mutations.
+    - Pure path validation/generation without filesystem writes.
     """
 
-    output_directory = Path(output_argument).expanduser()
-    if output_directory.suffix.lower() == DEFAULT_OUTPUT_FILENAME_EXTENSION:
+    output_target = Path(output_argument).expanduser()
+    if _is_jsonl_output_path(output_target):
+        if output_target.exists() and output_target.is_dir():
+            raise ValueError("--out points to an existing directory; provide a .jsonl file path.")
+        return output_target
+
+    if output_target.exists() and output_target.is_file():
         raise ValueError(
-            "--out must be a directory path, not a .jsonl filename."
+            "--out points to an existing file without a .jsonl suffix; provide a directory or .jsonl file."
         )
-    if output_directory.exists() and output_directory.is_file():
-        raise ValueError("--out must be a directory path, but a file was provided.")
-    return output_directory
+    return _build_output_path(output_target)
 
 
 def _build_output_path(output_directory: Path) -> Path:
     """Build timestamped output file path inside the configured output directory.
 
     Inputs:
-    - output_directory: Directory path returned by `_resolve_output_directory`.
+    - output_directory: Directory path chosen by `_resolve_output_path`.
 
     Outputs:
     - Timestamped output JSONL path in the format
@@ -411,18 +438,46 @@ def _apply_deterministic_required_env_defaults() -> None:
         os.environ.setdefault(env_name, env_value)
 
 
+def _initialize_integrated_retrieval_runtime(retrieval_module: Any, settings: Any) -> None:
+    """Configure retrieval wiring exactly as integrated API startup does.
+
+    Inputs:
+    - retrieval_module: Retrieval module exposing embedding/vector/chunk setup functions.
+    - settings: Loaded backend settings object with project/region values.
+
+    Outputs:
+    - None. Configures module-level retrieval dependencies for this process.
+
+    Edge cases:
+    - Raises when dataset cache cannot be loaded or when embedding client setup fails.
+
+    Concurrency/atomicity:
+    - Intended for one-time initialization before row evaluation begins.
+    """
+
+    from api import runtime_wiring
+
+    runtime_wiring.configure_integrated_retrieval_runtime(
+        retrieval_module=retrieval_module,
+        project_id=settings.PROJECT_ID,
+        region=settings.REGION,
+    )
+
+
 def _initialize_runtime(mode: str) -> EvaluationRuntime:
     """Initialize orchestrator runtime dependencies for the selected mode.
 
     Inputs:
-    - mode: Execution mode (`deterministic` or `vertex`).
+    - mode: Execution mode (`deterministic`, `vertex`, or `integrated_retrieval_only`).
 
     Outputs:
     - `EvaluationRuntime` with configured retrieval/LLM dependencies.
 
     Edge cases:
     - Deterministic mode configures in-memory deterministic clients/chunks.
-    - Vertex mode configures embedding backend and dataset cache wiring.
+    - Vertex mode configures integrated retrieval wiring plus a real LLM backend.
+    - Integrated retrieval-only mode configures integrated retrieval wiring and
+      intentionally skips LLM backend initialization.
 
     Concurrency/atomicity:
     - Configures module-level retrieval clients/chunks once for the run.
@@ -431,10 +486,12 @@ def _initialize_runtime(mode: str) -> EvaluationRuntime:
     if mode == MODE_DETERMINISTIC:
         _apply_deterministic_required_env_defaults()
 
-    from api import llm_backends, rag_chat_orchestrator, retrieval
+    from api import rag_chat_orchestrator, retrieval
     from api.settings import settings
 
     if mode == MODE_DETERMINISTIC:
+        from api import llm_backends
+
         retrieval.configure_embedding_client(DeterministicEmbeddingClient())
         retrieval.configure_vector_client(DeterministicVectorClient())
         retrieval.configure_chunk_store(DETERMINISTIC_CHUNKS)
@@ -448,26 +505,24 @@ def _initialize_runtime(mode: str) -> EvaluationRuntime:
         )
 
     if mode == MODE_VERTEX:
-        from api import dataset_cache
+        from api import llm_backends
 
-        embedding_model_name = (
-            os.getenv("EMBEDDING_MODEL")
-            or os.getenv("DATAPOINTS_MODEL")
-            or DEFAULT_EMBEDDING_MODEL_NAME
-        )
-        retrieval.configure_vertex_embedding_client(
-            project=settings.PROJECT_ID,
-            region=settings.REGION,
-            model_name=embedding_model_name,
-        )
-        retrieval.configure_vector_client(None)
-        cache = dataset_cache.reload_cache()
-        retrieval.configure_chunk_store(cache.chunks_by_id)
+        _initialize_integrated_retrieval_runtime(retrieval, settings)
         llm_backend = llm_backends.get_llm_backend(default_backend=MODE_VERTEX)
         return EvaluationRuntime(
             mode=mode,
             retrieval_module=retrieval,
             llm_backend=llm_backend,
+            settings=settings,
+            rag_chat_orchestrator=rag_chat_orchestrator,
+        )
+
+    if mode == MODE_INTEGRATED_RETRIEVAL_ONLY:
+        _initialize_integrated_retrieval_runtime(retrieval, settings)
+        return EvaluationRuntime(
+            mode=mode,
+            retrieval_module=retrieval,
+            llm_backend=None,
             settings=settings,
             rag_chat_orchestrator=rag_chat_orchestrator,
         )
@@ -496,33 +551,27 @@ def _sanitize_answer_head(answer_text: str) -> str:
     return one_line_answer[:ANSWER_HEAD_CHAR_LIMIT]
 
 
-def _build_result_row(
+def _resolve_effective_thresholds(
     runtime: EvaluationRuntime,
-    dataset_row: DatasetQuestionRow,
-    dataset_file: Path,
     *,
     weighted_score_threshold_override: float | None,
     bm25_score_threshold_override: float | None,
-) -> dict[str, Any]:
-    """Execute one question through orchestrator and build JSON-safe result row.
+) -> tuple[float, float]:
+    """Resolve effective signal-gating thresholds for a single evaluation row.
 
     Inputs:
-    - runtime: Preconfigured evaluation runtime dependencies.
-    - dataset_row: Question row to evaluate.
-    - dataset_file: Source dataset file for this row.
-    - weighted_score_threshold_override: Optional weighted score threshold override.
-    - bm25_score_threshold_override: Optional BM25 threshold override.
+    - runtime: Runtime containing baseline settings thresholds.
+    - weighted_score_threshold_override: Optional CLI override for weighted-score threshold.
+    - bm25_score_threshold_override: Optional CLI override for BM25 threshold.
 
     Outputs:
-    - Dict suitable for JSONL output with gating metrics and privacy-safe fields.
+    - Tuple of `(weighted_score_threshold, bm25_score_threshold)` used for evaluation.
 
     Edge cases:
-    - When the question is skipped by signal gate, citations and usage detail may
-      be empty/None by design.
-    - Full answer text and chunk text are intentionally omitted from output.
+    - Missing overrides fall back to settings values.
 
     Concurrency/atomicity:
-    - Orchestrator call is stateless; function has no external side effects.
+    - Pure value resolution helper.
     """
 
     weighted_score_threshold_effective = (
@@ -534,6 +583,47 @@ def _build_result_row(
         runtime.settings.BM25_SCORE_THRESHOLD
         if bm25_score_threshold_override is None
         else bm25_score_threshold_override
+    )
+    return weighted_score_threshold_effective, bm25_score_threshold_effective
+
+
+def _build_orchestrator_result_row(
+    runtime: EvaluationRuntime,
+    dataset_row: DatasetQuestionRow,
+    dataset_file: Path,
+    *,
+    weighted_score_threshold_override: float | None,
+    bm25_score_threshold_override: float | None,
+) -> dict[str, Any]:
+    """Execute one question via full orchestrator and build output row.
+
+    Inputs:
+    - runtime: Runtime configured with retrieval and LLM backend.
+    - dataset_row: Question row to evaluate.
+    - dataset_file: Source dataset file for this row.
+    - weighted_score_threshold_override: Optional weighted score threshold override.
+    - bm25_score_threshold_override: Optional BM25 threshold override.
+
+    Outputs:
+    - Result row including signal metrics plus usage/answer preview fields.
+
+    Edge cases:
+    - If retrieval has no signal, orchestrator returns the no-signal response and
+      usage fallbacks; this row still includes gating metrics.
+
+    Concurrency/atomicity:
+    - Stateless orchestration call with no side effects beyond API calls.
+    """
+
+    if runtime.llm_backend is None:
+        raise RuntimeError("Orchestrator evaluation mode requires an LLM backend.")
+
+    weighted_score_threshold_effective, bm25_score_threshold_effective = (
+        _resolve_effective_thresholds(
+            runtime,
+            weighted_score_threshold_override=weighted_score_threshold_override,
+            bm25_score_threshold_override=bm25_score_threshold_override,
+        )
     )
 
     start_time = time.perf_counter()
@@ -568,8 +658,8 @@ def _build_result_row(
         "question": dataset_row.question,
         "mode": runtime.mode,
         "elapsed_ms": elapsed_ms,
-        "signal_would_skip_llm": chat_result.signal_would_skip_llm,
-        "signal_gate_reason": chat_result.signal_gate_reason,
+        "would_call_llm_if_gated": chat_result.would_call_llm_if_gated,
+        "llm_gate_reason": chat_result.llm_gate_reason,
         "top1_weighted_score": chat_result.top1_weighted_score,
         "top1_bm25_score": chat_result.top1_bm25_score,
         "top1_vector_score": chat_result.top1_vector_score,
@@ -583,6 +673,98 @@ def _build_result_row(
         "finish_reason": finish_reason,
         "answer_length_chars": len(answer_text),
         "answer_head": _sanitize_answer_head(answer_text),
+    }
+    if dataset_row.expected is not None:
+        result_row["expected"] = dataset_row.expected
+
+    return result_row
+
+
+def _build_result_row(
+    runtime: EvaluationRuntime,
+    dataset_row: DatasetQuestionRow,
+    dataset_file: Path,
+    *,
+    weighted_score_threshold_override: float | None,
+    bm25_score_threshold_override: float | None,
+) -> dict[str, Any]:
+    """Execute one question and build a JSON-safe result row for the selected mode.
+
+    Inputs:
+    - runtime: Preconfigured evaluation runtime dependencies.
+    - dataset_row: Question row to evaluate.
+    - dataset_file: Source dataset file for this row.
+    - weighted_score_threshold_override: Optional weighted score threshold override.
+    - bm25_score_threshold_override: Optional BM25 threshold override.
+
+    Outputs:
+    - Dict suitable for JSONL output with gating metrics.
+
+    Edge cases:
+    - `integrated_retrieval_only` never calls LLM generation and writes
+      retrieval-only metrics (ids and numeric fields).
+    - Other modes preserve existing orchestrator-driven result fields.
+
+    Concurrency/atomicity:
+    - Stateless execution helper; side effects depend on selected mode.
+    """
+
+    if runtime.mode != MODE_INTEGRATED_RETRIEVAL_ONLY:
+        return _build_orchestrator_result_row(
+            runtime,
+            dataset_row,
+            dataset_file,
+            weighted_score_threshold_override=weighted_score_threshold_override,
+            bm25_score_threshold_override=bm25_score_threshold_override,
+        )
+
+    weighted_score_threshold_effective, bm25_score_threshold_effective = (
+        _resolve_effective_thresholds(
+            runtime,
+            weighted_score_threshold_override=weighted_score_threshold_override,
+            bm25_score_threshold_override=bm25_score_threshold_override,
+        )
+    )
+
+    start_time = time.perf_counter()
+    normalized_question = runtime.retrieval_module.normalize_question_for_first_person(
+        (dataset_row.question or "").strip()
+    )
+    query_embedding = runtime.retrieval_module.embed_query(normalized_question)
+    candidate_chunks = runtime.retrieval_module.search_vector_store(
+        query_embedding,
+        top_k=INTEGRATED_BACKEND_SEARCH_TOP_K,
+    )
+    selected_chunks = runtime.retrieval_module.apply_filters_and_boosting(candidate_chunks)
+    signal_shadow_decision = runtime.rag_chat_orchestrator.compute_signal_shadow_decision(
+        selected_chunks,
+        weighted_score_threshold=weighted_score_threshold_effective,
+        bm25_score_threshold=bm25_score_threshold_effective,
+    )
+    elapsed_ms = int((time.perf_counter() - start_time) * 1000)
+
+    selected_chunk_ids = [
+        str(chunk.get("id") or "").strip()
+        for chunk in selected_chunks
+        if str(chunk.get("id") or "").strip()
+    ]
+
+    result_row: dict[str, Any] = {
+        "dataset_file": str(dataset_file),
+        "id": dataset_row.id,
+        "question": dataset_row.question,
+        "mode": MODE_INTEGRATED_RETRIEVAL_ONLY,
+        "elapsed_ms": elapsed_ms,
+        "would_call_llm_if_gated": signal_shadow_decision.would_skip_llm,
+        "llm_gate_reason": signal_shadow_decision.reason,
+        "top1_weighted_score": signal_shadow_decision.top1_weighted_score,
+        "top1_bm25_score": signal_shadow_decision.top1_bm25_score,
+        "top1_vector_score": signal_shadow_decision.top1_vector_score,
+        "weighted_score_threshold": signal_shadow_decision.weighted_score_threshold,
+        "bm25_score_threshold": signal_shadow_decision.bm25_score_threshold,
+        "selected_chunk_ids": selected_chunk_ids,
+        "selected_count": len(selected_chunk_ids),
+        "candidates_count": len(candidate_chunks),
     }
     if dataset_row.expected is not None:
         result_row["expected"] = dataset_row.expected
@@ -688,13 +870,13 @@ def _print_summary(result_rows: Sequence[dict[str, Any]]) -> None:
             1
             for row in rows_with_supported_expected
             if row.get("expected") in {EXPECTED_LABEL_CALL, EXPECTED_LABEL_BORDERLINE}
-            and bool(row.get("signal_would_skip_llm"))
+            and bool(row.get("would_call_llm_if_gated"))
         )
         false_calls = sum(
             1
             for row in rows_with_supported_expected
             if row.get("expected") == EXPECTED_LABEL_SKIP
-            and not bool(row.get("signal_would_skip_llm"))
+            and not bool(row.get("would_call_llm_if_gated"))
         )
 
         print(
@@ -704,9 +886,9 @@ def _print_summary(result_rows: Sequence[dict[str, Any]]) -> None:
         print("false_calls=" + _format_rate(false_calls, expected_skip_count))
 
     reason_counts = Counter(
-        str(row.get("signal_gate_reason") or "") for row in result_rows
+        str(row.get("llm_gate_reason") or "") for row in result_rows
     )
-    print("signal_gate_reason_distribution:")
+    print("llm_gate_reason_distribution:")
     for signal_reason in sorted(reason_counts):
         print(f"  {signal_reason}: {reason_counts[signal_reason]}")
 
@@ -742,7 +924,7 @@ def run(argv: Sequence[str] | None = None) -> int:
         print(f"Failed to resolve dataset path: {error}", file=sys.stderr)
         return 1
     try:
-        output_directory = _resolve_output_directory(args.out)
+        output_path = _resolve_output_path(args.out)
     except ValueError as error:
         print(str(error), file=sys.stderr)
         return 1
@@ -759,8 +941,6 @@ def run(argv: Sequence[str] | None = None) -> int:
             )
             return 1
 
-    output_path = _build_output_path(output_directory)
-
     try:
         runtime = _initialize_runtime(args.mode)
     except Exception as error:
@@ -771,10 +951,16 @@ def run(argv: Sequence[str] | None = None) -> int:
                 "and configure DATASET_POINTER_PATH or CHUNKS_PATH/BUCKET_NAME.",
                 file=sys.stderr,
             )
-        else:
+        elif args.mode == MODE_VERTEX:
             print(
                 "Failed to initialize vertex mode. Ensure backend environment is set "
                 "and dataset cache pointers are valid (DATASET_POINTER_PATH or CHUNKS_PATH).",
+                file=sys.stderr,
+            )
+        else:
+            print(
+                "Failed to initialize integrated_retrieval_only mode. Ensure backend "
+                "environment is set and integrated retrieval dependencies are configured.",
                 file=sys.stderr,
             )
         print(f"Initialization error: {error}", file=sys.stderr)

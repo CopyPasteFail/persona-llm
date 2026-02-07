@@ -166,6 +166,7 @@ This section applies only when `VECTOR_BACKEND=matching_engine`.
 1. **Startup (Cloud Run container)**
    - Load env vars (`BUCKET_NAME`, `VECTOR_BACKEND`, etc.).
    - Resolve `datasets/current.json` to a version folder and load `datapoints.jsonl`, `chunks.jsonl.gz`, `manifest.json`.
+   - Validate manifest compatibility before serving traffic: `embedding_model` must match the runtime embedding model, and `dimensions` must match `DATAPOINTS_DIMENSIONS` when set; mismatches fail startup/reload early.
    - Build in-memory BM25 inverted index (tokenize chunks, compute idf, etc.).
 2. **Query flow**
    - **First-person normalization** (convert “Omer Reznik” → “I”).
