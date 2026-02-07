@@ -31,6 +31,7 @@ Backend configuration is loaded from a dotenv file rather than a global `PRIVATE
   - `API_KEY`: Shared secret for JWT signing fallback and any internal calls; **not** an access key.
   - `MAX_INPUT_TOKENS`: Input context budget for LLM calls (defaults to 8000 if unset).
   - `MAX_OUTPUT_TOKENS`: Output budget for LLM calls (hard limit enforced in settings; must be <= 4000).
+  - `TOP_K`: Retrieval depth used by chat/eval candidate selection (defaults to 4).
   - `THINKING_BUDGET_TOKENS`: Optional cap for Gemini "thinking" tokens.
   - `INCLUDE_THOUGHTS`: `false` (default) or `true` to return thought parts.
   - `REQ_TIMEOUT_MS`: Request timeout in milliseconds.

@@ -25,7 +25,6 @@ from . import llm_backends, ops_routes, rag_chat_orchestrator, retrieval
 from .keys import JsonKeyStore, set_key_store
 
 logger = logging.getLogger("api.mock")
-SEARCH_TOP_K = 8
 
 _llm_backend: llm_backends.LlmBackend = llm_backends.get_llm_backend(
     default_backend="deterministic"
@@ -165,7 +164,7 @@ def chat(
         req.question,
         retrieval=retrieval,
         llm_backend=_llm_backend,
-        top_k=SEARCH_TOP_K,
+        top_k=settings.TOP_K,
         persona_name=settings.PERSONA_NAME,
         max_input_tokens=settings.MAX_INPUT_TOKENS,
         max_output_tokens=settings.MAX_OUTPUT_TOKENS,

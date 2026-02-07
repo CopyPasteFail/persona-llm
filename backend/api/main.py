@@ -31,7 +31,6 @@ HEALTH_STATUS_OK = "ok"
 LOCALHOST_ORIGIN = "http://localhost:3000"
 NOT_READY_DETAIL = "not ready"
 PLACEHOLDER_ORIGIN = "https://placeholder.web.app"
-SEARCH_TOP_K = 4
 SERVICE_UNAVAILABLE_STATUS = 503
 ANSWER_PREVIEW_HEAD_CHARS = 200
 ANSWER_PREVIEW_TAIL_CHARS = 200
@@ -196,7 +195,7 @@ async def chat(
             question,
             retrieval=retrieval,
             llm_backend=_llm_backend,
-            top_k=SEARCH_TOP_K,
+            top_k=settings.TOP_K,
             persona_name=settings.PERSONA_NAME,
             max_input_tokens=settings.MAX_INPUT_TOKENS,
             max_output_tokens=settings.MAX_OUTPUT_TOKENS,

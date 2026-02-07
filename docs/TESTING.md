@@ -26,9 +26,19 @@ Optional fields:
 - `expected`: one of `CALL`, `SKIP`, `BORDERLINE`
 - `notes`: free-form string
 
-Default dataset resolution order:
-1. `--dataset` (absolute or relative file/directory path, resolved from the current working directory)
-2. Fallback: `private-template/eval_datasets/sample_questions.jsonl` (when `--dataset` is not provided)
+### Eval CLI arguments
+- `--dataset <path>`: Input JSONL dataset file or directory. If omitted, eval uses `private-template/eval_datasets/sample_questions.jsonl`.
+- `--out <path>`: Output destination. Accepts either:
+  - a directory (script writes `gating_eval_output_YYYY-MM-DD_HH-MM-SS.jsonl`), or
+  - a `.jsonl` file path.
+- `--max-rows <int>`: Optional cap on rows processed from each dataset file. Must be greater than 0.
+- `--mode <deterministic|vertex|integrated_retrieval_only>`: Runtime wiring mode.
+  - `deterministic`: Offline deterministic retrieval + deterministic LLM backend.
+  - `vertex`: Integrated retrieval + real LLM backend selection.
+  - `integrated_retrieval_only`: Integrated retrieval path only; does not call LLM generation.
+- `--weighted-score-threshold <float>`: Per-run override for weighted-score gating threshold.
+- `--bm25-score-threshold <float>`: Per-run override for BM25 gating threshold.
+- `--top-k <int>`: Per-run override for retrieval candidate depth (`TOP_K`); must be greater than 0.
 
 ### Naming conventions (recommended)
 Keep multiple dataset types in the same folder by prefixing with a stable dataset type and a version:
@@ -36,11 +46,6 @@ Keep multiple dataset types in the same folder by prefixing with a stable datase
 - `gating_questions_v2.jsonl`
 - `retrieval_relevance_v1.jsonl`
 - `answer_quality_v1.jsonl`
-
-Use `--dataset` to point to a specific file or folder.
-Use `--out` to point to an output directory only. The script generates a timestamped
-filename in that directory:
-`gating_eval_output_YYYY-MM-DD_HH-MM-SS.jsonl`.
 
 File mode:
 ```bash

@@ -17,6 +17,7 @@ DEFAULT_WEIGHTED_SCORE_THRESHOLD = 0.55
 DEFAULT_BM25_SCORE_THRESHOLD = 3.0
 DEFAULT_RETRIEVAL_VECTOR_WEIGHT = 0.7
 DEFAULT_RETRIEVAL_BM25_WEIGHT = 0.3
+DEFAULT_TOP_K = 4
 
 class Settings(BaseModel):
     """Strongly-typed backend config with range/length guards."""
@@ -42,6 +43,7 @@ class Settings(BaseModel):
     SESSION_COOKIE_PATH: str = Field(default="/")
     MAX_INPUT_TOKENS: int = Field(default=8000, ge=1, le=10000)
     MAX_OUTPUT_TOKENS: int = Field(..., ge=1, le=4000)
+    TOP_K: int = Field(default=DEFAULT_TOP_K, ge=1, le=100)
     THINKING_BUDGET_TOKENS: int | None = Field(default=None, ge=0, le=20000)
     INCLUDE_THOUGHTS: bool = Field(default=False)
     REQ_TIMEOUT_MS: int = Field(..., ge=1000, le=60000)
@@ -265,6 +267,7 @@ def load_settings() -> Settings:
             SESSION_COOKIE_PATH=os.getenv("SESSION_COOKIE_PATH") or "/",
             MAX_INPUT_TOKENS=max_input_tokens or 8000,
             MAX_OUTPUT_TOKENS=max_output_tokens,
+            TOP_K=_env_int("TOP_K", DEFAULT_TOP_K),
             THINKING_BUDGET_TOKENS=_env_int("THINKING_BUDGET_TOKENS"),
             INCLUDE_THOUGHTS=_env_bool("INCLUDE_THOUGHTS", False),
             REQ_TIMEOUT_MS=int(_require_env("REQ_TIMEOUT_MS")),

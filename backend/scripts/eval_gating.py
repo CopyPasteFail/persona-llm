@@ -24,8 +24,6 @@ DEFAULT_DATASET_PATH = (
     BACKEND_ROOT.parent / "private-template" / "eval_datasets" / "sample_questions.jsonl"
 )
 DEFAULT_OUTPUT_DIRECTORY = Path("./out")
-DEFAULT_SEARCH_TOP_K = 8
-INTEGRATED_BACKEND_SEARCH_TOP_K = 4
 EVAL_ENABLE_THINKING_GATING = True
 EVAL_ENABLE_LLM_CALL_GATING = True
 ANSWER_HEAD_CHAR_LIMIT = 120
@@ -176,7 +174,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--mode",
         choices=[MODE_DETERMINISTIC, MODE_VERTEX, MODE_INTEGRATED_RETRIEVAL_ONLY],
-        default=MODE_DETERMINISTIC,
+        default=MODE_INTEGRATED_RETRIEVAL_ONLY,
         help=(
             "Runtime wiring mode. Default: deterministic (offline, no Vertex calls). "
             "integrated_retrieval_only uses integrated retrieval path and skips LLM calls."
@@ -191,6 +189,11 @@ def _build_parser() -> argparse.ArgumentParser:
         "--bm25-score-threshold",
         type=float,
         help="Optional override for BM25 score threshold.",
+    )
+    parser.add_argument(
+        "--top-k",
+        type=int,
+        help="Optional override for retrieval top-k candidate depth.",
     )
     return parser
 
@@ -587,6 +590,30 @@ def _resolve_effective_thresholds(
     return weighted_score_threshold_effective, bm25_score_threshold_effective
 
 
+def _resolve_effective_top_k(
+    runtime: EvaluationRuntime,
+    *,
+    top_k_override: int | None,
+) -> int:
+    """Resolve effective retrieval top-k for a single evaluation row.
+
+    Inputs:
+    - runtime: Runtime containing baseline settings top-k.
+    - top_k_override: Optional CLI override for retrieval top-k.
+
+    Outputs:
+    - Integer top-k used for retrieval candidate depth.
+
+    Edge cases:
+    - Missing override falls back to settings value.
+
+    Concurrency/atomicity:
+    - Pure value resolution helper.
+    """
+
+    return runtime.settings.TOP_K if top_k_override is None else top_k_override
+
+
 def _build_orchestrator_result_row(
     runtime: EvaluationRuntime,
     dataset_row: DatasetQuestionRow,
@@ -594,6 +621,7 @@ def _build_orchestrator_result_row(
     *,
     weighted_score_threshold_override: float | None,
     bm25_score_threshold_override: float | None,
+    top_k_override: int | None,
 ) -> dict[str, Any]:
     """Execute one question via full orchestrator and build output row.
 
@@ -603,6 +631,7 @@ def _build_orchestrator_result_row(
     - dataset_file: Source dataset file for this row.
     - weighted_score_threshold_override: Optional weighted score threshold override.
     - bm25_score_threshold_override: Optional BM25 threshold override.
+    - top_k_override: Optional retrieval top-k override.
 
     Outputs:
     - Result row including LLM gating metrics plus usage or answer preview fields.
@@ -625,13 +654,17 @@ def _build_orchestrator_result_row(
             bm25_score_threshold_override=bm25_score_threshold_override,
         )
     )
+    top_k_effective = _resolve_effective_top_k(
+        runtime,
+        top_k_override=top_k_override,
+    )
 
     start_time = time.perf_counter()
     chat_result = runtime.rag_chat_orchestrator.run_rag_chat(
         dataset_row.question,
         retrieval=runtime.retrieval_module,
         llm_backend=runtime.llm_backend,
-        top_k=DEFAULT_SEARCH_TOP_K,
+        top_k=top_k_effective,
         persona_name=runtime.settings.PERSONA_NAME,
         max_input_tokens=runtime.settings.MAX_INPUT_TOKENS,
         max_output_tokens=runtime.settings.MAX_OUTPUT_TOKENS,
@@ -687,6 +720,7 @@ def _build_result_row(
     *,
     weighted_score_threshold_override: float | None,
     bm25_score_threshold_override: float | None,
+    top_k_override: int | None,
 ) -> dict[str, Any]:
     """Execute one question and build a JSON-safe result row for the selected mode.
 
@@ -696,6 +730,7 @@ def _build_result_row(
     - dataset_file: Source dataset file for this row.
     - weighted_score_threshold_override: Optional weighted score threshold override.
     - bm25_score_threshold_override: Optional BM25 threshold override.
+    - top_k_override: Optional retrieval top-k override.
 
     Outputs:
     - Dict suitable for JSONL output with gating metrics.
@@ -716,6 +751,7 @@ def _build_result_row(
             dataset_file,
             weighted_score_threshold_override=weighted_score_threshold_override,
             bm25_score_threshold_override=bm25_score_threshold_override,
+            top_k_override=top_k_override,
         )
 
     weighted_score_threshold_effective, bm25_score_threshold_effective = (
@@ -725,6 +761,10 @@ def _build_result_row(
             bm25_score_threshold_override=bm25_score_threshold_override,
         )
     )
+    top_k_effective = _resolve_effective_top_k(
+        runtime,
+        top_k_override=top_k_override,
+    )
 
     start_time = time.perf_counter()
     normalized_question = runtime.retrieval_module.normalize_question_for_first_person(
@@ -733,7 +773,7 @@ def _build_result_row(
     query_embedding = runtime.retrieval_module.embed_query(normalized_question)
     candidate_chunks = runtime.retrieval_module.search_vector_store(
         query_embedding,
-        top_k=INTEGRATED_BACKEND_SEARCH_TOP_K,
+        top_k=top_k_effective,
     )
     selected_chunks = runtime.retrieval_module.apply_filters_and_boosting(candidate_chunks)
     gate_shadow_decision = runtime.rag_chat_orchestrator.compute_llm_gate_decision(
@@ -917,6 +957,9 @@ def run(argv: Sequence[str] | None = None) -> int:
     if args.max_rows is not None and args.max_rows <= 0:
         print("--max-rows must be greater than zero when provided.", file=sys.stderr)
         return 1
+    if args.top_k is not None and args.top_k <= 0:
+        print("--top-k must be greater than zero when provided.", file=sys.stderr)
+        return 1
 
     try:
         dataset_path = _resolve_dataset_path(args.dataset)
@@ -983,6 +1026,7 @@ def run(argv: Sequence[str] | None = None) -> int:
                     dataset_file,
                     weighted_score_threshold_override=args.weighted_score_threshold,
                     bm25_score_threshold_override=args.bm25_score_threshold,
+                    top_k_override=args.top_k,
                 )
             except Exception as error:
                 print(
