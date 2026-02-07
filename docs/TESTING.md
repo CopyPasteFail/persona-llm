@@ -10,6 +10,59 @@ This repo currently has backend-focused tests. The frontend does not have a dedi
 make be-install
 ```
 
+## Gating Evaluation
+The dataset for `backend/scripts/eval_gating.py` is JSONL (one JSON object per line).
+`eval_gating.py` always runs orchestration with both thinking-gating and signal-gating enabled.
+
+Minimum schema per row:
+```json
+{
+  "id": "q001",
+  "question": "What are the main themes covered by your indexed data?"
+}
+```
+
+Optional fields:
+- `expected`: one of `CALL`, `SKIP`, `BORDERLINE`
+- `notes`: free-form string
+
+Default dataset resolution order:
+1. `--dataset` (absolute or relative file/directory path, resolved from the current working directory)
+2. Fallback: `private-template/eval_datasets/sample_questions.jsonl` (when `--dataset` is not provided)
+
+### Naming conventions (recommended)
+Keep multiple dataset types in the same folder by prefixing with a stable dataset type and a version:
+- `gating_questions_v1.jsonl`
+- `gating_questions_v2.jsonl`
+- `retrieval_relevance_v1.jsonl`
+- `answer_quality_v1.jsonl`
+
+Use `--dataset` to point to a specific file or folder.
+Use `--out` to point to an output directory only. The script generates a timestamped
+filename in that directory:
+`gating_eval_output_YYYY-MM-DD_HH-MM-SS.jsonl`.
+
+File mode:
+```bash
+make be-eval-gating ARGS="--dataset ../private/eval_datasets/gating_questions_v1.jsonl --out ../.out/"
+```
+
+Directory mode (runs every JSONL under the folder):
+```bash
+make be-eval-gating ARGS="--dataset ../private/eval_datasets --out ../.out"
+```
+
+Custom threshold overrides (overrides env/default thresholds for this run only):
+```bash
+make be-eval-gating ARGS="--dataset ../private/eval_datasets/gating_questions_v1.jsonl --out ../.out --weighted-score-threshold 0.62 --bm25-score-threshold 3.0"
+```
+
+Directory mode with custom threshold overrides:
+```bash
+make be-eval-gating ARGS="--dataset ../private/eval_datasets --out ../.out --weighted-score-threshold 0.62 --bm25-score-threshold 3.0"
+```
+
+
 ## Test Suites
 
 ### Smoke Test

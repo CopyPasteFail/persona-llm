@@ -46,7 +46,7 @@ class Settings(BaseModel):
     INCLUDE_THOUGHTS: bool = Field(default=False)
     REQ_TIMEOUT_MS: int = Field(..., ge=1000, le=60000)
     ENABLE_THINKING_GATING: bool = Field(default=False)
-    ENABLE_SIGNAL_GATING: bool = Field(default=False)
+    ENABLE_LLM_CALL_GATING: bool = Field(default=False)
     WEIGHTED_SCORE_THRESHOLD: float = Field(
         default=DEFAULT_WEIGHTED_SCORE_THRESHOLD,
         ge=0.0,
@@ -269,7 +269,7 @@ def load_settings() -> Settings:
             INCLUDE_THOUGHTS=_env_bool("INCLUDE_THOUGHTS", False),
             REQ_TIMEOUT_MS=int(_require_env("REQ_TIMEOUT_MS")),
             ENABLE_THINKING_GATING=_env_bool("ENABLE_THINKING_GATING", False),
-            ENABLE_SIGNAL_GATING=_env_bool("ENABLE_SIGNAL_GATING", False),
+            ENABLE_LLM_CALL_GATING=_env_bool("ENABLE_LLM_CALL_GATING", False),
             WEIGHTED_SCORE_THRESHOLD=_env_float(
                 "WEIGHTED_SCORE_THRESHOLD", DEFAULT_WEIGHTED_SCORE_THRESHOLD
             ),

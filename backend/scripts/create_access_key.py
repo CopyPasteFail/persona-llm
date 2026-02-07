@@ -1,3 +1,5 @@
+"""CLI for creating and revoking backend access keys in Firestore."""
+
 from __future__ import annotations
 
 import argparse

@@ -20,6 +20,7 @@ backend/config/settings.yaml
 dist/
 build/
 coverage/
+.out/
 
 # Firebase
 frontend/.firebase/

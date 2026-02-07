@@ -128,7 +128,7 @@ def _run_chat(
     *,
     question: str,
     selected_chunks: List[Dict[str, Any]],
-    enable_signal_gating: bool,
+    enable_llm_call_gating: bool,
 ) -> tuple[rag_chat_orchestrator.ChatResult, _SpyLlmBackend]:
     """Run orchestrator chat with deterministic retrieval and spy LLM backend."""
     retrieval = _StaticRetrieval(selected_chunks=selected_chunks)
@@ -143,7 +143,7 @@ def _run_chat(
         max_output_tokens=MAX_OUTPUT_TOKENS,
         enable_thinking_gating=False,
         default_thinking_budget_tokens=None,
-        enable_signal_gating=enable_signal_gating,
+        enable_llm_call_gating=enable_llm_call_gating,
         weighted_score_threshold=TEST_WEIGHTED_SCORE_THRESHOLD,
         bm25_score_threshold=TEST_BM25_SCORE_THRESHOLD,
     )
@@ -156,7 +156,7 @@ def test_signal_gating_returns_no_signal_for_weak_top1_weighted_scores() -> None
     chat_result, llm_backend = _run_chat(
         question="Explain this for a kindergarten class.",
         selected_chunks=[weak_chunk],
-        enable_signal_gating=True,
+        enable_llm_call_gating=True,
     )
 
     assert llm_backend.call_count == 0
@@ -180,7 +180,7 @@ def test_signal_gating_allows_signal_when_top1_weighted_score_or_bm25_is_strong(
     score_result, score_backend = _run_chat(
         question="What did you do in marketing?",
         selected_chunks=[score_strong_chunk],
-        enable_signal_gating=True,
+        enable_llm_call_gating=True,
     )
 
     bm25_strong_chunk = _build_chunk(
@@ -190,7 +190,7 @@ def test_signal_gating_allows_signal_when_top1_weighted_score_or_bm25_is_strong(
     bm25_result, bm25_backend = _run_chat(
         question="What did you do in marketing?",
         selected_chunks=[bm25_strong_chunk],
-        enable_signal_gating=True,
+        enable_llm_call_gating=True,
     )
 
     assert score_backend.call_count == 1
@@ -207,12 +207,12 @@ def test_signal_gating_flag_controls_whether_weak_signal_skips_llm() -> None:
     gated_result, gated_backend = _run_chat(
         question="Tell me about your particle-physics Nobel Prize.",
         selected_chunks=[weak_chunk],
-        enable_signal_gating=True,
+        enable_llm_call_gating=True,
     )
     ungated_result, ungated_backend = _run_chat(
         question="Tell me about your particle-physics Nobel Prize.",
         selected_chunks=[weak_chunk],
-        enable_signal_gating=False,
+        enable_llm_call_gating=False,
     )
 
     assert gated_backend.call_count == 0

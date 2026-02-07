@@ -171,7 +171,7 @@ def chat(
         max_output_tokens=settings.MAX_OUTPUT_TOKENS,
         enable_thinking_gating=settings.ENABLE_THINKING_GATING,
         default_thinking_budget_tokens=settings.THINKING_BUDGET_TOKENS,
-        enable_signal_gating=settings.ENABLE_SIGNAL_GATING,
+        enable_llm_call_gating=settings.ENABLE_LLM_CALL_GATING,
         weighted_score_threshold=settings.WEIGHTED_SCORE_THRESHOLD,
         bm25_score_threshold=settings.BM25_SCORE_THRESHOLD,
     )

@@ -142,7 +142,7 @@ def run_rag_chat(
     max_output_tokens: int,
     enable_thinking_gating: bool,
     default_thinking_budget_tokens: int | None,
-    enable_signal_gating: bool = False,
+    enable_llm_call_gating: bool = False,
     weighted_score_threshold: float = DEFAULT_WEIGHTED_SCORE_THRESHOLD,
     bm25_score_threshold: float = DEFAULT_BM25_SCORE_THRESHOLD,
 ) -> ChatResult:
@@ -158,7 +158,7 @@ def run_rag_chat(
     - max_output_tokens: Max tokens to request for the response.
     - enable_thinking_gating: Whether per-request thinking gating is enabled.
     - default_thinking_budget_tokens: Default thinking budget from settings.
-    - enable_signal_gating: Whether deterministic retrieval signal gating is enabled.
+    - enable_llm_call_gating: Whether deterministic retrieval signal gating is enabled.
     - weighted_score_threshold: Top-1 weighted score threshold for retrieval signal.
     - bm25_score_threshold: Top-1 BM25 threshold for retrieval signal.
 
@@ -192,7 +192,7 @@ def run_rag_chat(
         bm25_score_threshold=bm25_score_threshold,
     )
     should_skip_llm = signal_shadow_decision.would_skip_llm
-    if not enable_signal_gating:
+    if not enable_llm_call_gating:
         should_skip_llm = not retrieval.has_signal(selected_chunks)
 
     if should_skip_llm:
@@ -212,7 +212,7 @@ def run_rag_chat(
             normalized_question=normalized_question,
             usage_detail=_empty_usage_detail(),
             thinking_budget_tokens_effective=thinking_budget_tokens_effective,
-            signal_gate_enabled=enable_signal_gating,
+            signal_gate_enabled=enable_llm_call_gating,
             signal_would_skip_llm=signal_shadow_decision.would_skip_llm,
             signal_gate_reason=signal_shadow_decision.reason,
             top1_weighted_score=signal_shadow_decision.top1_weighted_score,
@@ -254,7 +254,7 @@ def run_rag_chat(
         normalized_question=normalized_question,
         usage_detail=usage_detail,
         thinking_budget_tokens_effective=thinking_budget_tokens_effective,
-        signal_gate_enabled=enable_signal_gating,
+        signal_gate_enabled=enable_llm_call_gating,
         signal_would_skip_llm=signal_shadow_decision.would_skip_llm,
         signal_gate_reason=signal_shadow_decision.reason,
         top1_weighted_score=signal_shadow_decision.top1_weighted_score,

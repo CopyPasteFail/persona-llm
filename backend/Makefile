@@ -13,13 +13,14 @@ DATASET_VERSION ?= $(notdir $(patsubst %/,%,$(DATASET_DIR)))
 DATASET_FOLDER := datasets
 DATASET_GCS_PREFIX ?= $(DATASET_FOLDER)/$(DATASET_VERSION)
 
-.PHONY: help install run run-debug mock test-smoke test-core test-voice test-int test-cors-deploy test-vector-live test-build_datapoints test-auth-key-login test-create-access-key-cli test-keys-store test-llm-prompt test-thinking-gating test-signal-gating test-main-chat-logging test-security-session test-load-backend-env test-pack-and-push-processing check envs clean build_datapoints create-access-key dataset-version-check dataset-chunks dataset-datapoints dataset-upload dataset-pointer-update
+.PHONY: help install run run-debug mock eval-gating test-smoke test-core test-voice test-int test-cors-deploy test-vector-live test-build_datapoints test-auth-key-login test-create-access-key-cli test-keys-store test-llm-prompt test-thinking-gating test-signal-gating test-main-chat-logging test-security-session test-load-backend-env test-pack-and-push-processing check envs clean build_datapoints create-access-key dataset-version-check dataset-chunks dataset-datapoints dataset-upload dataset-pointer-update
 
 help:
 	@echo "Targets:"
 	@echo "  install      - create venv and install deps"
 	@echo "  run          - start integrated API (api.main:app) on :8080 (requires envs)"
 	@echo "  mock         - start mock API on :8080"
+	@echo "  eval-gating   - run dataset-based gating eval (pass ARGS='...')"
 	@echo "  docker-build - build local backend image"
 	@echo "  docker-run   - run local backend image with mounted secrets"
 	@echo "  test-smoke   - run pytest smoke tests against mock app"
@@ -87,6 +88,9 @@ docker-run-mock:
 
 mock: $(VENV)/bin/activate
 	LLM_BACKEND=deterministic $(PY) -m uvicorn api.mock:app --reload --port 8080
+
+eval-gating: $(VENV)/bin/activate
+	$(PY) scripts/eval_gating.py $(ARGS)
 
 pack_and_push: $(VENV)/bin/activate
 	$(PY) jobs/pack_and_push.py

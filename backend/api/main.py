@@ -209,7 +209,7 @@ async def chat(
             max_output_tokens=settings.MAX_OUTPUT_TOKENS,
             enable_thinking_gating=settings.ENABLE_THINKING_GATING,
             default_thinking_budget_tokens=settings.THINKING_BUDGET_TOKENS,
-            enable_signal_gating=settings.ENABLE_SIGNAL_GATING,
+            enable_llm_call_gating=settings.ENABLE_LLM_CALL_GATING,
             weighted_score_threshold=settings.WEIGHTED_SCORE_THRESHOLD,
             bm25_score_threshold=settings.BM25_SCORE_THRESHOLD,
         )
@@ -231,7 +231,7 @@ async def chat(
                     "key_id": getattr(session, "key_id", None),
                     "thinking_budget_tokens_effective": chat_result.thinking_budget_tokens_effective,
                     "thinking_gating_enabled": settings.ENABLE_THINKING_GATING,
-                    "signal_gate_enabled": settings.ENABLE_SIGNAL_GATING,
+                    "signal_gate_enabled": settings.ENABLE_LLM_CALL_GATING,
                     "signal_would_skip_llm": chat_result.signal_would_skip_llm,
                     "signal_gate_reason": chat_result.signal_gate_reason,
                     # Canonical top-1 retrieval metrics; signal_top1_* aliases removed.
@@ -259,7 +259,7 @@ async def chat(
                 },
                 "thinking_budget_tokens_effective": chat_result.thinking_budget_tokens_effective,
                 "thinking_gating_enabled": settings.ENABLE_THINKING_GATING,
-                "signal_gate_enabled": settings.ENABLE_SIGNAL_GATING,
+                "signal_gate_enabled": settings.ENABLE_LLM_CALL_GATING,
                 "signal_would_skip_llm": chat_result.signal_would_skip_llm,
                 "signal_gate_reason": chat_result.signal_gate_reason,
                 # Canonical top-1 retrieval metrics; signal_top1_* aliases removed.
