@@ -15,6 +15,7 @@ PERSONA_MAX_CHARS = 50
 PERSONA_MAX_WORDS = 4
 DEFAULT_WEIGHTED_SCORE_THRESHOLD = 0.55
 DEFAULT_BM25_SCORE_THRESHOLD = 3.0
+DEFAULT_WEIGHTED_CONSENSUS_COUNT = 2
 DEFAULT_RETRIEVAL_VECTOR_WEIGHT = 0.7
 DEFAULT_RETRIEVAL_BM25_WEIGHT = 0.3
 DEFAULT_TOP_K = 4
@@ -56,6 +57,11 @@ class Settings(BaseModel):
     BM25_SCORE_THRESHOLD: float = Field(
         default=DEFAULT_BM25_SCORE_THRESHOLD,
         ge=0.0,
+    )
+    WEIGHTED_CONSENSUS_COUNT: int = Field(
+        default=DEFAULT_WEIGHTED_CONSENSUS_COUNT,
+        ge=1,
+        le=100,
     )
     RETRIEVAL_VECTOR_WEIGHT: float = Field(
         default=DEFAULT_RETRIEVAL_VECTOR_WEIGHT,
@@ -278,6 +284,10 @@ def load_settings() -> Settings:
             ),
             BM25_SCORE_THRESHOLD=_env_float(
                 "BM25_SCORE_THRESHOLD", DEFAULT_BM25_SCORE_THRESHOLD
+            ),
+            WEIGHTED_CONSENSUS_COUNT=_env_int(
+                "WEIGHTED_CONSENSUS_COUNT",
+                DEFAULT_WEIGHTED_CONSENSUS_COUNT,
             ),
             RETRIEVAL_VECTOR_WEIGHT=_env_float(
                 "RETRIEVAL_VECTOR_WEIGHT", DEFAULT_RETRIEVAL_VECTOR_WEIGHT

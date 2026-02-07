@@ -154,6 +154,8 @@ class EffectiveEvalSettings:
     - retrieval_bm25_weight: Effective BM25 score blend weight.
     - vector_backend: Effective vector backend identifier.
     - llm_backend: Effective LLM backend identifier.
+    - weighted_consensus_count: Effective minimum count of chunks that must meet
+      weighted threshold for semantic signal to pass.
     - enable_llm_call_gating: Whether call-gating was enabled for this run.
     - enable_thinking_gating: Whether thinking-gating was enabled for this run.
 
@@ -174,6 +176,7 @@ class EffectiveEvalSettings:
     retrieval_bm25_weight: float
     vector_backend: str
     llm_backend: str
+    weighted_consensus_count: int
     enable_llm_call_gating: bool
     enable_thinking_gating: bool
 
@@ -779,6 +782,7 @@ def _resolve_effective_eval_settings(
         retrieval_bm25_weight=float(runtime.settings.RETRIEVAL_BM25_WEIGHT),
         vector_backend=vector_backend_label,
         llm_backend=llm_backend_label,
+        weighted_consensus_count=int(runtime.settings.WEIGHTED_CONSENSUS_COUNT),
         enable_llm_call_gating=EVAL_ENABLE_LLM_CALL_GATING,
         enable_thinking_gating=EVAL_ENABLE_THINKING_GATING,
     )
@@ -810,6 +814,7 @@ def _effective_settings_to_payload(
         "retrieval_bm25_weight": effective_settings.retrieval_bm25_weight,
         "vector_backend": effective_settings.vector_backend,
         "llm_backend": effective_settings.llm_backend,
+        "weighted_consensus_count": effective_settings.weighted_consensus_count,
         "enable_llm_call_gating": effective_settings.enable_llm_call_gating,
         "enable_thinking_gating": effective_settings.enable_thinking_gating,
     }
@@ -846,11 +851,7 @@ def _build_run_metadata_row(
     Concurrency/atomicity:
     - Pure metadata construction helper.
     """
-    weighted_consensus_count = int(
-        getattr(runtime.rag_chat_orchestrator, "MIN_WEIGHTED_CONSENSUS_COUNT", 2)
-    )
     settings_used_payload = _effective_settings_to_payload(effective_settings)
-    settings_used_payload["weighted_consensus_count"] = weighted_consensus_count
 
     return {
         "record_type": RECORD_TYPE_RUN_METADATA,
@@ -935,6 +936,7 @@ def _build_orchestrator_result_row(
         enable_llm_call_gating=EVAL_ENABLE_LLM_CALL_GATING,
         weighted_score_threshold=effective_settings.weighted_score_threshold,
         bm25_score_threshold=effective_settings.bm25_score_threshold,
+        weighted_consensus_count=effective_settings.weighted_consensus_count,
     )
     elapsed_ms = int((time.perf_counter() - start_time) * 1000)
 
@@ -1033,6 +1035,7 @@ def _build_result_row(
         selected_chunks,
         weighted_score_threshold=effective_settings.weighted_score_threshold,
         bm25_score_threshold=effective_settings.bm25_score_threshold,
+        weighted_consensus_count=effective_settings.weighted_consensus_count,
     )
     elapsed_ms = int((time.perf_counter() - start_time) * 1000)
 

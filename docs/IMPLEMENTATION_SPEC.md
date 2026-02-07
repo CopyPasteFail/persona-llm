@@ -33,6 +33,7 @@ Backend configuration is loaded from a dotenv file rather than a global `PRIVATE
   - `MAX_OUTPUT_TOKENS`: Output budget for LLM calls (hard limit enforced in settings; must be <= 4000).
   - `TOP_K`: Retrieval depth used by chat/eval candidate selection (defaults to 4).
   - `THINKING_BUDGET_TOKENS`: Optional cap for Gemini "thinking" tokens.
+  - `WEIGHTED_CONSENSUS_COUNT`: Minimum number of chunks that must meet `WEIGHTED_SCORE_THRESHOLD` for semantic signal gating to pass (defaults to 2).
   - `INCLUDE_THOUGHTS`: `false` (default) or `true` to return thought parts.
   - `REQ_TIMEOUT_MS`: Request timeout in milliseconds.
     - Applied to outbound calls that accept timeouts (GCS chunk download, Matching Engine queries, Gemini generation). Some SDK calls may ignore this if they lack timeout support.

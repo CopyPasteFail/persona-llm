@@ -204,6 +204,7 @@ async def chat(
             enable_llm_call_gating=settings.ENABLE_LLM_CALL_GATING,
             weighted_score_threshold=settings.WEIGHTED_SCORE_THRESHOLD,
             bm25_score_threshold=settings.BM25_SCORE_THRESHOLD,
+            weighted_consensus_count=settings.WEIGHTED_CONSENSUS_COUNT,
         )
         response = chat_result.response
         response.model = settings.LLM_MODEL_NAME

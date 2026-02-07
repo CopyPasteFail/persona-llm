@@ -60,6 +60,7 @@ Common placeholders:
 - `VECTOR_BACKEND=local|matching_engine` controls vector search; Matching Engine IDs are required only for `matching_engine`.
 - `LLM_BACKEND=vertex|deterministic` controls LLM selection (mock defaults to deterministic; use Vertex with ADC).
 - `THINKING_BUDGET_TOKENS` (optional) caps Gemini 2.5 "thinking" tokens for chat responses (the backend uses the `google-genai` SDK for Gemini calls).
+- `WEIGHTED_CONSENSUS_COUNT` (optional, default `2`) sets how many chunks must meet `WEIGHTED_SCORE_THRESHOLD` before semantic llm-gating passes.
 - `INCLUDE_THOUGHTS=false|true` controls whether the API returns thought parts (defaults to false).
 - `OPS_SECRET` protects `/ops/*` endpoints when `OPS_AUTH=enabled`.
 - Project, region, and model identifiers if using Vertex; names are placeholders only.

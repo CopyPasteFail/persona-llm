@@ -7,6 +7,7 @@ from . import llm
 from .llm_backends import LlmBackend
 from .settings import (
     DEFAULT_BM25_SCORE_THRESHOLD,
+    DEFAULT_WEIGHTED_CONSENSUS_COUNT,
     DEFAULT_WEIGHTED_SCORE_THRESHOLD,
 )
 from .types import ChatResponse, Citation, Usage
@@ -50,7 +51,7 @@ llm_gate_reason_SCORE_BELOW_THRESHOLD = "score_below"
 llm_gate_reason_BM25_BELOW_THRESHOLD = "bm25_below"
 llm_gate_reason_NO_CANDIDATES = "no_candidates"
 llm_gate_reason_PASS = "pass"
-MIN_WEIGHTED_CONSENSUS_COUNT = 2
+MIN_WEIGHTED_CONSENSUS_COUNT = DEFAULT_WEIGHTED_CONSENSUS_COUNT
 
 
 class RetrievalPipeline(Protocol):
@@ -155,6 +156,7 @@ def run_rag_chat(
     enable_llm_call_gating: bool = False,
     weighted_score_threshold: float = DEFAULT_WEIGHTED_SCORE_THRESHOLD,
     bm25_score_threshold: float = DEFAULT_BM25_SCORE_THRESHOLD,
+    weighted_consensus_count: int = MIN_WEIGHTED_CONSENSUS_COUNT,
 ) -> ChatResult:
     """Run a RAG chat flow and return the selected context plus response.
 
@@ -171,6 +173,8 @@ def run_rag_chat(
     - enable_llm_call_gating: Whether deterministic retrieval llm gating is enabled.
     - weighted_score_threshold: Top-1 weighted score threshold for retrieval signal.
     - bm25_score_threshold: Top-1 BM25 threshold for retrieval signal.
+    - weighted_consensus_count: Minimum number of chunks that must meet the
+      weighted-score threshold for semantic signal to pass.
 
     Output:
     - ChatResult containing the response, selected chunks, usage detail, and normalized question.
@@ -200,6 +204,7 @@ def run_rag_chat(
         selected_chunks,
         weighted_score_threshold=weighted_score_threshold,
         bm25_score_threshold=bm25_score_threshold,
+        weighted_consensus_count=weighted_consensus_count,
         question_is_in_domain=retrieval.has_selected_chunks(selected_chunks),
     )
     would_call_llm = signal_shadow_decision.would_call_llm
@@ -469,6 +474,7 @@ def compute_llm_gate_decision(
     *,
     weighted_score_threshold: float,
     bm25_score_threshold: float,
+    weighted_consensus_count: int = MIN_WEIGHTED_CONSENSUS_COUNT,
     question_is_in_domain: bool | None = None,
 ) -> LlmGateShadowDecision:
     """Return the deterministic llm gating decision used by chat orchestration.
@@ -477,6 +483,8 @@ def compute_llm_gate_decision(
     - selected_chunks: Ranked retrieval chunks from filtering and boosting.
     - weighted_score_threshold: Minimum acceptable weighted score.
     - bm25_score_threshold: Minimum acceptable BM25 score.
+    - weighted_consensus_count: Minimum number of chunks that must meet the
+      weighted-score threshold for semantic signal to pass.
     - question_is_in_domain: Optional in-domain flag for BM25 fallback checks.
 
     Output:
@@ -495,6 +503,7 @@ def compute_llm_gate_decision(
         selected_chunks,
         weighted_score_threshold=weighted_score_threshold,
         bm25_score_threshold=bm25_score_threshold,
+        weighted_consensus_count=weighted_consensus_count,
         question_is_in_domain=question_is_in_domain,
     )
 
@@ -504,6 +513,7 @@ def _compute_llm_gate_decision(
     *,
     weighted_score_threshold: float,
     bm25_score_threshold: float,
+    weighted_consensus_count: int = MIN_WEIGHTED_CONSENSUS_COUNT,
     question_is_in_domain: bool | None = None,
 ) -> LlmGateShadowDecision:
     """Compute deterministic llm-gating decision without applying it.
@@ -512,6 +522,8 @@ def _compute_llm_gate_decision(
     - selected_chunks: Ranked retrieval chunks from filtering and boosting.
     - weighted_score_threshold: Minimum acceptable weighted score.
     - bm25_score_threshold: Minimum acceptable BM25 score.
+    - weighted_consensus_count: Minimum number of chunks that must meet the
+      weighted-score threshold for semantic signal to pass.
     - question_is_in_domain: Optional in-domain flag for BM25 fallback checks.
 
     Output:
@@ -527,6 +539,7 @@ def _compute_llm_gate_decision(
     """
     normalized_weighted_score_threshold = float(weighted_score_threshold)
     normalized_bm25_score_threshold = float(bm25_score_threshold)
+    normalized_weighted_consensus_count = max(1, int(weighted_consensus_count))
     resolved_question_is_in_domain = (
         bool(selected_chunks)
         if question_is_in_domain is None
@@ -571,7 +584,7 @@ def _compute_llm_gate_decision(
     passes_semantic_signal = (
         best_weighted_score is not None
         and best_weighted_score >= normalized_weighted_score_threshold
-        and support_count >= MIN_WEIGHTED_CONSENSUS_COUNT 
+        and support_count >= normalized_weighted_consensus_count
     )
     passes_bm25_fallback_signal = (
         best_bm25_score is not None
