@@ -42,7 +42,7 @@ See [`DATA_DESIGN_RATIONALE.md`](./DATA_DESIGN_RATIONALE.md) for discussion.
 - Access keys live in Firestore collection `access_keys` with `key_hash` (bcrypt), `key_fingerprint` (SHA-256), `expires_at`, `revoked`, and optional labels/usage caps.
   - Rationale: Firestore is a good fit for low-ops, low-traffic access control metadata (expiry/revoke/usage caps) with straightforward admin workflows, and it provides durable, shared state across Cloud Run instances.
 - `/auth/key-login` enforces rate limits before bcrypt (in-memory today).
-- `/chat` requires auth and rate limits per access key (no per-IP limiting on `/chat`).
+- `/chat` requires auth and rate limits per IP (10/min and 100/day in-memory).
 - Rate limiting is per-instance (in-memory). This is fine for a single Cloud Run instance, but must move to a shared store (Redis/Firestore) to be reliable under multi-instance scaling.
 - Cookie sessions: `/auth/key-login` can set an HttpOnly cookie; logout clears the cookie only (no server-side session invalidation). Future enhancement: revoking an access key should immediately invalidate existing sessions.
 - Operational note: if Firebase Hosting and Cloud Run are on different origins (for example `*.web.app` and `*.run.app`), browsers may treat session cookies as cross-site and apply stricter rules.

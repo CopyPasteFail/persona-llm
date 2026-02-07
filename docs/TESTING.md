@@ -12,7 +12,8 @@ make be-install
 
 ## Gating Evaluation
 The dataset for `backend/scripts/eval_gating.py` is JSONL (one JSON object per line).
-`eval_gating.py` always runs orchestration with both thinking-gating and llm-gating enabled.
+`eval_gating.py` always evaluates with both thinking-gating and llm-gating enabled.
+By default, it runs in `integrated_retrieval_only` mode (retrieval-only gate evaluation without LLM generation).
 
 Minimum schema per row:
 ```json
@@ -35,7 +36,7 @@ Optional fields:
 - `--mode <deterministic|vertex|integrated_retrieval_only>`: Runtime wiring mode.
   - `deterministic`: Offline deterministic retrieval + deterministic LLM backend.
   - `vertex`: Integrated retrieval + real LLM backend selection.
-  - `integrated_retrieval_only`: Integrated retrieval path only; does not call LLM generation.
+  - `integrated_retrieval_only` (default): Integrated retrieval path only; does not call LLM generation.
 - `--weighted-score-threshold <float>`: Per-run override for weighted-score gating threshold.
 - `--bm25-score-threshold <float>`: Per-run override for BM25 gating threshold.
 - `--top-k <int>`: Per-run override for retrieval candidate depth (`TOP_K`); must be greater than 0.

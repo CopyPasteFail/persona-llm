@@ -177,8 +177,8 @@ This section applies only when `VECTOR_BACKEND=matching_engine`.
    - **Rerank/boost**:
      - Weight scores: `0.7 * ANN + 0.3 * BM25 + role/topic boosts`.
      - If classified, boost chunks with matching role tag.
-   - **Trim**: keep top ~8 chunks (aligns with intended architecture).
-   - **Prompt LLM**: feed 8 chunks into Gemini Flash, generate strict, grounded first-person answer.
+   - **Trim**: keep top `TOP_K` chunks (defaults to 4; configurable via env).
+   - **Prompt LLM**: feed selected `TOP_K` chunks into Gemini Flash, generate strict, grounded first-person answer.
    - **Return**: `{answer, citations, usage}` JSON.
 See [`DATA_DESIGN_RATIONALE.md`](./DATA_DESIGN_RATIONALE.md) for discussion.
 

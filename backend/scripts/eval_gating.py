@@ -240,7 +240,7 @@ def _build_parser() -> argparse.ArgumentParser:
         choices=[MODE_DETERMINISTIC, MODE_VERTEX, MODE_INTEGRATED_RETRIEVAL_ONLY],
         default=MODE_INTEGRATED_RETRIEVAL_ONLY,
         help=(
-            "Runtime wiring mode. Default: deterministic (offline, no Vertex calls). "
+            "Runtime wiring mode. Default: integrated_retrieval_only. "
             "integrated_retrieval_only uses integrated retrieval path and skips LLM calls."
         ),
     )
