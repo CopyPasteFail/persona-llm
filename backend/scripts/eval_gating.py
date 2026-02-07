@@ -27,7 +27,7 @@ DEFAULT_OUTPUT_DIRECTORY = Path("./out")
 EVAL_ENABLE_THINKING_GATING = True
 EVAL_ENABLE_LLM_CALL_GATING = True
 ANSWER_HEAD_CHAR_LIMIT = 120
-OUTPUT_SCHEMA_VERSION = "gating_eval_v2"
+OUTPUT_SCHEMA_VERSION = "gating_eval_v3"
 RECORD_TYPE_RUN_METADATA = "run_metadata"
 RECORD_TYPE_DATASET_METADATA = "dataset_metadata"
 RECORD_TYPE_QUESTION_RESULT = "question_result"
@@ -846,6 +846,11 @@ def _build_run_metadata_row(
     Concurrency/atomicity:
     - Pure metadata construction helper.
     """
+    weighted_consensus_count = int(
+        getattr(runtime.rag_chat_orchestrator, "MIN_WEIGHTED_CONSENSUS_COUNT", 2)
+    )
+    settings_used_payload = _effective_settings_to_payload(effective_settings)
+    settings_used_payload["weighted_consensus_count"] = weighted_consensus_count
 
     return {
         "record_type": RECORD_TYPE_RUN_METADATA,
@@ -857,7 +862,7 @@ def _build_run_metadata_row(
         "dataset_files": [str(dataset_file) for dataset_file in dataset_files],
         "output_path": str(output_path),
         "max_rows": max_rows,
-        "settings_used": _effective_settings_to_payload(effective_settings),
+        "settings_used": settings_used_payload,
     }
 
 
@@ -953,8 +958,8 @@ def _build_orchestrator_result_row(
         "top1_weighted_score": chat_result.top1_weighted_score,
         "top1_bm25_score": chat_result.top1_bm25_score,
         "top1_vector_score": chat_result.top1_vector_score,
-        "weighted_score_threshold": chat_result.weighted_score_threshold,
-        "bm25_score_threshold": chat_result.bm25_score_threshold,
+        "best_weighted_score": chat_result.best_weighted_score,
+        "best_bm25_score": chat_result.best_bm25_score,
         "selected_chunk_ids": selected_chunk_ids,
         "usage_input_tokens": response.usage.input_tokens,
         "usage_output_tokens": response.usage.output_tokens,
@@ -1036,8 +1041,8 @@ def _build_result_row(
         "top1_weighted_score": gate_shadow_decision.top1_weighted_score,
         "top1_bm25_score": gate_shadow_decision.top1_bm25_score,
         "top1_vector_score": gate_shadow_decision.top1_vector_score,
-        "weighted_score_threshold": gate_shadow_decision.weighted_score_threshold,
-        "bm25_score_threshold": gate_shadow_decision.bm25_score_threshold,
+        "best_weighted_score": gate_shadow_decision.best_weighted_score,
+        "best_bm25_score": gate_shadow_decision.best_bm25_score,
         "selected_chunk_ids": selected_chunk_ids,
         "selected_count": len(selected_chunk_ids),
         "candidates_count": len(candidate_chunks),

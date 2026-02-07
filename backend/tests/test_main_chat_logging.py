@@ -69,7 +69,7 @@ async def test_chat_success_log_includes_signal_shadow_fields(
     - caplog: Log capture fixture for structured payload assertions.
 
     Outputs:
-    - None. Asserts the emitted `chat.success` payload includes new `signal_*` keys.
+    - None. Asserts the emitted `chat.success` payload includes llm-gating fields.
 
     Edge cases:
     - Uses a shadow decision that would skip LLM while gating is disabled to ensure
@@ -97,6 +97,9 @@ async def test_chat_success_log_includes_signal_shadow_fields(
             top1_weighted_score=0.5,
             top1_bm25_score=1.0,
             top1_vector_score=0.6,
+            best_weighted_score=0.5,
+            best_bm25_score=1.0,
+            weighted_consensus_count =0,
             weighted_score_threshold=0.62,
             bm25_score_threshold=3.0,
         )
@@ -136,6 +139,9 @@ async def test_chat_success_log_includes_signal_shadow_fields(
     assert "top1_weighted_score" in success_payload
     assert "top1_bm25_score" in success_payload
     assert "top1_vector_score" in success_payload
+    assert "best_weighted_score" in success_payload
+    assert "best_bm25_score" in success_payload
+    assert "weighted_consensus_count " in success_payload
     assert "signal_top1_weighted_score" not in success_payload
     assert "signal_top1_bm25_score" not in success_payload
     assert "signal_top1_vector_score" not in success_payload

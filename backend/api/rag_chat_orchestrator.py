@@ -50,6 +50,7 @@ llm_gate_reason_SCORE_BELOW_THRESHOLD = "score_below"
 llm_gate_reason_BM25_BELOW_THRESHOLD = "bm25_below"
 llm_gate_reason_NO_CANDIDATES = "no_candidates"
 llm_gate_reason_PASS = "pass"
+MIN_WEIGHTED_CONSENSUS_COUNT = 2
 
 
 class RetrievalPipeline(Protocol):
@@ -85,6 +86,9 @@ class ChatResult:
     top1_weighted_score: float | None
     top1_bm25_score: float | None
     top1_vector_score: float | None
+    best_weighted_score: float | None
+    best_bm25_score: float | None
+    weighted_consensus_count : int
     weighted_score_threshold: float
     bm25_score_threshold: float
 
@@ -109,6 +113,9 @@ class LlmGateShadowDecision:
     - top1_weighted_score: Top candidates weighted score.
     - top1_bm25_score: Top candidate lexical BM25 score.
     - top1_vector_score: Top candidate vector similarity score.
+    - best_weighted_score: Best weighted score across selected chunks.
+    - best_bm25_score: Best BM25 score across selected chunks.
+    - weighted_consensus_count : Number of chunks with weighted score meeting threshold.
     - weighted_score_threshold: Weighted score threshold used for evaluation.
     - bm25_score_threshold: BM25 threshold used for evaluation.
 
@@ -127,6 +134,9 @@ class LlmGateShadowDecision:
     top1_weighted_score: float | None
     top1_bm25_score: float | None
     top1_vector_score: float | None
+    best_weighted_score: float | None
+    best_bm25_score: float | None
+    weighted_consensus_count : int
     weighted_score_threshold: float
     bm25_score_threshold: float
 
@@ -190,6 +200,7 @@ def run_rag_chat(
         selected_chunks,
         weighted_score_threshold=weighted_score_threshold,
         bm25_score_threshold=bm25_score_threshold,
+        question_is_in_domain=retrieval.has_selected_chunks(selected_chunks),
     )
     would_call_llm = signal_shadow_decision.would_call_llm
     if not enable_llm_call_gating:
@@ -218,6 +229,9 @@ def run_rag_chat(
             top1_weighted_score=signal_shadow_decision.top1_weighted_score,
             top1_bm25_score=signal_shadow_decision.top1_bm25_score,
             top1_vector_score=signal_shadow_decision.top1_vector_score,
+            best_weighted_score=signal_shadow_decision.best_weighted_score,
+            best_bm25_score=signal_shadow_decision.best_bm25_score,
+            weighted_consensus_count =signal_shadow_decision.weighted_consensus_count ,
             weighted_score_threshold=signal_shadow_decision.weighted_score_threshold,
             bm25_score_threshold=signal_shadow_decision.bm25_score_threshold,
         )
@@ -260,6 +274,9 @@ def run_rag_chat(
         top1_weighted_score=signal_shadow_decision.top1_weighted_score,
         top1_bm25_score=signal_shadow_decision.top1_bm25_score,
         top1_vector_score=signal_shadow_decision.top1_vector_score,
+        best_weighted_score=signal_shadow_decision.best_weighted_score,
+        best_bm25_score=signal_shadow_decision.best_bm25_score,
+        weighted_consensus_count =signal_shadow_decision.weighted_consensus_count ,
         weighted_score_threshold=signal_shadow_decision.weighted_score_threshold,
         bm25_score_threshold=signal_shadow_decision.bm25_score_threshold,
     )
@@ -452,13 +469,15 @@ def compute_llm_gate_decision(
     *,
     weighted_score_threshold: float,
     bm25_score_threshold: float,
+    question_is_in_domain: bool | None = None,
 ) -> LlmGateShadowDecision:
-    """Return the deterministic top-1 llm gating decision used by chat orchestration.
+    """Return the deterministic llm gating decision used by chat orchestration.
 
     Inputs:
     - selected_chunks: Ranked retrieval chunks from filtering and boosting.
-    - weighted_score_threshold: Minimum acceptable top-1 weighted score.
-    - bm25_score_threshold: Minimum acceptable top-1 BM25 score.
+    - weighted_score_threshold: Minimum acceptable weighted score.
+    - bm25_score_threshold: Minimum acceptable BM25 score.
+    - question_is_in_domain: Optional in-domain flag for BM25 fallback checks.
 
     Output:
     - LlmGateShadowDecision with would-call verdict, reason, top-1 metrics,
@@ -476,6 +495,7 @@ def compute_llm_gate_decision(
         selected_chunks,
         weighted_score_threshold=weighted_score_threshold,
         bm25_score_threshold=bm25_score_threshold,
+        question_is_in_domain=question_is_in_domain,
     )
 
 
@@ -484,13 +504,15 @@ def _compute_llm_gate_decision(
     *,
     weighted_score_threshold: float,
     bm25_score_threshold: float,
+    question_is_in_domain: bool | None = None,
 ) -> LlmGateShadowDecision:
     """Compute deterministic llm-gating decision without applying it.
 
     Inputs:
     - selected_chunks: Ranked retrieval chunks from filtering and boosting.
-    - weighted_score_threshold: Minimum acceptable top-1 weighted score.
-    - bm25_score_threshold: Minimum acceptable top-1 BM25 score.
+    - weighted_score_threshold: Minimum acceptable weighted score.
+    - bm25_score_threshold: Minimum acceptable BM25 score.
+    - question_is_in_domain: Optional in-domain flag for BM25 fallback checks.
 
     Output:
     - LlmGateShadowDecision with would-call verdict, reason, top-1 score
@@ -505,6 +527,11 @@ def _compute_llm_gate_decision(
     """
     normalized_weighted_score_threshold = float(weighted_score_threshold)
     normalized_bm25_score_threshold = float(bm25_score_threshold)
+    resolved_question_is_in_domain = (
+        bool(selected_chunks)
+        if question_is_in_domain is None
+        else bool(question_is_in_domain)
+    )
     top_chunk = selected_chunks[0] if selected_chunks else {}
     top1_weighted_score = _optional_float(top_chunk.get("score"))
     top1_bm25_score = _optional_float(top_chunk.get("bm25_score"))
@@ -517,19 +544,41 @@ def _compute_llm_gate_decision(
             top1_weighted_score=None,
             top1_bm25_score=None,
             top1_vector_score=None,
+            best_weighted_score=None,
+            best_bm25_score=None,
+            weighted_consensus_count =0,
             weighted_score_threshold=normalized_weighted_score_threshold,
             bm25_score_threshold=normalized_bm25_score_threshold,
         )
 
-    passes_weighted_score_threshold = (
-        top1_weighted_score is not None and top1_weighted_score >= normalized_weighted_score_threshold
+    weighted_scores = [
+        weighted_score
+        for chunk in selected_chunks
+        if (weighted_score := _optional_float(chunk.get("score"))) is not None
+    ]
+    bm25_scores = [
+        bm25_score
+        for chunk in selected_chunks
+        if (bm25_score := _optional_float(chunk.get("bm25_score"))) is not None
+    ]
+    best_weighted_score = max(weighted_scores) if weighted_scores else None
+    best_bm25_score = max(bm25_scores) if bm25_scores else None
+    support_count = sum(
+        1
+        for weighted_score in weighted_scores
+        if weighted_score >= normalized_weighted_score_threshold
     )
-    passes_bm25_score_threshold = (
-        top1_bm25_score is not None and top1_bm25_score >= normalized_bm25_score_threshold
+    passes_semantic_signal = (
+        best_weighted_score is not None
+        and best_weighted_score >= normalized_weighted_score_threshold
+        and support_count >= MIN_WEIGHTED_CONSENSUS_COUNT 
     )
-    would_call_llm = (
-        passes_weighted_score_threshold or passes_bm25_score_threshold
+    passes_bm25_fallback_signal = (
+        best_bm25_score is not None
+        and best_bm25_score >= normalized_bm25_score_threshold
+        and resolved_question_is_in_domain
     )
+    would_call_llm = passes_semantic_signal or passes_bm25_fallback_signal
     reason = (
         llm_gate_reason_PASS
         if would_call_llm
@@ -542,6 +591,9 @@ def _compute_llm_gate_decision(
         top1_weighted_score=top1_weighted_score,
         top1_bm25_score=top1_bm25_score,
         top1_vector_score=top1_vector_score,
+        best_weighted_score=best_weighted_score,
+        best_bm25_score=best_bm25_score,
+        weighted_consensus_count =support_count,
         weighted_score_threshold=normalized_weighted_score_threshold,
         bm25_score_threshold=normalized_bm25_score_threshold,
     )
