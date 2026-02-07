@@ -56,6 +56,123 @@ _DEBUG_BM25_SAMPLE = 5
 # BM25 parameters.
 _BM25_K1 = 1.5
 _BM25_B = 0.75
+_BM25_MIN_TOKEN_LENGTH = 3
+_BM25_STOPWORDS: Set[str] = {
+    "a",
+    "about",
+    "after",
+    "again",
+    "all",
+    "also",
+    "am",
+    "an",
+    "and",
+    "any",
+    "are",
+    "as",
+    "at",
+    "be",
+    "been",
+    "before",
+    "being",
+    "between",
+    "both",
+    "btw",
+    "built",
+    "but",
+    "by",
+    "can",
+    "could",
+    "did",
+    "do",
+    "does",
+    "doing",
+    "done",
+    "during",
+    "each",
+    "experience",
+    "for",
+    "from",
+    "further",
+    "had",
+    "has",
+    "have",
+    "having",
+    "how",
+    "if",
+    "in",
+    "into",
+    "is",
+    "it",
+    "its",
+    "just",
+    "let",
+    "like",
+    "may",
+    "me",
+    "more",
+    "most",
+    "much",
+    "my",
+    "nor",
+    "not",
+    "now",
+    "of",
+    "on",
+    "once",
+    "only",
+    "or",
+    "other",
+    "our",
+    "ours",
+    "out",
+    "over",
+    "please",
+    "same",
+    "should",
+    "so",
+    "some",
+    "such",
+    "than",
+    "that",
+    "the",
+    "their",
+    "theirs",
+    "them",
+    "then",
+    "there",
+    "these",
+    "they",
+    "this",
+    "those",
+    "through",
+    "to",
+    "too",
+    "tell",
+    "under",
+    "until",
+    "up",
+    "us",
+    "very",
+    "was",
+    "we",
+    "were",
+    "what",
+    "when",
+    "where",
+    "which",
+    "while",
+    "who",
+    "why",
+    "will",
+    "with",
+    "worked",
+    "would",
+    "you",
+    "your",
+    "yours",
+    "i",
+}
 
 logger = logging.getLogger(" api.retrieval")
 if os.getenv("RETRIEVAL_DEBUG") == "1":
@@ -424,6 +541,41 @@ def _tokenize(text: str) -> List[str]:
     return _TOKEN_RE.findall(text.lower())
 
 
+def _filter_tokens_for_bm25(raw_tokens: Iterable[str]) -> List[str]:
+    """
+    Filter pre-tokenized terms for BM25 indexing and query scoring.
+
+    Inputs:
+        raw_tokens: Lowercased alphanumeric tokens from `_tokenize`.
+    Outputs:
+        Filtered token list preserving order and duplicates.
+    Edge cases:
+        Removes terms shorter than three characters and stopword/template terms.
+    """
+    filtered_tokens: List[str] = []
+    for raw_token in raw_tokens:
+        if len(raw_token) < _BM25_MIN_TOKEN_LENGTH:
+            continue
+        if raw_token in _BM25_STOPWORDS:
+            continue
+        filtered_tokens.append(raw_token)
+    return filtered_tokens
+
+
+def _tokenize_for_bm25(text: str) -> List[str]:
+    """
+    Tokenize text for BM25 use only, applying retrieval-specific filtering.
+
+    Inputs:
+        text: Raw input string.
+    Outputs:
+        Filtered BM25 token list preserving token multiplicity.
+    Edge cases:
+        Empty inputs produce an empty list.
+    """
+    return _filter_tokens_for_bm25(_tokenize(text))
+
+
 def _distance_to_similarity(distance: float) -> float:
     """
     Convert a vector distance into a bounded similarity score.
@@ -537,45 +689,35 @@ def _extract_chunk_tokens(chunk: Mapping[str, Any]) -> List[str]:
     Inputs:
         chunk: Chunk record containing text and metadata.
     Outputs:
-        A list of tokens from text, section, doc_id, source_uri, topics, tags, and extras.
+        A list of BM25-filtered tokens from text, section, topics, and tags.
     Edge cases:
         Skips non-string fields and missing metadata entries.
     """
     tokens: List[str] = []
     text = chunk.get("text")
     if isinstance(text, str):
-        tokens.extend(_tokenize(text))
+        tokens.extend(_tokenize_for_bm25(text))
 
     metadata_obj = chunk.get("metadata")
     if isinstance(metadata_obj, Mapping):
         metadata_mapping = cast(Mapping[str, Any], metadata_obj)
         metadata_map: Dict[str, Any] = dict(metadata_mapping)
-        for field in ("section", "doc_id", "source_uri"):
+        for field in ("section",):
             value = metadata_map.get(field)
             if isinstance(value, str):
-                tokens.extend(_tokenize(value))
+                tokens.extend(_tokenize_for_bm25(value))
 
         topics = metadata_map.get("topics")
         if isinstance(topics, Iterable):
             for topic in cast(Iterable[Any], topics):
                 if isinstance(topic, str):
-                    tokens.extend(_tokenize(topic))
+                    tokens.extend(_tokenize_for_bm25(topic))
 
         tags = metadata_map.get("tags")
         if isinstance(tags, Iterable):
             for tag in cast(Iterable[Any], tags):
                 if isinstance(tag, str):
-                    tokens.extend(_tokenize(tag))
-
-        extras = metadata_map.get("extras")
-        if isinstance(extras, Mapping):
-            for raw_value in cast(Iterable[Any], extras.values()):
-                if isinstance(raw_value, str):
-                    tokens.extend(_tokenize(raw_value))
-                elif isinstance(raw_value, Iterable):
-                    for item in cast(Iterable[Any], raw_value):
-                        if isinstance(item, str):
-                            tokens.extend(_tokenize(item))
+                    tokens.extend(_tokenize_for_bm25(tag))
     return tokens
 
 
@@ -891,7 +1033,9 @@ def apply_filters_and_boosting(candidates: List[Dict[str, Any]]) -> List[Dict[st
         return []
 
     question = _CURRENT_QUERY.get("")
-    bm25_scores = _bm25_index.score(_tokenize(question)) if _bm25_index and question else {}
+    bm25_scores = (
+        _bm25_index.score(_tokenize_for_bm25(question)) if _bm25_index and question else {}
+    )
     role_hint = _classify_query_role(question)
     topic_tokens = set(_tokenize(question))
     vector_weight = float(settings.RETRIEVAL_VECTOR_WEIGHT)

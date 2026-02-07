@@ -946,6 +946,16 @@ def _build_orchestrator_result_row(
 
     usage_total_tokens: int | None = chat_result.usage_detail.get("total_tokens")
     finish_reason: str | None = chat_result.usage_detail.get("finish_reason")
+    weighted_scores = _build_ranked_score_vector(
+        chat_result.selected_chunks,
+        score_field="score",
+        top_k=effective_settings.top_k,
+    )
+    bm25_scores = _build_ranked_score_vector(
+        chat_result.selected_chunks,
+        score_field="bm25_score",
+        top_k=effective_settings.top_k,
+    )
 
     result_row: dict[str, Any] = {
         "record_type": RECORD_TYPE_QUESTION_RESULT,
@@ -960,6 +970,8 @@ def _build_orchestrator_result_row(
         "top1_vector_score": chat_result.top1_vector_score,
         "best_weighted_score": chat_result.best_weighted_score,
         "best_bm25_score": chat_result.best_bm25_score,
+        "weighted_scores": weighted_scores,
+        "bm25_scores": bm25_scores,
         "selected_chunk_ids": selected_chunk_ids,
         "usage_input_tokens": response.usage.input_tokens,
         "usage_output_tokens": response.usage.output_tokens,
@@ -1029,6 +1041,16 @@ def _build_result_row(
         for chunk in selected_chunks
         if str(chunk.get("id") or "").strip()
     ]
+    weighted_scores = _build_ranked_score_vector(
+        selected_chunks,
+        score_field="score",
+        top_k=effective_settings.top_k,
+    )
+    bm25_scores = _build_ranked_score_vector(
+        selected_chunks,
+        score_field="bm25_score",
+        top_k=effective_settings.top_k,
+    )
 
     result_row: dict[str, Any] = {
         "record_type": RECORD_TYPE_QUESTION_RESULT,
@@ -1043,6 +1065,8 @@ def _build_result_row(
         "top1_vector_score": gate_shadow_decision.top1_vector_score,
         "best_weighted_score": gate_shadow_decision.best_weighted_score,
         "best_bm25_score": gate_shadow_decision.best_bm25_score,
+        "weighted_scores": weighted_scores,
+        "bm25_scores": bm25_scores,
         "selected_chunk_ids": selected_chunk_ids,
         "selected_count": len(selected_chunk_ids),
         "candidates_count": len(candidate_chunks),
@@ -1051,6 +1075,45 @@ def _build_result_row(
         result_row["expected"] = dataset_row.expected
 
     return result_row
+
+
+def _build_ranked_score_vector(
+    selected_chunks: Sequence[dict[str, Any]],
+    *,
+    score_field: str,
+    top_k: int,
+) -> list[float | None]:
+    """Build a score vector in selected-chunk rank order padded to top_k.
+
+    Inputs:
+    - selected_chunks: Ranked retrieval chunks after filtering/boosting.
+    - score_field: Score field name to extract (`score` or `bm25_score`).
+    - top_k: Output vector length target.
+
+    Outputs:
+    - List of length `top_k` containing float scores or None when missing.
+
+    Edge cases:
+    - Non-numeric score values are converted to None.
+    - If fewer than top_k chunks are selected, vector is right-padded with None.
+    """
+    normalized_top_k = max(0, int(top_k))
+    ranked_scores: list[float | None] = []
+    for selected_chunk in selected_chunks[:normalized_top_k]:
+        ranked_scores.append(_optional_float(selected_chunk.get(score_field)))
+    while len(ranked_scores) < normalized_top_k:
+        ranked_scores.append(None)
+    return ranked_scores
+
+
+def _optional_float(value: Any) -> float | None:
+    """Convert arbitrary values to float when possible, else None."""
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _write_results_jsonl(output_path: Path, result_rows: Sequence[dict[str, Any]]) -> None:
