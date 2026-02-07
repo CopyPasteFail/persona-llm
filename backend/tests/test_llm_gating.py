@@ -1,4 +1,4 @@
-"""Tests for deterministic signal gating in the RAG chat orchestrator."""
+"""Tests for deterministic llm gating in the RAG chat orchestrator."""
 
 from __future__ import annotations
 
@@ -7,10 +7,10 @@ from typing import Any, Dict, List, Optional, Sequence
 from api import rag_chat_orchestrator
 from api import llm
 
-WEAK_SIGNAL_SCORE = 0.56
-WEAK_SIGNAL_BM25 = 1.4
-STRONG_SIGNAL_SCORE = 0.66
-STRONG_SIGNAL_BM25 = 7.5
+WEAK_WEIGHTED_SCORE = 0.56
+WEAK_BM25_SCORE = 1.4
+STRONG_WEIGHTED_SCORE = 0.66
+STRONG_BM25_SCORE = 7.5
 TEST_WEIGHTED_SCORE_THRESHOLD = 0.62
 TEST_BM25_SCORE_THRESHOLD = 3.0
 DEFAULT_TOP_K = 4
@@ -68,7 +68,7 @@ class _SpyLlmBackend:
 def _build_chunk(
     *, score: float, bm25_score: float, vector_score: float = 0.5
 ) -> Dict[str, Any]:
-    """Build a minimal ranked chunk payload for signal-gating tests."""
+    """Build a minimal ranked chunk payload for llm-gating tests."""
     return {
         "id": "chunk-1",
         "text": "sample context",
@@ -79,9 +79,9 @@ def _build_chunk(
     }
 
 
-def test_compute_signal_shadow_decision_returns_no_candidates_for_empty_selection() -> None:
+def test_compute_llm_gate_decision_returns_no_candidates_for_empty_selection() -> None:
     """Shadow decision should skip LLM and report no_candidates when no chunks exist."""
-    decision = rag_chat_orchestrator._compute_signal_shadow_decision(  # pyright: ignore[reportPrivateUsage]
+    decision = rag_chat_orchestrator._compute_llm_gate_decision(  # pyright: ignore[reportPrivateUsage]
         [],
         weighted_score_threshold=TEST_WEIGHTED_SCORE_THRESHOLD,
         bm25_score_threshold=TEST_BM25_SCORE_THRESHOLD,
@@ -94,10 +94,10 @@ def test_compute_signal_shadow_decision_returns_no_candidates_for_empty_selectio
     assert decision.top1_vector_score is None
 
 
-def test_compute_signal_shadow_decision_returns_pass_for_strong_signal() -> None:
+def test_compute_llm_gate_decision_returns_pass_for_strong_signal() -> None:
     """Shadow decision should pass when score or BM25 crosses configured thresholds."""
-    strong_chunk = _build_chunk(score=STRONG_SIGNAL_SCORE, bm25_score=WEAK_SIGNAL_BM25)
-    decision = rag_chat_orchestrator._compute_signal_shadow_decision(  # pyright: ignore[reportPrivateUsage]
+    strong_chunk = _build_chunk(score=STRONG_WEIGHTED_SCORE, bm25_score=WEAK_BM25_SCORE)
+    decision = rag_chat_orchestrator._compute_llm_gate_decision(  # pyright: ignore[reportPrivateUsage]
         [strong_chunk],
         weighted_score_threshold=TEST_WEIGHTED_SCORE_THRESHOLD,
         bm25_score_threshold=TEST_BM25_SCORE_THRESHOLD,
@@ -105,14 +105,14 @@ def test_compute_signal_shadow_decision_returns_pass_for_strong_signal() -> None
 
     assert decision.would_skip_llm is False
     assert decision.reason == rag_chat_orchestrator.llm_gate_reason_PASS
-    assert decision.top1_weighted_score == STRONG_SIGNAL_SCORE
-    assert decision.top1_bm25_score == WEAK_SIGNAL_BM25
+    assert decision.top1_weighted_score == STRONG_WEIGHTED_SCORE
+    assert decision.top1_bm25_score == WEAK_BM25_SCORE
 
 
-def test_compute_signal_shadow_decision_returns_score_below_for_weak_signal() -> None:
+def test_compute_llm_gate_decision_returns_score_below_for_weak_signal() -> None:
     """Shadow decision should skip LLM when both top-1 score and BM25 are weak."""
-    weak_chunk = _build_chunk(score=WEAK_SIGNAL_SCORE, bm25_score=WEAK_SIGNAL_BM25)
-    decision = rag_chat_orchestrator._compute_signal_shadow_decision(  # pyright: ignore[reportPrivateUsage]
+    weak_chunk = _build_chunk(score=WEAK_WEIGHTED_SCORE, bm25_score=WEAK_BM25_SCORE)
+    decision = rag_chat_orchestrator._compute_llm_gate_decision(  # pyright: ignore[reportPrivateUsage]
         [weak_chunk],
         weighted_score_threshold=TEST_WEIGHTED_SCORE_THRESHOLD,
         bm25_score_threshold=TEST_BM25_SCORE_THRESHOLD,
@@ -150,9 +150,9 @@ def _run_chat(
     return chat_result, llm_backend
 
 
-def test_signal_gating_returns_no_signal_for_weak_top1_weighted_scores() -> None:
+def test_llm_gating_returns_no_signal_for_weak_top1_weighted_scores() -> None:
     """Weak top-1 scores should skip LLM and return deterministic no-signal fallback."""
-    weak_chunk = _build_chunk(score=WEAK_SIGNAL_SCORE, bm25_score=WEAK_SIGNAL_BM25)
+    weak_chunk = _build_chunk(score=WEAK_WEIGHTED_SCORE, bm25_score=WEAK_BM25_SCORE)
     chat_result, llm_backend = _run_chat(
         question="Explain this for a kindergarten class.",
         selected_chunks=[weak_chunk],
@@ -166,16 +166,16 @@ def test_signal_gating_returns_no_signal_for_weak_top1_weighted_scores() -> None
         chat_result.llm_gate_reason
         == rag_chat_orchestrator.llm_gate_reason_SCORE_BELOW_THRESHOLD
     )
-    assert chat_result.top1_weighted_score == WEAK_SIGNAL_SCORE
-    assert chat_result.top1_bm25_score == WEAK_SIGNAL_BM25
+    assert chat_result.top1_weighted_score == WEAK_WEIGHTED_SCORE
+    assert chat_result.top1_bm25_score == WEAK_BM25_SCORE
     assert chat_result.usage_detail == {"total_tokens": None, "finish_reason": None}
 
 
-def test_signal_gating_allows_signal_when_top1_weighted_score_or_bm25_is_strong() -> None:
+def test_llm_gating_allows_signal_when_top1_weighted_score_or_bm25_is_strong() -> None:
     """Signal should pass when either top-1 score or top-1 BM25 crosses threshold."""
     score_strong_chunk = _build_chunk(
-        score=STRONG_SIGNAL_SCORE,
-        bm25_score=WEAK_SIGNAL_BM25,
+        score=STRONG_WEIGHTED_SCORE,
+        bm25_score=WEAK_BM25_SCORE,
     )
     score_result, score_backend = _run_chat(
         question="What did you do in marketing?",
@@ -184,8 +184,8 @@ def test_signal_gating_allows_signal_when_top1_weighted_score_or_bm25_is_strong(
     )
 
     bm25_strong_chunk = _build_chunk(
-        score=WEAK_SIGNAL_SCORE,
-        bm25_score=STRONG_SIGNAL_BM25,
+        score=WEAK_WEIGHTED_SCORE,
+        bm25_score=STRONG_BM25_SCORE,
     )
     bm25_result, bm25_backend = _run_chat(
         question="What did you do in marketing?",
@@ -201,9 +201,9 @@ def test_signal_gating_allows_signal_when_top1_weighted_score_or_bm25_is_strong(
     assert bm25_result.llm_gate_reason == rag_chat_orchestrator.llm_gate_reason_PASS
 
 
-def test_signal_gating_flag_controls_whether_weak_signal_skips_llm() -> None:
-    """Weak signal should skip LLM only when signal gating is enabled."""
-    weak_chunk = _build_chunk(score=WEAK_SIGNAL_SCORE, bm25_score=WEAK_SIGNAL_BM25)
+def test_llm_gating_flag_controls_whether_weak_signal_skips_llm() -> None:
+    """Weak signal should skip LLM only when llm gating is enabled."""
+    weak_chunk = _build_chunk(score=WEAK_WEIGHTED_SCORE, bm25_score=WEAK_BM25_SCORE)
     gated_result, gated_backend = _run_chat(
         question="Tell me about your particle-physics Nobel Prize.",
         selected_chunks=[weak_chunk],

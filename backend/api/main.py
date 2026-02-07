@@ -23,7 +23,7 @@ API_VERSION = "1.0.0"
 ALLOWED_HEADERS = ["*"]
 ALLOWED_METHODS = ["GET", "POST"]
 EVENT_CHAT_FAILED = "chat_failed"
-EVENT_CHAT_NO_SIGNAL = "chat.no_signal"
+EVENT_CHAT_LLM_SKIPPED = "chat.llm_skipped"
 EVENT_CHAT_ANSWER_PREVIEW = "chat.answer_preview"
 EVENT_CHAT_SUCCESS = "chat.success"
 CHAT_UNAVAILABLE_DETAIL = "chat_unavailable"
@@ -213,11 +213,11 @@ async def chat(
             _log_chat_answer_preview(
                 response.answer,
                 request_id,
-                context=EVENT_CHAT_NO_SIGNAL,
+                context=EVENT_CHAT_LLM_SKIPPED,
             )
             logger.debug(
                 {
-                    "event": EVENT_CHAT_NO_SIGNAL,
+                    "event": EVENT_CHAT_LLM_SKIPPED,
                     "request_id": request_id,
                     "elapsed_ms": int((time.time() - request_start_time) * 1000),
                     "ip": getattr(request.client, "host", None),

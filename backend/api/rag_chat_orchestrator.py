@@ -100,8 +100,8 @@ class UsageDetail(TypedDict):
 
 
 @dataclass(frozen=True)
-class SignalGateShadowDecision:
-    """Deterministic signal-gating shadow decision from top-ranked retrieval.
+class LlmGateShadowDecision:
+    """Deterministic llm-gating shadow decision from top-ranked retrieval.
 
     Inputs:
     - would_skip_llm: Whether threshold gating would skip the LLM call.
@@ -158,7 +158,7 @@ def run_rag_chat(
     - max_output_tokens: Max tokens to request for the response.
     - enable_thinking_gating: Whether per-request thinking gating is enabled.
     - default_thinking_budget_tokens: Default thinking budget from settings.
-    - enable_llm_call_gating: Whether deterministic retrieval signal gating is enabled.
+    - enable_llm_call_gating: Whether deterministic retrieval llm gating is enabled.
     - weighted_score_threshold: Top-1 weighted score threshold for retrieval signal.
     - bm25_score_threshold: Top-1 BM25 threshold for retrieval signal.
 
@@ -186,7 +186,7 @@ def run_rag_chat(
         enable_thinking_gating=enable_thinking_gating,
         default_thinking_budget_tokens=default_thinking_budget_tokens,
     )
-    signal_shadow_decision = compute_signal_shadow_decision(
+    signal_shadow_decision = compute_llm_gate_decision(
         selected_chunks,
         weighted_score_threshold=weighted_score_threshold,
         bm25_score_threshold=bm25_score_threshold,
@@ -447,13 +447,13 @@ def _chunk_to_citation(chunk: Dict[str, Any]) -> Citation:
     return Citation(id=chunk_id, text=snippet or None)
 
 
-def compute_signal_shadow_decision(
+def compute_llm_gate_decision(
     selected_chunks: List[Dict[str, Any]],
     *,
     weighted_score_threshold: float,
     bm25_score_threshold: float,
-) -> SignalGateShadowDecision:
-    """Return the deterministic top-1 signal gating decision used by chat orchestration.
+) -> LlmGateShadowDecision:
+    """Return the deterministic top-1 llm gating decision used by chat orchestration.
 
     Inputs:
     - selected_chunks: Ranked retrieval chunks from filtering and boosting.
@@ -461,7 +461,7 @@ def compute_signal_shadow_decision(
     - bm25_score_threshold: Minimum acceptable top-1 BM25 score.
 
     Output:
-    - SignalGateShadowDecision with would-skip verdict, reason, top-1 metrics,
+    - LlmGateShadowDecision with would-skip verdict, reason, top-1 metrics,
       and threshold values.
 
     Edge cases:
@@ -472,20 +472,20 @@ def compute_signal_shadow_decision(
     - Pure computation with no shared state mutation.
     """
 
-    return _compute_signal_shadow_decision(
+    return _compute_llm_gate_decision(
         selected_chunks,
         weighted_score_threshold=weighted_score_threshold,
         bm25_score_threshold=bm25_score_threshold,
     )
 
 
-def _compute_signal_shadow_decision(
+def _compute_llm_gate_decision(
     selected_chunks: List[Dict[str, Any]],
     *,
     weighted_score_threshold: float,
     bm25_score_threshold: float,
-) -> SignalGateShadowDecision:
-    """Compute deterministic signal-gating decision without applying it.
+) -> LlmGateShadowDecision:
+    """Compute deterministic llm-gating decision without applying it.
 
     Inputs:
     - selected_chunks: Ranked retrieval chunks from filtering and boosting.
@@ -493,7 +493,7 @@ def _compute_signal_shadow_decision(
     - bm25_score_threshold: Minimum acceptable top-1 BM25 score.
 
     Output:
-    - SignalGateShadowDecision with would-skip verdict, reason, top-1 score
+    - LlmGateShadowDecision with would-skip verdict, reason, top-1 score
       metadata, and threshold values used.
 
     Edge cases:
@@ -511,7 +511,7 @@ def _compute_signal_shadow_decision(
     top1_vector_score = _optional_float(top_chunk.get("vector_score"))
 
     if not selected_chunks:
-        return SignalGateShadowDecision(
+        return LlmGateShadowDecision(
             would_skip_llm=True,
             reason=llm_gate_reason_NO_CANDIDATES,
             top1_weighted_score=None,
@@ -534,7 +534,7 @@ def _compute_signal_shadow_decision(
         else llm_gate_reason_SCORE_BELOW_THRESHOLD
     )
 
-    return SignalGateShadowDecision(
+    return LlmGateShadowDecision(
         would_skip_llm=not has_signal,
         reason=reason,
         top1_weighted_score=top1_weighted_score,

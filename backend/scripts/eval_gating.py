@@ -143,14 +143,14 @@ def _build_parser() -> argparse.ArgumentParser:
 
     Edge cases:
     - This evaluation intentionally always enables both thinking-gating and
-      signal-gating, so no gate-enable CLI flags are exposed.
+      llm-gating, so no gate-enable CLI flags are exposed.
 
     Concurrency/atomicity:
     - Pure parser construction with no shared-state mutation.
     """
 
     parser = argparse.ArgumentParser(
-        description="Replay dataset questions through RAG and collect signal-gating metrics."
+        description="Replay dataset questions through RAG and collect llm-gating metrics."
     )
     parser.add_argument(
         "--dataset",
@@ -557,7 +557,7 @@ def _resolve_effective_thresholds(
     weighted_score_threshold_override: float | None,
     bm25_score_threshold_override: float | None,
 ) -> tuple[float, float]:
-    """Resolve effective signal-gating thresholds for a single evaluation row.
+    """Resolve effective llm-gating thresholds for a single evaluation row.
 
     Inputs:
     - runtime: Runtime containing baseline settings thresholds.
@@ -605,7 +605,7 @@ def _build_orchestrator_result_row(
     - bm25_score_threshold_override: Optional BM25 threshold override.
 
     Outputs:
-    - Result row including signal metrics plus usage/answer preview fields.
+    - Result row including LLM gating metrics plus usage or answer preview fields.
 
     Edge cases:
     - If retrieval has no signal, orchestrator returns the no-signal response and
@@ -736,7 +736,7 @@ def _build_result_row(
         top_k=INTEGRATED_BACKEND_SEARCH_TOP_K,
     )
     selected_chunks = runtime.retrieval_module.apply_filters_and_boosting(candidate_chunks)
-    signal_shadow_decision = runtime.rag_chat_orchestrator.compute_signal_shadow_decision(
+    signal_shadow_decision = runtime.rag_chat_orchestrator.compute_llm_gate_decision(
         selected_chunks,
         weighted_score_threshold=weighted_score_threshold_effective,
         bm25_score_threshold=bm25_score_threshold_effective,
@@ -894,7 +894,7 @@ def _print_summary(result_rows: Sequence[dict[str, Any]]) -> None:
 
 
 def run(argv: Sequence[str] | None = None) -> int:
-    """Run dataset-based signal-gating evaluation and emit JSONL results.
+    """Run dataset-based llm-gating evaluation and emit JSONL results.
 
     Inputs:
     - argv: Optional CLI args; defaults to `sys.argv[1:]` when None.

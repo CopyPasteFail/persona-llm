@@ -61,7 +61,7 @@ async def test_chat_success_log_includes_signal_shadow_fields(
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """Verify `chat.success` log includes additive signal-gating shadow fields.
+    """Verify `chat.success` log includes additive llm-gating shadow fields.
 
     Inputs:
     - access_key_store: Fixture-backed in-memory auth store for login.

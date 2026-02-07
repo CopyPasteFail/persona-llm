@@ -12,7 +12,7 @@ make be-install
 
 ## Gating Evaluation
 The dataset for `backend/scripts/eval_gating.py` is JSONL (one JSON object per line).
-`eval_gating.py` always runs orchestration with both thinking-gating and signal-gating enabled.
+`eval_gating.py` always runs orchestration with both thinking-gating and llm-gating enabled.
 
 Minimum schema per row:
 ```json
@@ -146,7 +146,7 @@ No frontend test suite is wired up yet.
   ```
 
 - `backend/tests/test_main_chat_logging.py`  
-  Verifies the `chat.success` structured log payload includes additive signal-gating shadow fields without changing response behavior when gating is disabled.
+  Verifies the `chat.success` structured log payload includes additive llm-gating shadow fields without changing response behavior when gating is disabled.
   Command:
   ```bash
   make be-test-main-chat-logging
@@ -221,11 +221,11 @@ make be-test-voice
   make be-test-thinking-gating
   ```
 
-- `backend/tests/test_signal_gating.py`  
-  Covers deterministic signal-gating decisions in the RAG orchestrator, including weak-signal fallback, strong-signal pass-through, and enabled/disabled gate behavior.
+- `backend/tests/test_llm_gating.py`  
+  Covers deterministic llm-gating decisions in the RAG orchestrator, including weak-signal fallback, strong-signal pass-through, and enabled/disabled gate behavior.
   Command:
   ```bash
-  make be-test-signal-gating
+  make be-test-llm-gating
   ```
 
 ### Integration tests (live services)

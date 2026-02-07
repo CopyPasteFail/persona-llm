@@ -7,7 +7,7 @@ What this mode does per row:
 - Calls `embed_query(...)` using the configured embedding client.
 - Calls `search_vector_store(...)` honoring `VECTOR_BACKEND`.
 - Calls `apply_filters_and_boosting(...)`.
-- Computes gating decision via orchestrator signal logic.
+- Computes LLM gating decision via orchestrator threshold logic.
 - Never calls chat LLM generation.
 
 Privacy guarantees for this mode:
