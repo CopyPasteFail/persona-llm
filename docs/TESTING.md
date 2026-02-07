@@ -40,6 +40,26 @@ Optional fields:
 - `--bm25-score-threshold <float>`: Per-run override for BM25 gating threshold.
 - `--top-k <int>`: Per-run override for retrieval candidate depth (`TOP_K`); must be greater than 0.
 
+### Eval output format (JSONL)
+`eval_gating.py` writes a mixed-record JSONL file in this order:
+1. `run_metadata` (single row for the whole run)
+2. `dataset_metadata` (one row per evaluated dataset file)
+3. `question_result` (one row per evaluated question)
+
+Example `run_metadata` fields:
+- `schema_version`
+- `mode`
+- `dataset_argument`, `dataset_path`, `dataset_files`
+- `settings_used` (effective values used for this run)
+
+Example `dataset_metadata` fields:
+- `dataset_file`
+- `row_count`
+
+Question rows retain prior metrics and include `record_type: "question_result"`.
+Question rows do not repeat `dataset_file`; join them to the nearest preceding
+`dataset_metadata` record in the JSONL stream.
+
 ### Naming conventions (recommended)
 Keep multiple dataset types in the same folder by prefixing with a stable dataset type and a version:
 - `gating_questions_v1.jsonl`

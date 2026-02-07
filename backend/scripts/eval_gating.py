@@ -9,7 +9,7 @@ import sys
 import time
 from collections import Counter
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Sequence, cast
 
@@ -27,6 +27,10 @@ DEFAULT_OUTPUT_DIRECTORY = Path("./out")
 EVAL_ENABLE_THINKING_GATING = True
 EVAL_ENABLE_LLM_CALL_GATING = True
 ANSWER_HEAD_CHAR_LIMIT = 120
+OUTPUT_SCHEMA_VERSION = "gating_eval_v2"
+RECORD_TYPE_RUN_METADATA = "run_metadata"
+RECORD_TYPE_DATASET_METADATA = "dataset_metadata"
+RECORD_TYPE_QUESTION_RESULT = "question_result"
 MODE_DETERMINISTIC = "deterministic"
 MODE_VERTEX = "vertex"
 MODE_INTEGRATED_RETRIEVAL_ONLY = "integrated_retrieval_only"
@@ -112,6 +116,66 @@ class EvaluationRuntime:
     llm_backend: Any | None
     settings: Any
     rag_chat_orchestrator: Any
+
+
+@dataclass(frozen=True)
+class EvalCliOverrides:
+    """CLI threshold/top-k overrides captured for run metadata output.
+
+    Inputs:
+    - weighted_score_threshold: Optional override for weighted-score gate threshold.
+    - bm25_score_threshold: Optional override for BM25 gate threshold.
+    - top_k: Optional override for retrieval candidate depth.
+
+    Outputs:
+    - Immutable override snapshot used by metadata row builders.
+
+    Edge cases:
+    - Fields remain None when caller does not provide CLI overrides.
+
+    Concurrency/atomicity:
+    - Immutable value object; safe for read-only use across all rows.
+    """
+
+    weighted_score_threshold: float | None
+    bm25_score_threshold: float | None
+    top_k: int | None
+
+
+@dataclass(frozen=True)
+class EffectiveEvalSettings:
+    """Effective evaluation settings after applying CLI overrides to defaults.
+
+    Inputs:
+    - top_k: Effective retrieval candidate depth.
+    - weighted_score_threshold: Effective weighted-score gate threshold.
+    - bm25_score_threshold: Effective BM25 gate threshold.
+    - retrieval_vector_weight: Effective vector score blend weight.
+    - retrieval_bm25_weight: Effective BM25 score blend weight.
+    - vector_backend: Effective vector backend identifier.
+    - llm_backend: Effective LLM backend identifier.
+    - enable_llm_call_gating: Whether call-gating was enabled for this run.
+    - enable_thinking_gating: Whether thinking-gating was enabled for this run.
+
+    Outputs:
+    - Immutable settings snapshot used by metadata rows and row execution.
+
+    Edge cases:
+    - Effective threshold/top-k values include CLI overrides when provided.
+
+    Concurrency/atomicity:
+    - Immutable value object; safe for read-only use across all rows.
+    """
+
+    top_k: int
+    weighted_score_threshold: float
+    bm25_score_threshold: float
+    retrieval_vector_weight: float
+    retrieval_bm25_weight: float
+    vector_backend: str
+    llm_backend: str
+    enable_llm_call_gating: bool
+    enable_thinking_gating: bool
 
 
 class DeterministicEmbeddingClient:
@@ -419,6 +483,25 @@ def _build_output_path(output_directory: Path) -> Path:
         suffix_index += 1
 
 
+def _utc_now_iso() -> str:
+    """Return the current UTC timestamp as an ISO-8601 string.
+
+    Inputs:
+    - None.
+
+    Outputs:
+    - UTC timestamp string (e.g., `2026-02-10T14:23:45+00:00`).
+
+    Edge cases:
+    - Relies on process clock; caller should not assume monotonic behavior.
+
+    Concurrency/atomicity:
+    - Pure time-read helper with no side effects.
+    """
+
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
 def _apply_deterministic_required_env_defaults() -> None:
     """Set minimal environment defaults required to load backend settings.
 
@@ -614,24 +697,210 @@ def _resolve_effective_top_k(
     return runtime.settings.TOP_K if top_k_override is None else top_k_override
 
 
-def _build_orchestrator_result_row(
+def _resolve_runtime_backend_labels(runtime: EvaluationRuntime) -> tuple[str, str]:
+    """Resolve effective `(vector_backend, llm_backend)` labels from runtime wiring.
+
+    Inputs:
+    - runtime: Initialized evaluation runtime containing selected mode and wired clients.
+
+    Outputs:
+    - Tuple `(vector_backend_label, llm_backend_label)` used for metadata reporting.
+
+    Edge cases:
+    - Deterministic mode always reports deterministic labels regardless of env settings.
+    - Integrated-retrieval-only mode reports `llm_backend` as `none` because no LLM is wired.
+    - Unknown LLM backend class names fall back to lowercased class name.
+
+    Concurrency/atomicity:
+    - Pure read-only helper; no shared-state mutation.
+    """
+
+    if runtime.mode == MODE_DETERMINISTIC:
+        return ("deterministic", MODE_DETERMINISTIC)
+
+    vector_backend_label = str(runtime.settings.VECTOR_BACKEND).strip().lower() or "unknown"
+    if runtime.mode == MODE_INTEGRATED_RETRIEVAL_ONLY or runtime.llm_backend is None:
+        return (vector_backend_label, "none")
+
+    llm_backend_class_name = runtime.llm_backend.__class__.__name__.strip()
+    if llm_backend_class_name == "DeterministicLlmBackend":
+        llm_backend_label = MODE_DETERMINISTIC
+    elif llm_backend_class_name == "VertexLlmBackend":
+        llm_backend_label = MODE_VERTEX
+    else:
+        llm_backend_label = llm_backend_class_name.lower() or "unknown"
+
+    return (vector_backend_label, llm_backend_label)
+
+
+def _resolve_effective_eval_settings(
     runtime: EvaluationRuntime,
-    dataset_row: DatasetQuestionRow,
-    dataset_file: Path,
     *,
     weighted_score_threshold_override: float | None,
     bm25_score_threshold_override: float | None,
     top_k_override: int | None,
+) -> EffectiveEvalSettings:
+    """Resolve effective evaluation settings after applying CLI overrides.
+
+    Inputs:
+    - runtime: Runtime containing baseline backend settings values.
+    - weighted_score_threshold_override: Optional weighted-score threshold override.
+    - bm25_score_threshold_override: Optional BM25 threshold override.
+    - top_k_override: Optional retrieval top-k override.
+
+    Outputs:
+    - `EffectiveEvalSettings` used for metadata emission and row execution.
+
+    Edge cases:
+    - Override values take precedence over loaded settings.
+
+    Concurrency/atomicity:
+    - Pure value construction helper; no shared-state mutation.
+    """
+
+    weighted_score_threshold_effective, bm25_score_threshold_effective = (
+        _resolve_effective_thresholds(
+            runtime,
+            weighted_score_threshold_override=weighted_score_threshold_override,
+            bm25_score_threshold_override=bm25_score_threshold_override,
+        )
+    )
+    top_k_effective = _resolve_effective_top_k(
+        runtime,
+        top_k_override=top_k_override,
+    )
+    vector_backend_label, llm_backend_label = _resolve_runtime_backend_labels(runtime)
+
+    return EffectiveEvalSettings(
+        top_k=top_k_effective,
+        weighted_score_threshold=weighted_score_threshold_effective,
+        bm25_score_threshold=bm25_score_threshold_effective,
+        retrieval_vector_weight=float(runtime.settings.RETRIEVAL_VECTOR_WEIGHT),
+        retrieval_bm25_weight=float(runtime.settings.RETRIEVAL_BM25_WEIGHT),
+        vector_backend=vector_backend_label,
+        llm_backend=llm_backend_label,
+        enable_llm_call_gating=EVAL_ENABLE_LLM_CALL_GATING,
+        enable_thinking_gating=EVAL_ENABLE_THINKING_GATING,
+    )
+
+
+def _effective_settings_to_payload(
+    effective_settings: EffectiveEvalSettings,
+) -> dict[str, Any]:
+    """Convert effective settings snapshot into JSON-serializable payload.
+
+    Inputs:
+    - effective_settings: Resolved effective settings snapshot.
+
+    Outputs:
+    - Dict payload for JSONL metadata rows.
+
+    Edge cases:
+    - None.
+
+    Concurrency/atomicity:
+    - Pure serialization helper.
+    """
+
+    return {
+        "top_k": effective_settings.top_k,
+        "weighted_score_threshold": effective_settings.weighted_score_threshold,
+        "bm25_score_threshold": effective_settings.bm25_score_threshold,
+        "retrieval_vector_weight": effective_settings.retrieval_vector_weight,
+        "retrieval_bm25_weight": effective_settings.retrieval_bm25_weight,
+        "vector_backend": effective_settings.vector_backend,
+        "llm_backend": effective_settings.llm_backend,
+        "enable_llm_call_gating": effective_settings.enable_llm_call_gating,
+        "enable_thinking_gating": effective_settings.enable_thinking_gating,
+    }
+
+
+def _build_run_metadata_row(
+    runtime: EvaluationRuntime,
+    *,
+    dataset_argument: str | None,
+    dataset_path: Path,
+    dataset_files: Sequence[Path],
+    output_path: Path,
+    max_rows: int | None,
+    effective_settings: EffectiveEvalSettings,
+) -> dict[str, Any]:
+    """Build top-level run metadata row for JSONL output.
+
+    Inputs:
+    - runtime: Runtime containing loaded settings and selected mode.
+    - dataset_argument: Raw CLI `--dataset` argument (if any).
+    - dataset_path: Resolved dataset path used for this run.
+    - dataset_files: Ordered dataset files evaluated in this run.
+    - output_path: Resolved output JSONL target path.
+    - max_rows: Optional row-cap CLI value.
+    - effective_settings: Effective settings used for retrieval and gating.
+
+    Outputs:
+    - JSON-serializable run metadata record.
+
+    Edge cases:
+    - When a directory input resolves to multiple files, all are listed in
+      `dataset_files`.
+
+    Concurrency/atomicity:
+    - Pure metadata construction helper.
+    """
+
+    return {
+        "record_type": RECORD_TYPE_RUN_METADATA,
+        "schema_version": OUTPUT_SCHEMA_VERSION,
+        "generated_at": _utc_now_iso(),
+        "mode": runtime.mode,
+        "dataset_argument": dataset_argument,
+        "dataset_path": str(dataset_path),
+        "dataset_files": [str(dataset_file) for dataset_file in dataset_files],
+        "output_path": str(output_path),
+        "max_rows": max_rows,
+        "settings_used": _effective_settings_to_payload(effective_settings),
+    }
+
+
+def _build_dataset_metadata_row(
+    dataset_file: Path,
+    *,
+    row_count: int,
+) -> dict[str, Any]:
+    """Build per-dataset metadata row for JSONL output.
+
+    Inputs:
+    - dataset_file: Source dataset file path.
+    - row_count: Number of dataset rows loaded from this file.
+
+    Outputs:
+    - JSON-serializable dataset metadata record.
+
+    Edge cases:
+    - `row_count` can be zero when an input file has only blank lines.
+
+    Concurrency/atomicity:
+    - Pure metadata construction helper.
+    """
+
+    return {
+        "record_type": RECORD_TYPE_DATASET_METADATA,
+        "dataset_file": str(dataset_file),
+        "row_count": row_count,
+    }
+
+
+def _build_orchestrator_result_row(
+    runtime: EvaluationRuntime,
+    dataset_row: DatasetQuestionRow,
+    *,
+    effective_settings: EffectiveEvalSettings,
 ) -> dict[str, Any]:
     """Execute one question via full orchestrator and build output row.
 
     Inputs:
     - runtime: Runtime configured with retrieval and LLM backend.
     - dataset_row: Question row to evaluate.
-    - dataset_file: Source dataset file for this row.
-    - weighted_score_threshold_override: Optional weighted score threshold override.
-    - bm25_score_threshold_override: Optional BM25 threshold override.
-    - top_k_override: Optional retrieval top-k override.
+    - effective_settings: Effective top-k and gate thresholds for this run.
 
     Outputs:
     - Result row including LLM gating metrics plus usage or answer preview fields.
@@ -647,32 +916,20 @@ def _build_orchestrator_result_row(
     if runtime.llm_backend is None:
         raise RuntimeError("Orchestrator evaluation mode requires an LLM backend.")
 
-    weighted_score_threshold_effective, bm25_score_threshold_effective = (
-        _resolve_effective_thresholds(
-            runtime,
-            weighted_score_threshold_override=weighted_score_threshold_override,
-            bm25_score_threshold_override=bm25_score_threshold_override,
-        )
-    )
-    top_k_effective = _resolve_effective_top_k(
-        runtime,
-        top_k_override=top_k_override,
-    )
-
     start_time = time.perf_counter()
     chat_result = runtime.rag_chat_orchestrator.run_rag_chat(
         dataset_row.question,
         retrieval=runtime.retrieval_module,
         llm_backend=runtime.llm_backend,
-        top_k=top_k_effective,
+        top_k=effective_settings.top_k,
         persona_name=runtime.settings.PERSONA_NAME,
         max_input_tokens=runtime.settings.MAX_INPUT_TOKENS,
         max_output_tokens=runtime.settings.MAX_OUTPUT_TOKENS,
         enable_thinking_gating=EVAL_ENABLE_THINKING_GATING,
         default_thinking_budget_tokens=runtime.settings.THINKING_BUDGET_TOKENS,
         enable_llm_call_gating=EVAL_ENABLE_LLM_CALL_GATING,
-        weighted_score_threshold=weighted_score_threshold_effective,
-        bm25_score_threshold=bm25_score_threshold_effective,
+        weighted_score_threshold=effective_settings.weighted_score_threshold,
+        bm25_score_threshold=effective_settings.bm25_score_threshold,
     )
     elapsed_ms = int((time.perf_counter() - start_time) * 1000)
 
@@ -686,7 +943,7 @@ def _build_orchestrator_result_row(
     finish_reason: str | None = chat_result.usage_detail.get("finish_reason")
 
     result_row: dict[str, Any] = {
-        "dataset_file": str(dataset_file),
+        "record_type": RECORD_TYPE_QUESTION_RESULT,
         "id": dataset_row.id,
         "question": dataset_row.question,
         "mode": runtime.mode,
@@ -716,21 +973,15 @@ def _build_orchestrator_result_row(
 def _build_result_row(
     runtime: EvaluationRuntime,
     dataset_row: DatasetQuestionRow,
-    dataset_file: Path,
     *,
-    weighted_score_threshold_override: float | None,
-    bm25_score_threshold_override: float | None,
-    top_k_override: int | None,
+    effective_settings: EffectiveEvalSettings,
 ) -> dict[str, Any]:
     """Execute one question and build a JSON-safe result row for the selected mode.
 
     Inputs:
     - runtime: Preconfigured evaluation runtime dependencies.
     - dataset_row: Question row to evaluate.
-    - dataset_file: Source dataset file for this row.
-    - weighted_score_threshold_override: Optional weighted score threshold override.
-    - bm25_score_threshold_override: Optional BM25 threshold override.
-    - top_k_override: Optional retrieval top-k override.
+    - effective_settings: Effective top-k and gate thresholds for this run.
 
     Outputs:
     - Dict suitable for JSONL output with gating metrics.
@@ -748,23 +999,8 @@ def _build_result_row(
         return _build_orchestrator_result_row(
             runtime,
             dataset_row,
-            dataset_file,
-            weighted_score_threshold_override=weighted_score_threshold_override,
-            bm25_score_threshold_override=bm25_score_threshold_override,
-            top_k_override=top_k_override,
+            effective_settings=effective_settings,
         )
-
-    weighted_score_threshold_effective, bm25_score_threshold_effective = (
-        _resolve_effective_thresholds(
-            runtime,
-            weighted_score_threshold_override=weighted_score_threshold_override,
-            bm25_score_threshold_override=bm25_score_threshold_override,
-        )
-    )
-    top_k_effective = _resolve_effective_top_k(
-        runtime,
-        top_k_override=top_k_override,
-    )
 
     start_time = time.perf_counter()
     normalized_question = runtime.retrieval_module.normalize_question_for_first_person(
@@ -773,13 +1009,13 @@ def _build_result_row(
     query_embedding = runtime.retrieval_module.embed_query(normalized_question)
     candidate_chunks = runtime.retrieval_module.search_vector_store(
         query_embedding,
-        top_k=top_k_effective,
+        top_k=effective_settings.top_k,
     )
     selected_chunks = runtime.retrieval_module.apply_filters_and_boosting(candidate_chunks)
     gate_shadow_decision = runtime.rag_chat_orchestrator.compute_llm_gate_decision(
         selected_chunks,
-        weighted_score_threshold=weighted_score_threshold_effective,
-        bm25_score_threshold=bm25_score_threshold_effective,
+        weighted_score_threshold=effective_settings.weighted_score_threshold,
+        bm25_score_threshold=effective_settings.bm25_score_threshold,
     )
     elapsed_ms = int((time.perf_counter() - start_time) * 1000)
 
@@ -790,7 +1026,7 @@ def _build_result_row(
     ]
 
     result_row: dict[str, Any] = {
-        "dataset_file": str(dataset_file),
+        "record_type": RECORD_TYPE_QUESTION_RESULT,
         "id": dataset_row.id,
         "question": dataset_row.question,
         "mode": MODE_INTEGRATED_RETRIEVAL_ONLY,
@@ -1009,7 +1245,28 @@ def run(argv: Sequence[str] | None = None) -> int:
         print(f"Initialization error: {error}", file=sys.stderr)
         return 1
 
-    all_result_rows: list[dict[str, Any]] = []
+    overrides = EvalCliOverrides(
+        weighted_score_threshold=args.weighted_score_threshold,
+        bm25_score_threshold=args.bm25_score_threshold,
+        top_k=args.top_k,
+    )
+    effective_settings = _resolve_effective_eval_settings(
+        runtime,
+        weighted_score_threshold_override=overrides.weighted_score_threshold,
+        bm25_score_threshold_override=overrides.bm25_score_threshold,
+        top_k_override=overrides.top_k,
+    )
+    output_rows: list[dict[str, Any]] = [
+        _build_run_metadata_row(
+            runtime,
+            dataset_argument=args.dataset,
+            dataset_path=dataset_path,
+            dataset_files=dataset_files,
+            output_path=output_path,
+            max_rows=args.max_rows,
+            effective_settings=effective_settings,
+        )
+    ]
     for dataset_file in dataset_files:
         try:
             dataset_rows = _load_dataset_rows(dataset_file, max_rows=args.max_rows)
@@ -1017,16 +1274,19 @@ def run(argv: Sequence[str] | None = None) -> int:
             print(f"Failed to load dataset {dataset_file}: {error}", file=sys.stderr)
             return 1
 
+        output_rows.append(
+            _build_dataset_metadata_row(
+                dataset_file,
+                row_count=len(dataset_rows),
+            )
+        )
         result_rows: list[dict[str, Any]] = []
         for dataset_row in dataset_rows:
             try:
                 result_row = _build_result_row(
                     runtime,
                     dataset_row,
-                    dataset_file,
-                    weighted_score_threshold_override=args.weighted_score_threshold,
-                    bm25_score_threshold_override=args.bm25_score_threshold,
-                    top_k_override=args.top_k,
+                    effective_settings=effective_settings,
                 )
             except Exception as error:
                 print(
@@ -1035,13 +1295,13 @@ def run(argv: Sequence[str] | None = None) -> int:
                 )
                 return 1
             result_rows.append(result_row)
-        all_result_rows.extend(result_rows)
+        output_rows.extend(result_rows)
 
         print(f"dataset={dataset_file}")
         _print_summary(result_rows)
 
     try:
-        _write_results_jsonl(output_path, all_result_rows)
+        _write_results_jsonl(output_path, output_rows)
     except Exception as error:
         print(
             f"Failed writing output JSONL {output_path}: {error}",
