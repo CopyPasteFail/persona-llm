@@ -15,7 +15,7 @@ Terminology: see [GLOSSARY.md](./GLOSSARY.md).
 - Monitoring: Cloud Logging and Cloud Monitoring metrics. Budget alerts only
 
 ## Ingestion overview
-The ingestion pipeline validates persona content, chunks it, embeds it, and uploads the resulting artifacts to GCS and Matching Engine for retrieval.
+The ingestion pipeline validates persona content, chunks it, embeds it, and uploads the dataset artifacts to GCS. Matching Engine provisioning and index updates are optional and only used when `VECTOR_BACKEND=matching_engine`.
 
 ## Data flow
 **Mock path (available for local dev)**
@@ -25,7 +25,7 @@ The ingestion pipeline validates persona content, chunks it, embeds it, and uplo
 
 **Real path**
 1. Cloud Run API loads `datasets/current.json` from `BUCKET_NAME`, resolves the version folder, and caches `datapoints.jsonl`, `chunks.jsonl.gz`, and `manifest.json` in-process.
-2. User question goes to backend, embed query, vector search top K 4 (local by default or Matching Engine when configured), apply mild boosting and filters.
+2. User question goes to backend, embed query, run vector search at `TOP_K` depth (default 4), apply BM25+vector hybrid scoring and metadata boosts.
 3. Build a strict grounded prompt, call Gemini Flash, return `{answer, citations, usage}`.
 
 ## Why this design works
@@ -39,7 +39,7 @@ The ingestion pipeline validates persona content, chunks it, embeds it, and uplo
 See [`DATA_DESIGN_RATIONALE.md`](./DATA_DESIGN_RATIONALE.md) for discussion.
 
 ## Security
-- Access keys live in Firestore collection `access_keys` with `key_hash` (bcrypt), `key_fingerprint` (SHA-256), `expires_at`, `revoked`, and optional labels/usage caps.
+- Access keys live in Firestore collection `access_keys` with `key_hash` (bcrypt), `key_fingerprint` (SHA-256), `expires_at`, `revoked`, and optional labels.
   - Rationale: Firestore is a good fit for low-ops, low-traffic access control metadata (expiry/revoke/usage caps) with straightforward admin workflows, and it provides durable, shared state across Cloud Run instances.
 - `/auth/key-login` enforces rate limits before bcrypt (in-memory today).
 - `/chat` requires auth and rate limits per IP (10/min and 100/day in-memory).
@@ -67,6 +67,6 @@ Then choose the project.
   - `api.mock:app` for local dev, deterministic answers.
   - `api.main:app` integrated mode: loads versioned dataset cache on startup, runs hybrid retrieval + Gemini Flash; `/chat` returns 503 when not ready or when downstream services fail.
   - Ops endpoints for cache status + reload live on the same service.
-- **Frontend**: Next.js app in `web/` with starter prompts and a fixed layout. Cold start: min instances 0. Shows “Warming up the API… usually a few seconds.” until `/health` is ready. Verify disabled states when the backend is down, and independent scroll for the conversation pane.
+- **Frontend**: Next.js app in `frontend/web/` with starter prompts and a fixed layout. Cold start: min instances 0. Shows “Warming up the API… usually a few seconds.” until `/health` is ready. Verify disabled states when the backend is down, and independent scroll for the conversation pane.
 - **Jobs**: `jobs/pack_and_push.py` to validate and package JSONL chunks.
 - **Tests**: pytest suite focused on the mock app, plus opt-in integration tests that require a running integrated backend with valid GCP creds and data.

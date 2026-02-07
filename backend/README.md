@@ -1,12 +1,12 @@
 # Backend, FastAPI apps (`api/`)
 
-FastAPI service for the persona demo. Integrated mode uses local vector search by default and can fall back to Vertex AI Matching Engine. Mock mode returns deterministic responses and is the default for local development.
+FastAPI service for the persona demo. Integrated mode uses local vector search by default and can use Vertex AI Matching Engine. Mock mode uses a deterministic LLM backend by default for local development.
 
 ## Overview
 - Two apps:
   - `api.mock:app` for local development.
   - `api.main:app` for integrated runs with retrieval and LLM wiring.
-- `/health` (liveness) and `/ready` (readiness) endpoints exist.
+- `/health` (liveness) exists on both apps; `/ready` (readiness) is exposed by `api.main:app`.
 
 ## Prerequisites
 - Python 3.13
@@ -54,13 +54,17 @@ make help
 Provide these through your shell or a private folder loader. Do not commit secrets.
 
 Common placeholders:
-- `API_KEY` remains the server secret (JWT signing fallback) and optional header for protected admin endpoints.
+- `API_KEY` is required and is used as the JWT signing fallback when `JWT_SECRET` is not set.
 - `BUCKET_NAME` selects the active dataset version in GCS via the internal pointer (required unless `DATASET_URI` is set).
 - `DATASET_URI` optionally overrides the dataset root (e.g., `gs://bucket` or `file:/abs/path`; file paths must be absolute); when unset, `BUCKET_NAME` is used.
 - `VECTOR_BACKEND=local|matching_engine` controls vector search; Matching Engine IDs are required only for `matching_engine`.
 - `LLM_BACKEND=vertex|deterministic` controls LLM selection (mock defaults to deterministic; use Vertex with ADC).
 - `THINKING_BUDGET_TOKENS` (optional) caps Gemini 2.5 "thinking" tokens for chat responses (the backend uses the `google-genai` SDK for Gemini calls).
+- `ENABLE_LLM_CALL_GATING` (optional, default `false`) enables deterministic retrieval-signal gating for LLM calls.
+- `WEIGHTED_SCORE_THRESHOLD` (optional, default `0.55`) is the weighted-score gate threshold.
+- `BM25_SCORE_THRESHOLD` (optional, default `3.0`) is the BM25 fallback gate threshold.
 - `WEIGHTED_CONSENSUS_COUNT` (optional, default `2`) sets how many chunks must meet `WEIGHTED_SCORE_THRESHOLD` before semantic llm-gating passes.
+- `RETRIEVAL_VECTOR_WEIGHT` (optional, default `0.7`) and `RETRIEVAL_BM25_WEIGHT` (optional, default `0.3`) control hybrid score blending.
 - `INCLUDE_THOUGHTS=false|true` controls whether the API returns thought parts (defaults to false).
 - `OPS_SECRET` protects `/ops/*` endpoints when `OPS_AUTH=enabled`.
 - Project, region, and model identifiers if using Vertex; names are placeholders only.
@@ -145,3 +149,15 @@ Per IP, 10 per minute and 100 per day on `/chat`. `/health` is never limited.
 
 ## Tests
 See [TESTING.md](../docs/TESTING.md) for the full test catalog, how to run tests, and integration requirements.
+
+## BM25 tracing
+For exact BM25 tokenization and per-term score traces, use:
+
+```bash
+python3 backend/scripts/debug_bm25_trace.py \
+  --mode integrated_retrieval_only \
+  --query "Do you have experience in dentistry?" \
+  --chunk-id <chunk_id>
+```
+
+For full CLI options and deterministic mode examples, see `backend/scripts/debug_bm25_trace.py`.

@@ -18,7 +18,7 @@
   - `datasets/<version>/chunks.jsonl.gz`
 
 ## Roles (Matching Engine only)
-- `INDEX_ID`: The vector index asset. Needed to deploy a new/updated index. Not used for queries/upserts once deployed.
+- `INDEX_ID`: The vector index asset. Needed to deploy a new index and for batch refresh operations (`gcloud ai indexes update`). Not used for queries/upserts once deployed.
 - `INDEX_ENDPOINT_ID`: The serving endpoint. Stable “host” you deploy to and send traffic through.
 - `DEPLOYED_INDEX_ID`: Your chosen name for a specific deployment on that endpoint; used to route queries/upserts. It must start with a letter and only include letters, numbers, or underscores.
 
@@ -109,13 +109,13 @@ This is the most critical workflow where you deliberately switch the underlying 
   4. The system smoothly unloads `I-v1` and loads `I-v2` onto the live deployment resources, while the client continues to query the stable endpoint (`v1-live`).
 - Result: The `INDEX_ID` changes from `I-v1` to `I-v2`, but the `DEPLOYED_INDEX_ID` remains a stable route (`v1-live`) that your application code never had to touch.
 
-### 2. Keeping the `INDEX_ID` Stable for Incremental Updates
+### 2. Keeping the `INDEX_ID` Stable for Batch Refreshes
 
 This is the standard use case for most running services.
 
-- Goal: Add, update, or delete a few vectors.
-- Action: Perform an Upsert (or Streaming Update) operation directly on the original `INDEX_ID` or its deployment.
-- Result: The `INDEX_ID` remains the same, and the Deployed `INDEX_ID` remains the same. The deployed resources synchronize with the small, incremental data changes.
+- Goal: Refresh index contents from a new datapoints export without changing endpoint routing.
+- Action: Stage datapoints in GCS and run `gcloud ai indexes update` against the original `INDEX_ID`.
+- Result: The `INDEX_ID` and deployed route stay stable while refreshed data becomes queryable after the batch operation completes.
 
 ### 3. Switching the `DEPLOYED_INDEX_ID` (Less Common)
 

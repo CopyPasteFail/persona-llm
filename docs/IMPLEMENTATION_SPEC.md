@@ -1,13 +1,13 @@
 # IMPLEMENTATION_SPEC
 
 ## Repos
-- Public mono-repo: Contains both backend and frontend. The backend is in `backend/api/` and jobs under `backend/jobs/`. The frontend is in `frontend/web/`. A private folder for secrets may be referenced during runtime, not committed.
+- Public mono-repo: Contains both backend and frontend. Backend runtime code is in `backend/api/`, ingestion jobs in `backend/jobs/`, and operational scripts in `backend/scripts/`. The frontend app is in `frontend/web/`. A private folder for secrets may be referenced during runtime and is not committed.
 
 ## Terminology
 See [GLOSSARY.md](./GLOSSARY.md) for definitions of RAG, embeddings, tokens, and other retrieval terms used throughout this spec.
 
 ## Environment variables
-Backend configuration is loaded from a dotenv file rather than a global `PRIVATE_DIR`.
+Backend configuration is loaded from process environment. When `PRIVATE_DIR` is set, `settings.py` also loads `${PRIVATE_DIR}/secrets/common.env` and `${PRIVATE_DIR}/secrets/backend.env` (without overriding already-set env vars).
 
 - **PRIVATE_DIR**: Base directory for private configuration.  
   - Defaults to `./private` if not set, or can be overridden via a `.privatedir` file or an environment variable.  
@@ -25,15 +25,23 @@ Backend configuration is loaded from a dotenv file rather than a global `PRIVATE
   - `INDEX_ENDPOINT_ID`: Vertex AI Index Endpoint ID (required only for `VECTOR_BACKEND=matching_engine`).
   - `DEPLOYED_INDEX_ID`: Deployed Index resource ID (required only for `VECTOR_BACKEND=matching_engine`).
   - `BUCKET_NAME`: GCS bucket used for persona artifacts.
+  - `DATASET_URI`: Optional dataset root override (`gs://...`, `file:/...`, or local path). If unset, runtime uses `gs://$BUCKET_NAME`.
+  - `DATASET_POINTER_PATH`: Optional pointer-path signal used by startup fallback logic.
   - `CHUNKS_PATH`: Legacy chunk object name (fallback path).
   - `OPS_AUTH`: `enabled` (default) or `disabled` for local dev (bypasses ops auth).
   - `OPS_SECRET`: Required when `OPS_AUTH=enabled` for `/ops/*` endpoints.
-  - `API_KEY`: Shared secret for JWT signing fallback and any internal calls; **not** an access key.
+  - `API_KEY`: Required secret used as JWT signing fallback when `JWT_SECRET` is unset; **not** an access key.
   - `MAX_INPUT_TOKENS`: Input context budget for LLM calls (defaults to 8000 if unset).
   - `MAX_OUTPUT_TOKENS`: Output budget for LLM calls (hard limit enforced in settings; must be <= 4000).
   - `TOP_K`: Retrieval depth used by chat/eval candidate selection (defaults to 4).
   - `THINKING_BUDGET_TOKENS`: Optional cap for Gemini "thinking" tokens.
+  - `ENABLE_THINKING_GATING`: Enables deterministic per-request thinking-budget gating.
+  - `ENABLE_LLM_CALL_GATING`: Enables deterministic retrieval-signal gate for LLM calls.
+  - `WEIGHTED_SCORE_THRESHOLD`: Weighted-score threshold used by LLM call gating (default 0.55).
+  - `BM25_SCORE_THRESHOLD`: BM25 threshold used by LLM call gating fallback (default 3.0).
   - `WEIGHTED_CONSENSUS_COUNT`: Minimum number of chunks that must meet `WEIGHTED_SCORE_THRESHOLD` for semantic signal gating to pass (defaults to 2).
+  - `RETRIEVAL_VECTOR_WEIGHT`: Hybrid score vector weight (default 0.7).
+  - `RETRIEVAL_BM25_WEIGHT`: Hybrid score BM25 weight (default 0.3).
   - `INCLUDE_THOUGHTS`: `false` (default) or `true` to return thought parts.
   - `REQ_TIMEOUT_MS`: Request timeout in milliseconds.
     - Applied to outbound calls that accept timeouts (GCS chunk download, Matching Engine queries, Gemini generation). Some SDK calls may ignore this if they lack timeout support.
@@ -50,7 +58,7 @@ Backend configuration is loaded from a dotenv file rather than a global `PRIVATE
     - `label`: optional human-readable label for admin tracking.
     - `created_at`: time the key was created (UTC).
     - `created_by`: identifier for who/what created the key.
-  - Create a key via `python backend/scripts/create_access_key.py --label demo --expires-in 7d`. Plaintext keys are only printed once by the script.
+  - Create a key via `python backend/scripts/create_access_key.py create --label demo --expires-in 7d`. Plaintext keys are only printed once by the script.
 
 - **Frontend variables (in `frontend/web/.env.local`):**
   - `NEXT_PUBLIC_API_URL`: URL of the backend (e.g. `http://localhost:8080` during local dev).
@@ -98,7 +106,7 @@ Backend configuration is loaded from a dotenv file rather than a global `PRIVATE
   - Key login response includes `model` and `input_token_limit` for the active session.
 
 ### Minimal examples
-See [backend/README.md#curl-examples](here) for the runnable curl commands and current local ports.
+See [backend/README.md#curl-examples](../backend/README.md#curl-examples) for runnable curl commands and current local ports.
 
 ## Retrieval and LLM pipeline
 - `api/retrieval.py`: first-person normalization and retrieval pipeline (`embed_query`, `search_vector_store`, `apply_filters_and_boosting`, `build_context_prompt`).
@@ -108,6 +116,30 @@ See [backend/README.md#curl-examples](here) for the runnable curl commands and c
 - `api/llm.py`: prompt construction and Gemini Flash calls.
 - `api/llm_backends.py`: Vertex LLM vs deterministic mock backend selection.
 - `api/ops_routes.py` + `api/ops_security.py`: `/ops/vector/status` and `/ops/vector/reload` with header auth + rate limiting.
+
+### Retrieval internals (current behavior)
+- Query embedding path: normalize question -> `embed_query(...)` -> L2-normalized vector search (`search_vector_store(...)`).
+- Hybrid scoring (`apply_filters_and_boosting(...)`):
+  - `vector_score = 1 / (1 + distance)`
+  - `bm25_norm = bm25 / (bm25 + 1)` for positive BM25 scores
+  - `weighted_score = RETRIEVAL_VECTOR_WEIGHT * vector_score + RETRIEVAL_BM25_WEIGHT * bm25_norm`
+  - Plus fixed metadata boosts (`role` match and topic overlap).
+- BM25 tokenization/indexing:
+  - token pattern: lowercase alphanumeric (`[a-z0-9]+`)
+  - token filter: remove tokens shorter than 3 chars and stopword/template terms
+  - indexed fields per chunk: `text`, `metadata.section`, `metadata.topics[]`, `metadata.tags[]`
+  - BM25 index is built in memory whenever chunk store is configured or reloaded.
+
+### LLM call gate semantics (deterministic)
+- When `ENABLE_LLM_CALL_GATING=false`, the orchestrator calls the LLM if retrieval selected any chunk.
+- When `ENABLE_LLM_CALL_GATING=true`, gate pass uses OR logic:
+  - Semantic signal passes if:
+    - best weighted score is at least `WEIGHTED_SCORE_THRESHOLD`, and
+    - at least `WEIGHTED_CONSENSUS_COUNT` selected chunks meet `WEIGHTED_SCORE_THRESHOLD`.
+  - BM25 fallback passes if:
+    - best BM25 score is at least `BM25_SCORE_THRESHOLD`, and
+    - the query is considered in-domain for the retrieval call.
+- If gate does not pass, `/chat` returns a no-signal deterministic answer with empty citations.
 
 ## Ingestion jobs
 - `jobs/pack_and_push.py` validates JSONL against `schema/chunk.schema.json`, and if any bullet **or paragraph** exceeds ~2.2k characters (~450 tokens), splits it by sentence boundaries (never mid-sentence). It can also write `chunks.jsonl.gz` into a dataset folder via `--output-dir`.
@@ -153,7 +185,7 @@ For a human-readable guide explaining the meaning, use cases, benefits, and trad
    - `backend/jobs/build_datapoints.py` batches persona chunks, calls the selected Vertex embedding model, writes `datapoints.jsonl`, and emits `manifest.json` with model/dim/count metadata.
    - `make gcp-index-upsert` remains available if you choose `VECTOR_BACKEND=matching_engine`.
 
-> Next implementation stage: deepen verification for the now-live runtime—add golden tests for retrieval + LLM prompts, cover API key/rate-limit branches, and run the end-to-end integration test against the integrated backend.
+> Next implementation stage: deepen verification for the now-live runtime, add golden tests for retrieval + LLM prompts, cover API key/rate-limit branches, and run the end-to-end integration test against the integrated backend.
 
 ### Vector search configuration (Vertex AI Matching Engine)
 This section applies only when `VECTOR_BACKEND=matching_engine`.
@@ -172,14 +204,14 @@ This section applies only when `VECTOR_BACKEND=matching_engine`.
    - Build in-memory BM25 inverted index (tokenize chunks, compute idf, etc.).
 2. **Query flow**
    - **First-person normalization** (convert “Omer Reznik” → “I”).
-   - **Role classification**: cheap heuristic/embedding sim → `role=infra` or `role=product`. Leave unclassified for mixed queries.
+   - **Role classification**: keyword-hint heuristic -> `role=infra` or `role=product`. Leave unclassified for mixed queries.
    - **Vector search**: embed query, run local cosine search by default or call Vertex Matching Engine when configured.
-   - **BM25 scoring**: run query keywords against in-memory index; get lexical scores.
+   - **BM25 scoring**: run query tokens against the in-memory BM25 index over chunk text/section/topics/tags.
    - **Rerank/boost**:
-     - Weight scores: `0.7 * ANN + 0.3 * BM25 + role/topic boosts`.
+     - Weight scores with env-configured vector/BM25 weights and fixed role/topic boosts.
      - If classified, boost chunks with matching role tag.
-   - **Trim**: keep top `TOP_K` chunks (defaults to 4; configurable via env).
-   - **Prompt LLM**: feed selected `TOP_K` chunks into Gemini Flash, generate strict, grounded first-person answer.
+   - **Trim**: keep at most 8 chunks after reranking (candidate depth comes from `TOP_K`, default 4).
+   - **Prompt LLM**: feed selected reranked chunks into Gemini Flash, generate strict, grounded first-person answer.
    - **Return**: `{answer, citations, usage}` JSON.
 See [`DATA_DESIGN_RATIONALE.md`](./DATA_DESIGN_RATIONALE.md) for discussion.
 

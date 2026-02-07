@@ -7,7 +7,7 @@
 4. [ANN via Vertex AI Vector Search](#4-ann-via-vertex-ai-vector-search)
 5. [Add BM25 (Keyword Signal)](#5-add-bm25-keyword-signal)
 6. [Build BM25 Index at Startup (for now)](#6-build-bm25-index-at-startup-for-now)
-7. [Hybrid Retrieval and Rerank (Wide → Narrow)](#7-hybrid-retrieval-and-rerank-wide--narrow)
+7. [Hybrid Retrieval and Rerank (Wide to Narrow)](#7-hybrid-retrieval-and-rerank-wide-to-narrow)
 8. [Runtime Classification by Role](#8-runtime-classification-by-role)
 9. [No Elasticsearch/OpenSearch (for now)](#9-no-elasticsearchopensearch-for-now)
 10. [Strict First-Person, Grounded Answers](#10-strict-first-person-grounded-answers)
@@ -72,16 +72,16 @@
 
 ## 4. ANN via Vertex AI Vector Search
 
-**What:** Use a vector index to fetch semantically similar chunks quickly.  
-**Alternative:** Brute-force cosine search in-process.  
+**What:** Support two vector backends: local in-process cosine search (default) and Vertex AI Matching Engine (optional).  
+**Alternative:** Matching Engine only.  
 
 **Pros:**  
-- Scales well, millisecond retrieval.  
-- Standard method for semantic recall.  
+- Local backend keeps ops and serving cost minimal.
+- Matching Engine scales to larger corpora and higher query throughput.
 
-**Cons:** Requires embedding + upsert step.  
+**Cons:** Matching Engine requires index provisioning and update steps.  
 
-**Decision:** Use Vertex AI Matching Engine. Brute-force only viable at tiny scale.
+**Decision:** Keep local as default and allow Matching Engine when needed.
 
 ---
 
@@ -117,17 +117,17 @@
 
 ---
 
-## 7. Hybrid Retrieval and Rerank (Wide → Narrow)
+## 7. Hybrid Retrieval and Rerank (Wide to Narrow)
 
-**What:** Pull ~50 ANN candidates, weight with BM25 + tag boosts, trim to ~8 for the LLM.  
+**What:** Pull `TOP_K` ANN candidates (default 4), weight with BM25 + metadata boosts, then keep at most 8 chunks for prompt context.  
 **Alternative:** Fetch exactly 8 from ANN only.
 
 **Pros:**  
-- Wider pool reduces ANN misses.  
+- Candidate depth is configurable via `TOP_K`.
 - Reranking improves relevance.  
 - Hybrid = semantics (ANN) + exact matches (BM25).  
 - Example: query “incident response metrics” → ANN finds SRE-related context, BM25 ensures chunks with exact phrase are not missed.  
-- Final ~8 keeps prompt small.  
+- Final cap of 8 keeps prompt size bounded.  
 
 **Cons:** Slightly more CPU per query.  
 
@@ -137,7 +137,7 @@
 
 ## 8. Runtime Classification by Role
 
-**What:** On each query, classify toward `infra` or `product` (keyword heuristic + optional embedding sim). Leave unclassified if mixed.  
+**What:** On each query, classify toward `infra` or `product` using keyword hints. Leave unclassified if mixed.  
 **Alternatives:** Let LLM decide; or require user to pick a role.
 
 **Pros:**  

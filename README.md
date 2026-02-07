@@ -36,7 +36,7 @@ echo "/abs/path/to/your-private-overlay" > .privatedir
 
 #### Option C: ad-hoc override
 ```bash
-PRIVATE_DIR=/abs/path/to/your-private-overlay make run
+PRIVATE_DIR=/abs/path/to/your-private-overlay make local-mock
 ```
 
 > **After this step:**  
@@ -75,16 +75,16 @@ Inside your private overlay pointed to by `PRIVATE_DIR`, you must include these 
 - This app uses a single `PROJECT_ID` for both Firebase and GCP so everything stays in sync.
 
 - `secrets/common.env`  
-  - `PROJECT_ID` — shared project identifier for both Firebase and GCP resources. It must follow Google’s naming conventions *(lowercase letters, digits, and hyphens, 6–30 characters, starting with a letter, and not ending with a hyphen)*.
+  - `PROJECT_ID`: shared project identifier for both Firebase and GCP resources. It must follow Google’s naming conventions *(lowercase letters, digits, and hyphens, 6–30 characters, starting with a letter, and not ending with a hyphen)*.
 
 - `secrets/frontend.env`  
   - Frontend-only overrides such as `NEXT_PUBLIC_API_URL`.
 
 - `secrets/backend.env`  
-  - `REGION` — the GCP region where resources (like Cloud Run and buckets) will be created, for example `europe-west1`.
-  - `BUCKET_NAME` — the name of the GCS bucket used for storage, for example `my-project-persona`. Do not prefix with `gs://`.
-  - `VECTOR_BACKEND` — `local` (default) or `matching_engine`.
-  - `OPS_SECRET` — required for `/ops/*` endpoints when `OPS_AUTH=enabled`.
+  - `REGION`: the GCP region where resources (like Cloud Run and buckets) will be created, for example `europe-west1`.
+  - `BUCKET_NAME`: the name of the GCS bucket used for storage, for example `my-project-persona`. Do not prefix with `gs://`.
+  - `VECTOR_BACKEND`: `local` (default) or `matching_engine`.
+  - `OPS_SECRET`: required for `/ops/*` endpoints when `OPS_AUTH=enabled`.
 
 ### Phase 1. Install CLI tools
 
@@ -202,8 +202,8 @@ make gcp-firestore-init
 
 Deployment can be performed using a Google account with sufficient IAM permissions (Project Owner or the required Vertex AI, Cloud Run, Storage, and Firebase roles). Authenticate as follows:
 
-- `gcloud auth login` — signs the Cloud SDK in as you, so `gcloud`, `gsutil`, and similar CLI commands run with your user credentials.
-- `gcloud auth application-default login` — writes Application Default Credentials (ADC) so local scripts and libraries (like `google-cloud-storage`) run with the same user identity.
+- `gcloud auth login`: signs the Cloud SDK in as you, so `gcloud`, `gsutil`, and similar CLI commands run with your user credentials.
+- `gcloud auth application-default login`: writes Application Default Credentials (ADC) so local scripts and libraries (like `google-cloud-storage`) run with the same user identity.
 
 Run both commands if you deploy via the CLI and run helper scripts locally. If you instead use a dedicated service account, skip these and authenticate with that identity.
 
@@ -291,7 +291,7 @@ For automation that needs Application Default Credentials:
 Set up a Matching Engine index only if you plan to run with `VECTOR_BACKEND=matching_engine`.
 If you already completed Phase 7, reuse the same `DATAPOINTS_FILE` (from the versioned dataset folder) and skip any legacy chunk packaging.
 
-1. Create the index (Tree-AH, dot product, dimensions derived from `DATAPOINTS_DIMENSIONS`—3,072 for `gemini-embedding-001`, 768 for the `text-embedding-00x` family):
+1. Create the index (Tree-AH, dot product, dimensions derived from `DATAPOINTS_DIMENSIONS`: 3,072 for `gemini-embedding-001`, 768 for the `text-embedding-00x` family):
    ```bash
    make gcp-index-create
    ```
@@ -328,7 +328,7 @@ If you already completed Phase 7, reuse the same `DATAPOINTS_FILE` (from the ver
    - Each datapoint emits both `id` and `datapointId`; Vertex’s batch rebuild requires `id`, while our runtime retrieval still reads `datapointId`, so the job keeps them identical.
    - To sanity-check the datapoint writer helpers after any changes, run the focused unit tests:
      ```bash
-     make be-test_build_datapoints
+     make be-test-build_datapoints
      ```
 
 5. Batch-update the index (rebuild from the new datapoints file):
@@ -360,9 +360,9 @@ See [docs/VECTOR_SEARCH.md](docs/VECTOR_SEARCH.md) for roles, workflows, and a d
 
 ## Repo layout
 
-- [`frontend/`](./frontend/README.md) — Next.js app, scripts and env vars
-- [`backend/`](./backend/README.md) — FastAPI app, env vars, API docs
-- `private/` — points to your private overlay for local dev
+- [`frontend/`](./frontend/README.md): Next.js app, scripts and env vars
+- [`backend/`](./backend/README.md): FastAPI app, env vars, API docs
+- `private/`: points to your private overlay for local dev
 
 ## Run Modes
 
@@ -394,7 +394,7 @@ If port 8080 is stuck:
 PID=$(lsof -ti :8080) && [ -n "$PID" ] && kill -9 $PID
 ```
 
-Open the UI at `http://localhost:8080`
+Open the UI at `http://localhost:3000`
 Information about the hardcoded (or customization of) access keys can be found [here](backend/README.md#mock-auth).
 
 ---
@@ -429,11 +429,11 @@ Static export on Firebase Hosting. API served by Cloud Run.
    ```
 
 2) Build and push the backend image (pick one path only):
-   - Option A — Cloud Build (no local Docker):
+   - Option A: Cloud Build (no local Docker):
      ```bash
      make gcp-cloud-build
      ```
-   - Option B — Local Docker + push (Docker needed):
+   - Option B: Local Docker + push (Docker needed):
      - One-time per machine: auth to Artifact Registry
        ```bash
        make gcp-auth-registry
