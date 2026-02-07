@@ -172,7 +172,7 @@ def chat(
         enable_thinking_gating=settings.ENABLE_THINKING_GATING,
         default_thinking_budget_tokens=settings.THINKING_BUDGET_TOKENS,
         enable_signal_gating=settings.ENABLE_SIGNAL_GATING,
-        signal_score_threshold=settings.SIGNAL_SCORE_THRESHOLD,
+        signal_weighted_score_threshold=settings.SIGNAL_WEIGHTED_SCORE_THRESHOLD,
         signal_bm25_threshold=settings.SIGNAL_BM25_THRESHOLD,
     )
     response = chat_result.response

@@ -94,10 +94,10 @@ async def test_chat_success_log_includes_signal_shadow_fields(
             signal_gate_enabled=False,
             signal_would_skip_llm=True,
             signal_gate_reason=rag_chat_orchestrator.SIGNAL_GATE_REASON_SCORE_BELOW_THRESHOLD,
-            top1_score=0.5,
+            top1_weighted_score=0.5,
             top1_bm25_score=1.0,
             top1_vector_score=0.6,
-            signal_score_threshold=0.62,
+            signal_weighted_score_threshold=0.62,
             signal_bm25_threshold=3.0,
         )
 
@@ -133,13 +133,13 @@ async def test_chat_success_log_includes_signal_shadow_fields(
     assert "signal_gate_enabled" in success_payload
     assert "signal_would_skip_llm" in success_payload
     assert "signal_gate_reason" in success_payload
-    assert "top1_score" in success_payload
+    assert "top1_weighted_score" in success_payload
     assert "top1_bm25_score" in success_payload
     assert "top1_vector_score" in success_payload
-    assert "signal_top1_score" not in success_payload
+    assert "signal_top1_weighted_score" not in success_payload
     assert "signal_top1_bm25_score" not in success_payload
     assert "signal_top1_vector_score" not in success_payload
-    assert "signal_score_threshold" in success_payload
+    assert "signal_weighted_score_threshold" in success_payload
     assert "signal_bm25_threshold" in success_payload
     assert success_payload["signal_would_skip_llm"] is True
     assert (
