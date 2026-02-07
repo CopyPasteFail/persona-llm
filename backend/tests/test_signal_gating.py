@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional, Sequence
 
 from api import rag_chat_orchestrator
+from api import llm
 
 WEAK_SIGNAL_SCORE = 0.56
 WEAK_SIGNAL_BM25 = 1.4
@@ -22,8 +23,8 @@ class _StaticRetrieval:
     def __init__(self, selected_chunks: List[Dict[str, Any]]) -> None:
         self._selected_chunks = selected_chunks
 
-    def normalize_question_for_first_person(self, question_text: str) -> str:
-        return question_text
+    def normalize_question_for_first_person(self, question: str) -> str:
+        return question
 
     def embed_query(self, question: str) -> Optional[List[float]]:
         return [1.0]
@@ -50,15 +51,16 @@ class _SpyLlmBackend:
 
     def generate(
         self,
-        prompt_payload: Dict[str, Any],
+        prompt_payload: llm.PromptPayload,
         max_output_tokens: int,
         thinking_budget_tokens: int | None = None,
-    ) -> tuple[str, Dict[str, int]]:
+    ) -> tuple[str, llm.UsageMetadata]:
         self.call_count += 1
-        return "TLDR: stub answer\nWrap: stub wrap", {
+        usage_metadata: llm.UsageMetadata = {
             "input_tokens": 10,
             "output_tokens": 20,
         }
+        return "TLDR: stub answer\nWrap: stub wrap", usage_metadata
 
 
 def _build_chunk(

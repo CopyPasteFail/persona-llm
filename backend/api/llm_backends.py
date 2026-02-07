@@ -105,11 +105,11 @@ class DeterministicLlmBackend:
         answer = "\n".join(
             line.format(question=question) for line in DETERMINISTIC_RESPONSE_LINES
         )
-        usage = {
+        usage_metadata: llm.UsageMetadata = {
             "input_tokens": max(1, len(question) // llm.APPROX_CHARS_PER_TOKEN),
             "output_tokens": max(1, len(answer) // llm.APPROX_CHARS_PER_TOKEN),
         }
-        return answer, usage
+        return answer, usage_metadata
 
 
 def get_llm_backend(default_backend: str | None = None) -> LlmBackend:

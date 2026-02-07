@@ -1081,10 +1081,14 @@ class _GenaiEmbeddingClient:
             contents=[types.Part.from_text(text=normalized_text)],
             config=types.EmbedContentConfig(auto_truncate=True),
         )
-        embeddings = getattr(response, "embeddings", None) or []
+        response_object = cast(object, response)
+        embeddings_attribute = getattr(response_object, "embeddings", None)
+        embeddings = cast(Optional[Sequence[Any]], embeddings_attribute)
         if not embeddings:
             return cast(List[float], [])
-        values = getattr(embeddings[0], "values", None)
+
+        first_embedding_object = cast(object, embeddings[0])
+        values = cast(Optional[Iterable[Any]], getattr(first_embedding_object, "values", None))
         if values is None:
             raise RuntimeError("Embedding response missing values field")
-        return [float(value) for value in cast(Iterable[Any], values)]
+        return [float(value) for value in values]

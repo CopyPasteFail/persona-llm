@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
-from typing import Any, Protocol
+from typing import Any, Protocol, TypeGuard, cast
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -31,6 +31,28 @@ class AccessKeyStore(Protocol):
         expires_at: datetime | None = None,
         revoked: bool = False,
     ) -> str: ...
+
+
+def _is_chat_success_payload(message: object) -> TypeGuard[dict[str, Any]]:
+    """Check whether a log message is the structured `chat.success` payload.
+
+    Inputs:
+    - message: Arbitrary log message object emitted by the app logger.
+
+    Outputs:
+    - `True` when the message is a dict and its `event` field matches
+      `EVENT_CHAT_SUCCESS`; otherwise `False`.
+
+    Edge cases:
+    - Non-dict messages are rejected.
+    - Dicts missing the `event` key are rejected.
+    """
+
+    if not isinstance(message, dict):
+        return False
+
+    payload: dict[str, Any] = cast(dict[str, Any], message)
+    return payload.get("event") == main_app_module.EVENT_CHAT_SUCCESS
 
 
 @pytest.mark.asyncio
@@ -100,21 +122,23 @@ async def test_chat_success_log_includes_signal_shadow_fields(
 
     assert response.status_code == 200
 
-    success_payloads = [
+    success_payloads: list[dict[str, Any]] = [
         record.msg
         for record in caplog.records
-        if isinstance(record.msg, dict)
-        and record.msg.get("event") == main_app_module.EVENT_CHAT_SUCCESS
+        if _is_chat_success_payload(record.msg)
     ]
     assert len(success_payloads) == 1
-    success_payload = success_payloads[0]
+    success_payload: dict[str, Any] = success_payloads[0]
 
     assert "signal_gate_enabled" in success_payload
     assert "signal_would_skip_llm" in success_payload
     assert "signal_gate_reason" in success_payload
-    assert "signal_top1_score" in success_payload
-    assert "signal_top1_bm25_score" in success_payload
-    assert "signal_top1_vector_score" in success_payload
+    assert "top1_score" in success_payload
+    assert "top1_bm25_score" in success_payload
+    assert "top1_vector_score" in success_payload
+    assert "signal_top1_score" not in success_payload
+    assert "signal_top1_bm25_score" not in success_payload
+    assert "signal_top1_vector_score" not in success_payload
     assert "signal_score_threshold" in success_payload
     assert "signal_bm25_threshold" in success_payload
     assert success_payload["signal_would_skip_llm"] is True

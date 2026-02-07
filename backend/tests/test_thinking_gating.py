@@ -4,16 +4,17 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Sequence
 
+from api import llm
 from api import rag_chat_orchestrator
-from api.llm import _GeminiGenaiClient, THINKING_BUDGET_DISABLED
+from api.llm import THINKING_BUDGET_DISABLED, _GeminiGenaiClient  # pyright: ignore[reportPrivateUsage]
 from api.settings import settings
 
 
 class _StubRetrieval:
     """Minimal retrieval stub that always returns a single chunk."""
 
-    def normalize_question_for_first_person(self, question_text: str) -> str:
-        return question_text
+    def normalize_question_for_first_person(self, question: str) -> str:
+        return question
 
     def embed_query(self, question: str) -> Optional[List[float]]:
         return [1.0]
@@ -40,12 +41,15 @@ class _CapturingLlmBackend:
 
     def generate(
         self,
-        prompt_payload: Dict[str, Any],
+        prompt_payload: llm.PromptPayload,
         max_output_tokens: int,
         thinking_budget_tokens: int | None = None,
-    ) -> tuple[str, Dict[str, int]]:
+    ) -> tuple[str, llm.UsageMetadata]:
+        del prompt_payload
+        del max_output_tokens
         self.thinking_budget_tokens = thinking_budget_tokens
-        return "stub answer", {"input_tokens": 1, "output_tokens": 1}
+        usage_metadata: llm.UsageMetadata = {"input_tokens": 1, "output_tokens": 1}
+        return "stub answer", usage_metadata
 
 
 def test_choose_thinking_budget_tokens_returns_zero_for_simple_question() -> None:
@@ -149,7 +153,7 @@ def test_generate_config_uses_zero_budget_and_disables_thoughts_on_override() ->
         model_name="test",
         thinking_budget_tokens=300,
     )
-    config, effective_budget, include_thoughts = client._build_generate_config(
+    config, effective_budget, include_thoughts = client._build_generate_config(  # pyright: ignore[reportPrivateUsage]
         system_prompt="S",
         max_output_tokens=64,
         thinking_budget_tokens=0,
@@ -173,7 +177,7 @@ def test_generate_config_uses_override_budget_and_include_thoughts() -> None:
             model_name="test",
             thinking_budget_tokens=300,
         )
-        config, effective_budget, include_thoughts = client._build_generate_config(
+        config, effective_budget, include_thoughts = client._build_generate_config(  # pyright: ignore[reportPrivateUsage]
             system_prompt="S",
             max_output_tokens=64,
             thinking_budget_tokens=300,
@@ -196,7 +200,7 @@ def test_generate_config_uses_client_default_when_override_none() -> None:
         model_name="test",
         thinking_budget_tokens=120,
     )
-    config, effective_budget, include_thoughts = client._build_generate_config(
+    config, effective_budget, include_thoughts = client._build_generate_config(  # pyright: ignore[reportPrivateUsage]
         system_prompt="S",
         max_output_tokens=64,
         thinking_budget_tokens=None,

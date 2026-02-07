@@ -9,7 +9,16 @@ import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterable, Iterator, List, Mapping, MutableMapping, Sequence, cast
+from typing import (
+    Iterable,
+    Iterator,
+    List,
+    Mapping,
+    MutableMapping,
+    Protocol,
+    Sequence,
+    cast,
+)
 
 from google import genai  # type: ignore[import-not-found]
 from google.genai import types  # type: ignore[import-not-found]
@@ -88,6 +97,27 @@ _EMBEDDING_OUTPUT_DIMENSION_FIELD = "output_dimensionality"
 _DATASET_CHUNKS_FILENAME = "chunks.jsonl.gz"
 _DATASET_DATAPOINTS_FILENAME = "datapoints.jsonl"
 _DATASET_MANIFEST_FILENAME = "manifest.json"
+
+
+class _EmbedContentModelsClient(Protocol):
+    """Typed surface for the GenAI client's embedding model operations."""
+
+    def embed_content(
+        self,
+        *,
+        model: str,
+        contents: Sequence[str],
+        config: types.EmbedContentConfig | None = None,
+    ) -> object:
+        ...
+
+
+class _GenaiEmbeddingClient(Protocol):
+    """Typed surface for the subset of GenAI client APIs used in this job."""
+
+    @property
+    def models(self) -> _EmbedContentModelsClient:
+        ...
 
 
 def _env_bool(name: str, default: str = "0") -> bool:
@@ -433,11 +463,14 @@ def main() -> None:
     http_options = types.HttpOptions(
         timeout=_env_int(_ENV_REQ_TIMEOUT_MS, _DEFAULT_REQ_TIMEOUT_MS)
     )
-    client = genai.Client(
-        vertexai=True,
-        project=project_id,
-        location=region,
-        http_options=http_options,
+    client = cast(
+        _GenaiEmbeddingClient,
+        genai.Client(
+            vertexai=True,
+            project=project_id,
+            location=region,
+            http_options=http_options,
+        ),
     )
     max_output_dimension = _MODEL_MAX_OUTPUT_DIMENSIONS.get(
         model_name, _GENERIC_MAX_OUTPUT_DIMENSION
@@ -465,7 +498,7 @@ def main() -> None:
             )
         )
     for batch in _batched(records, batch_size):
-        texts: list[Any] = []
+        texts: list[str] = []
         for record in batch:
             text_value = record.get(_RECORD_TEXT_KEY)
             if not isinstance(text_value, str):

@@ -234,12 +234,10 @@ async def chat(
                     "signal_gate_enabled": settings.ENABLE_SIGNAL_GATING,
                     "signal_would_skip_llm": chat_result.signal_would_skip_llm,
                     "signal_gate_reason": chat_result.signal_gate_reason,
+                    # Canonical top-1 retrieval metrics; signal_top1_* aliases removed.
                     "top1_score": chat_result.top1_score,
                     "top1_bm25_score": chat_result.top1_bm25_score,
                     "top1_vector_score": chat_result.top1_vector_score,
-                    "signal_top1_score": chat_result.top1_score,
-                    "signal_top1_bm25_score": chat_result.top1_bm25_score,
-                    "signal_top1_vector_score": chat_result.top1_vector_score,
                     "signal_score_threshold": chat_result.signal_score_threshold,
                     "signal_bm25_threshold": chat_result.signal_bm25_threshold,
                 }
@@ -264,12 +262,10 @@ async def chat(
                 "signal_gate_enabled": settings.ENABLE_SIGNAL_GATING,
                 "signal_would_skip_llm": chat_result.signal_would_skip_llm,
                 "signal_gate_reason": chat_result.signal_gate_reason,
+                # Canonical top-1 retrieval metrics; signal_top1_* aliases removed.
                 "top1_score": chat_result.top1_score,
                 "top1_bm25_score": chat_result.top1_bm25_score,
                 "top1_vector_score": chat_result.top1_vector_score,
-                "signal_top1_score": chat_result.top1_score,
-                "signal_top1_bm25_score": chat_result.top1_bm25_score,
-                "signal_top1_vector_score": chat_result.top1_vector_score,
                 "signal_score_threshold": chat_result.signal_score_threshold,
                 "signal_bm25_threshold": chat_result.signal_bm25_threshold,
                 "key_id": session.key_id,
