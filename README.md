@@ -231,7 +231,7 @@ Record `INDEX_ENDPOINT_ID` (bare endpoint ID), `INDEX_ID`, and `DEPLOYED_INDEX_I
 
 #### Vector Search Roles and Flows
 
-See [docs/vector-search.md](docs/vector-search.md) for roles, workflows, and a diagram.
+See [docs/VECTOR_SEARCH.md](docs/VECTOR_SEARCH.md) for roles, workflows, and a diagram.
 
 ### Phase 8. Service account (optional)
 
