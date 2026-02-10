@@ -176,7 +176,7 @@ make gcp-sa-key
 
 - [`frontend/`](./frontend/README.md) — Next.js app, scripts and env vars
 - [`backend/`](./backend/README.md) — FastAPI app, env vars, API docs
-- `private/` (optional symlink) — points to your private overlay for local dev
+- `private/` — points to your private overlay for local dev
 
 ## CI without submodule (GitHub Actions example)
 
