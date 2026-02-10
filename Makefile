@@ -1,4 +1,4 @@
-.PHONY: install dev mock build fe-% fe-install be-install be-% require-private require-gcp-env clean clean-all gcp-create-project gcp-set-project gcp-create-bucket gcp-sa-create gcp-sa-delete gcp-sa-bind-roles gcp-sa-roles gcp-sa-key
+.PHONY: install dev mock build fe-% fe-install be-install be-% require-private require-gcp-env require-index-ids clean clean-all gcp-create-project gcp-set-project gcp-create-bucket gcp-sa-create gcp-sa-delete gcp-sa-bind-roles gcp-sa-roles gcp-sa-key gcp-index-create gcp-index-endpoint-create gcp-index-deploy gcp-index-upsert gcp-index-list
 
 # -------------------------------
 # Private directory resolution
@@ -39,6 +39,11 @@ require-gcp-env:
 	@[ -n "$(PROJECT_ID)" ] || { echo "PROJECT_ID is missing"; exit 1; }
 	@[ -n "$(REGION)" ] || { echo "REGION is missing"; exit 1; }
 	@[ -n "$(BUCKET_NAME)" ] || { echo "BUCKET_NAME is missing"; exit 1; }
+
+require-index-ids:
+	@[ -n "$(INDEX_ENDPOINT_ID)" ] || { echo "INDEX_ENDPOINT_ID is missing"; exit 1; }
+	@[ -n "$(INDEX_ID)" ] || { echo "INDEX_ID is missing"; exit 1; }
+	@[ -n "$(DEPLOYED_INDEX_ID)" ] || { echo "DEPLOYED_INDEX_ID is missing"; exit 1; }
 
 # ----- Frontend passthrough -----
 fe-%:
@@ -105,6 +110,61 @@ gcp-create-bucket: require-private require-gcp-env
 # Enable Firebase features on the active GCP project
 gcp-enable-firebase: require-gcp-env
 	@gcloud alpha firebase projects add-firebase "$(PROJECT_ID)"
+
+gcp-index-create: require-private require-gcp-env
+	@tmp="$$(mktemp)"; \
+	printf '%s\n' \
+	  '{' \
+	  '  "config": {' \
+	  '    "dimensions": 3072,' \
+	  '    "distanceMeasureType": "DOT_PRODUCT_DISTANCE",' \
+	  '    "approximateNeighborsCount": 100,' \
+	  '    "algorithmConfig": {' \
+	  '      "treeAhConfig": {' \
+	  '        "leafNodeEmbeddingCount": 1000,' \
+	  '        "leafNodesToSearchPercent": 7' \
+	  '      }' \
+	  '    }' \
+	  '  }' \
+	  '}' \
+	  > "$$tmp"; \
+	gcloud ai indexes create \
+		--region="$(REGION)" \
+		--project="$(PROJECT_ID)" \
+		--display-name="persona-index" \
+		--metadata-file="$$tmp"; \
+	rm -f "$$tmp"
+	@echo "Capture the INDEX_ENDPOINT_ID from the output (projects/.../indexes/ID) and export it before deploying."
+
+gcp-index-endpoint-create: require-private require-gcp-env
+	@gcloud ai index-endpoints create \
+		--region="$(REGION)" \
+		--project="$(PROJECT_ID)" \
+		--display-name="persona-endpoint"
+	@echo "Capture the INDEX_ENDPOINT_ID from the output (projects/.../indexEndpoints/ID)."
+
+gcp-index-deploy: require-private require-gcp-env require-index-ids
+	@gcloud ai index-endpoints deploy-index "$(INDEX_ENDPOINT_ID)" \
+		--deployed-index-id="$(DEPLOYED_INDEX_ID)" \
+		--display-name="persona-deployment" \
+		--index="$(INDEX_ID)" \
+		--region="$(REGION)" \
+		--project="$(PROJECT_ID)"
+
+gcp-index-upsert: require-private require-gcp-env require-index-ids
+	@if [ -z "$(DATAPOINTS_FILE)" ]; then \
+	  echo "DATAPOINTS_FILE must point to a JSONL file with datapoints"; \
+	  exit 1; \
+	fi
+	@gcloud ai index-endpoints upsert-datapoints \
+		--index-endpoint="$(INDEX_ENDPOINT_ID)" \
+		--deployed-index-id="$(DEPLOYED_INDEX_ID)" \
+		--region="$(REGION)" \
+		--project="$(PROJECT_ID)" \
+		--datapoints-file="$(DATAPOINTS_FILE)"
+
+gcp-index-list: require-gcp-env
+	@gcloud ai indexes list --region="$(REGION)" --project="$(PROJECT_ID)"
 
 # Show whether billing is linked for the active project
 gcp-check-billing: require-gcp-env
