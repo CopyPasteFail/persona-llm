@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Iterable, Mapping, MutableMapping, Protocol, runtime_checkable, cast
 
 from dotenv import dotenv_values
-from google.cloud import storage
+from google.cloud import storage  # type: ignore[reportMissingTypeStubs]
 from jsonschema import Draft202012Validator
 
 DEFAULT_MAX_CHARS = 2200

@@ -9,8 +9,8 @@ import sys
 from pathlib import Path
 from typing import Any, Iterable, Iterator, List, Mapping, MutableMapping, Sequence, cast
 
-import vertexai
-from vertexai.language_models import (
+import vertexai  # type: ignore[reportMissingTypeStubs]
+from vertexai.language_models import (  # type: ignore[reportMissingTypeStubs]
     TextEmbeddingModel,
 )
 
