@@ -265,6 +265,7 @@ Set up a Matching Engine index before you embed and upsert persona chunks.
    ```
    - Optional: override the configured deployment name with `make gcp-index-deploy DEPLOYED_INDEX_ID=persona_deployment`.
    - Vertex AI requires the deployed ID to start with a letter and use only letters, numbers, or underscores (e.g. `persona_deployment`).
+   - Deployment can take minutes. While it is provisioning, `gcloud ai index-endpoints describe projects/$PROJECT_ID/locations/$REGION/indexEndpoints/$INDEX_ENDPOINT_ID --region=$REGION --format='yaml(deployedIndexes)'` returns `null`; once the operation finishes it prints the deployed index details (ID, replicas, synced index ID).
 
 4. Generate embedding datapoints for the persona chunks:
    ```bash
