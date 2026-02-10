@@ -410,12 +410,12 @@ Run Next.js locally but call the real Cloud Run API.
 4) Start the dev server. Choose one:
 - Fast start (uses cached build):
   ```bash
-  make fe-dev:mock
+  make fe-dev
   ```
 - Clean start (force rebuild):
   ```bash
   make fe-clean:all
-  make fe-dev:mock
+  make fe-dev
   ```
 
 App: http://localhost:3000
