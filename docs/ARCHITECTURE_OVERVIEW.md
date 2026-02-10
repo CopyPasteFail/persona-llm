@@ -44,7 +44,8 @@ See [`DATA_DESIGN_RATIONALE.md`](./DATA_DESIGN_RATIONALE.md) for discussion.
 - Rate limiting is per-instance (in-memory). This is fine for a single Cloud Run instance, but must move to a shared store (Redis/Firestore) to be reliable under multi-instance scaling.
 - Cookie sessions: `/auth/key-login` can set an HttpOnly cookie; logout clears the cookie only (no server-side session invalidation). Future enhancement: revoking an access key should immediately invalidate existing sessions.
 - Operational note: if Firebase Hosting and Cloud Run are on different origins (for example `*.web.app` and `*.run.app`), browsers may treat session cookies as cross-site and apply stricter rules.
-- CORS allowlist: localhost and your Hosting origin built from `PROJECT_ID`.
+- CORS (Cross-Origin Resource Sharing) tells browsers which frontend origins are allowed to call the API.
+  - Allowlist: localhost and your Hosting origin built from `PROJECT_ID`.
 
 ## Cloud Run scaling notes
 Important considerations:
