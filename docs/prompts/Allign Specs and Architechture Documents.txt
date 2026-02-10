@@ -1,0 +1,45 @@
+You are a meticulous technical editor. I will attach four files:
+1) IMPLEMENTATION_SPEC.v3.md
+2) ARCHITECTURE_OVERVIEW.v3.md
+3) backend.zip  the private repo root (omer-llm-backend)
+4) frontend.zip the public repo root (persona-llm-frontend)
+
+Goal:
+Revise the two markdown docs so they exactly match what the code does today. Keep the same section headings and overall structure, but update content to reflect reality. Do not invent features. Where functionality is unfinished or untested, label it clearly.
+
+Important constraints:
+- Use clear, plain English with standard punctuation. No em dashes. Keep it concise and actionable.
+- Do not include any secrets or sensitive values. If the code references secrets or keys, show them as placeholders only.
+- Assume some cloud deployment steps exist in the docs but haven’t been tested yet. Keep those steps, mark them “Not verified in current code” with a short note. Do not remove them unless they’re clearly obsolete.
+- If the repos or code are inconsistent with the docs, the code wins. Make the docs match the code and call out the drift.
+
+What to read and extract from the zips:
+- Full directory trees for both repos. Identify added, removed, or renamed files.
+- Environment variables consumed by backend and frontend.
+- API surface and schemas.
+- Retrieval and LLM pipeline details.
+- Ingestion jobs and Makefile targets.
+- Frontend behavior and component states.
+- Tests and tooling.
+- Deployment notes and unverified steps.
+
+Deliverables:
+**Return each of the following as a separate downloadable `.md` file** with the exact filename. Do not only show inline markdown. I want files I can download directly.
+
+1) `IMPLEMENTATION_SPEC.vX+1.md` – full replacement of the Implementation Spec, aligned with current code.
+2) `ARCHITECTURE_OVERVIEW.vX+1.md` – full replacement of the Architecture Overview, aligned with current stack and UX.
+3) `CHANGELOG.md` – concise diff list between previous docs and new reality, grouped by area.
+4) `GAPS_AND_TODOS.md` – crisp bullet list of missing or incomplete features, with pointers to code paths.
+
+Editing rules:
+- Preserve headings and structure.
+- Quote file paths and identifiers as in code.
+- Explicitly list environment variables with usage.
+- Provide minimal working curl/JSON examples for APIs.
+- For frontend, describe actual states (disabled, scrolling, loaders).
+- For tests, include test files and commands.
+- For deployment, keep unverified steps but label them clearly.
+
+Output format:
+- Four downloadable `.md` files, one for each deliverable.
+- Nothing else outside those files.
