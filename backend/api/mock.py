@@ -18,6 +18,17 @@ from .keys import JsonKeyStore, set_key_store
 logger = logging.getLogger("api.mock")
 
 def _resolve_mock_key_store_path() -> Path | None:
+    """Resolve the filesystem path for the mock access key store.
+
+    Returns:
+        Path | None: The resolved path to the mock key store if it exists,
+        otherwise None.
+
+    Edge cases:
+        - If MOCK_ACCESS_KEYS_PATH is set but points to a missing file,
+          this returns the expanded path and lets the caller decide.
+        - If the default path does not exist, None is returned.
+    """
     if settings.MOCK_ACCESS_KEYS_PATH:
         return Path(settings.MOCK_ACCESS_KEYS_PATH).expanduser()
     default_path = Path(__file__).resolve().parents[1] / "mock_access_keys.json"
@@ -26,6 +37,18 @@ def _resolve_mock_key_store_path() -> Path | None:
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    """Configure the mock app lifespan by loading the key store.
+
+    Args:
+        _app: The FastAPI application instance (unused).
+
+    Yields:
+        None. This is an async context manager for FastAPI's lifespan.
+
+    Edge cases:
+        - If no key store path is available, the lifespan completes
+          without registering any key store.
+    """
     path = _resolve_mock_key_store_path()
     if not path:
         yield
@@ -54,16 +77,34 @@ app.include_router(auth_router)
 
 @app.get("/health")
 def health():
+    """Return a basic health indicator for the mock service.
+
+    Returns:
+        dict: JSON payload containing a static "ok" status.
+    """
     return {"status": "ok"}
 
 
-@app.post("/chat")
+@app.post("/chat", response_model_exclude_none=True)
 def chat(req: ChatRequest, _session=Depends(get_current_session)) -> ChatResponse:
-    """
-    Deterministic mock that:
-      - Accepts only { question } (extra fields ignored by pydantic Config).
-      - Normalizes third-person mentions of Omer to first person.
-      - Always returns a fixed-structure response with a dummy citation.
+    """Handle a mock chat request and return a deterministic response.
+
+    Args:
+        req: The chat request containing a required question string.
+        _session: The authenticated session dependency (unused).
+
+    Returns:
+        ChatResponse: A fixed-structure response with a mock answer,
+        usage counts, and a dummy citation.
+
+    Edge cases:
+        - Empty or whitespace-only questions are normalized to an empty
+          string before response generation.
+        - Extra request fields are ignored by request validation.
+
+    Concurrency:
+        - This handler is pure and stateless; it is safe to call
+          concurrently and performs no shared-state mutations.
     """
     _request_id = str(uuid.uuid4())
     _t0 = time.time()
@@ -89,5 +130,4 @@ def chat(req: ChatRequest, _session=Depends(get_current_session)) -> ChatRespons
         answer=answer,
         citations=citations,
         usage=usage,
-        input_token_limit=settings.MAX_INPUT_TOKENS,
     )
