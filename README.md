@@ -157,7 +157,7 @@ To check whether billing is linked, run:
 make gcp-check-billing
 ```
 If the command prints nothing or `False`, you need to link a billing account.
-If you don't know your **billing account ID**, you can set and/or create on by follwing the instruction in the [Billing Account](#billing-account) section.
+If you don't know your **billing account ID**, you can set and/or create one by follwing the instruction in the [Billing Account](#billing-account) section.
 
 Otherwise set `BILLING_ACCOUNT_ID` and run:
 ```bash
