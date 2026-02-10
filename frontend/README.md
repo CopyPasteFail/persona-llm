@@ -27,6 +27,23 @@ npm install -w web
 
 `frontend/package.json` forwards scripts to the `web` app via `"workspaces": ["web"]`.
 
+- `npm run dev`: start the Next.js dev server on port 3000.
+- `npm run dev:mock`: dev server with `NEXT_PUBLIC_API_URL` pointing at the mock backend on port 8080.
+- `npm run dev:clean`: clear `.next`, `out`, and `.turbo`, then launch the dev server.
+- `npm run dev:mock:clean`: clean artifacts before starting the mock-connected dev server.
+- `npm run build`: create the production build with `next build`.
+- `npm run preview`: serve the static export from `web/out` on port 4173 (requires a prior `npm run build`).
+- `npm run clean`: remove `.next`, `out`, and `.turbo` artifacts.
+- `npm run clean:all`: run `clean` and also wipe `node_modules` and `.firebase` in the frontend workspace.
+- `npm run kill-port`: free up port 3000 if a dev server is stuck.
+- `npm run firebase`: run arbitrary Firebase CLI commands in the `web` workspace.
+- `npm run firebase:version`: print the Firebase CLI version through the workspace wrapper.
+- `npm run firebase:login`: authenticate the Firebase CLI via the workspace wrapper.
+- `npm run firebase:use`: load secrets from `$PRIVATE_DIR/secrets/{common,frontend}.env`, require `PROJECT_ID`, then set the active Firebase project.
+- `npm run firebase:create`: same environment bootstrap as `firebase:use`, then create a Firebase project named after `PROJECT_ID`.
+- `npm run firebase:deploy`: load secrets, run `npm run build`, and deploy hosting/config to the `PROJECT_ID` Firebase project.
+- `npm run firebase:hosting:disable`: load secrets and disable Firebase Hosting for the configured `PROJECT_ID`.
+
 
 ## Environment variables
 
