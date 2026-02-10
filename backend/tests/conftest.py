@@ -102,8 +102,6 @@ class InMemoryFirestoreStore(keys.FirestoreKeyStore):
         label: str | None = None,
         expires_at: datetime | None = None,
         revoked: bool = False,
-        used_count: int = 0,
-        max_uses: int | None = None,
     ) -> str:
         exp = expires_at or (datetime.now(timezone.utc) + timedelta(hours=1))
         fingerprint = keys.compute_key_fingerprint(plain_key)
@@ -113,8 +111,6 @@ class InMemoryFirestoreStore(keys.FirestoreKeyStore):
             "expires_at": exp,
             "revoked": revoked,
             "label": label,
-            "used_count": used_count,
-            "max_uses": max_uses,
         }
         doc_id = f"doc-{len(self._docs_by_id) + 1}"
         doc = _FakeDoc(doc_id, payload)
@@ -133,13 +129,6 @@ class InMemoryFirestoreStore(keys.FirestoreKeyStore):
         self.last_transaction_used = True
         txn = _FakeTransaction(self)
         return fn(txn)
-
-    def increment_used_count(self, key_id: str) -> None:
-        # Not used in transactional flow, but kept for compatibility.
-        doc = self._docs_by_id.get(key_id)
-        if doc:
-            data = doc.to_dict()
-            data["used_count"] = (data.get("used_count") or 0) + 1
 
     def revoke_key(self, key_id: str) -> None:
         doc = self._docs_by_id.get(key_id)
