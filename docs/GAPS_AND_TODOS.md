@@ -1,7 +1,7 @@
 # Version 5
 
 ## Backend
-- Wire retrieval in `api/retrieval.py`: implement `embed_query`, `search_vector_store`, `apply_filters_and_boosting`, and `build_context_prompt`.
+- Strengthen retrieval in `api/retrieval.py`: expand tests around `embed_query`, `search_vector_store`, `apply_filters_and_boosting`, and `build_context_prompt`, and validate live client integration.
 - Wire LLM call in `api/llm.py::call_gemini_flash` with limits from settings.
 - Replace `/chat` `NotImplementedError` with real response. Add structured success logs.
 - Confirm rate limits persistence if scaling beyond one instance.

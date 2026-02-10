@@ -126,7 +126,7 @@ curl -s -X POST http://localhost:8000/chat -H 'content-type: application/json' -
 ```
 
 ## Retrieval and LLM pipeline
-- `api/retrieval.py`: first-person normalization implemented. Retrieval stubs (`embed_query`, `search_vector_store`, `apply_filters_and_boosting`, `build_context_prompt`) not implemented.
+- `api/retrieval.py`: first-person normalization and retrieval pipeline (`embed_query`, `search_vector_store`, `apply_filters_and_boosting`, `build_context_prompt`) implemented; focus now on tests, tuning, and live Vertex integration.
 - `api/llm.py`: `build_llm_prompt` returns the strict format. `call_gemini_flash` not implemented.
 
 ## Ingestion jobs
