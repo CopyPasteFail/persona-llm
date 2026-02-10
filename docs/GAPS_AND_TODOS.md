@@ -13,10 +13,6 @@
 - (enhancement) Add a `make ingest` target that chains the steps above.
 
 ## Frontend
-- Confirm starters and input disable logic when backend is down.
-- Ensure explicit error toasts or banners on fetch failures and 503s.
-- Keep the conversation scroll independent of the main page size.
-- Remove any unused “Local backend” boxes if present.
 
 ## Tests
 - LLM prompt builder (`api/llm.py`): missing tests for strict output instructions, context format, MAX_INPUT_TOKENS trimming, and usage parsing from Vertex responses. Decision: add unit coverage for `build_llm_prompt(...)`, trimming edge cases, and `_extract_usage`/`_usage_value`.
