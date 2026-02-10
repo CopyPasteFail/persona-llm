@@ -16,9 +16,11 @@ endif
 export PRIVATE_DIR
 
 # Helpers
+COMMON_ENV   := $(PRIVATE_DIR)/secrets/common.env
 BACKEND_ENV  := $(PRIVATE_DIR)/secrets/backend.env
 FRONTEND_ENV := $(PRIVATE_DIR)/secrets/frontend.env
 
+-include $(COMMON_ENV) # Ignore if doesn't exist
 -include $(BACKEND_ENV) # Ignore if doesn't exist
 -include $(FRONTEND_ENV) # Ignore if doesn't exist
 
@@ -29,13 +31,13 @@ BUCKET_URI = gs://$(BUCKET_NAME)
 
 require-private:
 	@test -d "$(PRIVATE_DIR)" || { echo "Missing PRIVATE_DIR=$(PRIVATE_DIR). Set PRIVATE_DIR, create .privatedir, or add ./private symlink."; exit 1; }
+	@test -f "$(COMMON_ENV)" || { echo "Missing $(COMMON_ENV). Copy private-template/ and populate secrets/common.env."; exit 1; }
 	@test -f "$(BACKEND_ENV)" || { echo "Missing $(BACKEND_ENV). Copy private-template/ and populate secrets/backend.env."; exit 1; }
 	@test -f "$(FRONTEND_ENV)" || { echo "Missing $(FRONTEND_ENV). Copy private-template/ and populate secrets/frontend.env."; exit 1; }
 
 require-gcp-env:
 	@[ -n "$(PROJECT_ID)" ] || { echo "PROJECT_ID is missing"; exit 1; }
 	@[ -n "$(REGION)" ] || { echo "REGION is missing"; exit 1; }
-	@[ -n "$(FIREBASE_PROJECT_ID)" ] || { echo "FIREBASE_PROJECT_ID is missing"; exit 1; }
 	@[ -n "$(BUCKET_NAME)" ] || { echo "BUCKET_NAME is missing"; exit 1; }
 
 # ----- Frontend passthrough -----
