@@ -141,6 +141,20 @@ gcp-set-project: require-gcp-env
 		echo "WARNING: Project $(PROJECT_ID) does not have billing linked."; \
 	fi
 
+gcp-enable-apis: require-gcp-env
+	@set -eu; \
+	echo "Enabling APIs for project $(PROJECT_ID) ..."; \
+		gcloud services enable \
+		aiplatform.googleapis.com \
+		run.googleapis.com \
+		storage.googleapis.com \
+		firebase.googleapis.com \
+		cloudbuild.googleapis.com \
+		firestore.googleapis.com \
+	  --project="$(PROJECT_ID)" \
+	  --quiet; \
+	echo "Firestore API enabled."
+
 # Create bucket "gs://$(BUCKET_NAME)" in REGION
 gcp-create-bucket: require-private require-gcp-env
 	@gcloud storage buckets create "gs://$(BUCKET_NAME)" --location="$(REGION)"
@@ -310,11 +324,13 @@ gcp-sa-revoke-builder: require-private require-gcp-env
 gcp-sa-grant-runtime: require-private require-gcp-env
 	@gcloud projects add-iam-policy-binding "$(PROJECT_ID)" --member="$(SA_MEMBER)" --role="roles/aiplatform.user"
 	@gcloud storage buckets add-iam-policy-binding "$(BUCKET_URI)" --member="$(SA_MEMBER)" --role="roles/storage.objectViewer"
+	@gcloud projects add-iam-policy-binding "$(PROJECT_ID)" --member="$(SA_MEMBER)" --role="roles/datastore.user"
 
 # Revoke roles for runtime stage
 gcp-sa-revoke-runtime: require-private require-gcp-env
 	@gcloud projects remove-iam-policy-binding "$(PROJECT_ID)" --member="$(SA_MEMBER)" --role="roles/aiplatform.user" --quiet || true
 	@gcloud storage buckets remove-iam-policy-binding "$(BUCKET_URI)" --member="$(SA_MEMBER)" --role="roles/storage.objectViewer" --quiet || true
+	@gcloud projects remove-iam-policy-binding "$(PROJECT_ID)" --member="$(SA_MEMBER)" --role="roles/datastore.user" --quiet || true
 
 # Show only LIVE roles for the SA (project + bucket)
 gcp-sa-roles: require-private require-gcp-env
@@ -340,6 +356,38 @@ gcp-sa-roles: require-private require-gcp-env
 	  --format="table(bindings.role, bindings.members)" \
 	  | awk '$$2 ~ /^serviceAccount:/')"; \
 	if [ -n "$$OUT" ]; then echo "$$OUT"; else echo "None"; fi
+
+gcp-firestore-init: require-gcp-env
+	@set -eu; \
+	echo "Checking Firestore database in project $(PROJECT_ID) ..."; \
+	if gcloud firestore databases describe --project="$(PROJECT_ID)" --format="value(name)" >/dev/null 2>&1; then \
+	  echo "Firestore database already exists for project $(PROJECT_ID). Nothing to do."; \
+	else \
+	  echo "Creating Firestore (Native) database in $(REGION) for project $(PROJECT_ID) ..."; \
+	  gcloud firestore databases create \
+	    --project="$(PROJECT_ID)" \
+	    --location="$(REGION)" \
+	    --type="firestore-native" \
+	    --quiet; \
+	  echo "Firestore database created."; \
+	fi
+
+gcp-firestore-delete: require-gcp-env
+	@set -eu; \
+	export CLOUDSDK_CORE_DISABLE_PROMPTS=1; \
+	echo "Deleting Firestore database for project $(PROJECT_ID) ..."; \
+	if gcloud firestore databases describe \
+	    --project="$(PROJECT_ID)" \
+	    --database="(default)" \
+	    --quiet >/dev/null 2>&1; then \
+	  gcloud firestore databases delete \
+	    --project="$(PROJECT_ID)" \
+	    --database="(default)" \
+	    --quiet; \
+	  echo "Firestore database deleted."; \
+	else \
+	  echo "No Firestore database found for project $(PROJECT_ID). Nothing to delete."; \
+	fi
 
 # Create a service account key (defaults to $(PRIVATE_DIR)/secrets/key.json)
 gcp-sa-key: require-private require-gcp-env
