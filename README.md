@@ -83,7 +83,7 @@ Inside your private overlay pointed to by `PRIVATE_DIR`, you must include these 
 #### Firebase CLI:
 
 ```bash
-make firebase:login
+make fe-firebase:login
 ```
 
 #### Google Cloud CLI
@@ -165,7 +165,7 @@ BILLING_ACCOUNT_ID=YOUR_BILLING_ACCOUNT_ID make gcp-link-billing
 ```
 Re-run `make gcp-set-project` afterwards.
 
-### Phase 5. Enable services and create resources
+### Phase 5.A Enable services
 
 Enable APIs
 ```bash
@@ -175,6 +175,8 @@ gcloud services enable \
   storage.googleapis.com \
   firebase.googleapis.com
 ```
+
+### Phase 5.B Create resources
 
 Create a bucket for data/artifacts (run once per project)
 ```bash
