@@ -15,15 +15,20 @@ CHAT_PATH = "/chat"
 HEALTH_TIMEOUT_SECONDS = 10
 CHAT_TIMEOUT_SECONDS = 30
 HTTP_OK_STATUS = 200
+HTTP_UNAUTHORIZED_STATUS = 401
+HTTP_RATE_LIMIT_STATUS = 429
 STATUS_FIELD = "status"
 ACCESS_TOKEN_FIELD = "access_token"
 ANSWER_FIELD = "answer"
 EXPECTED_STATUS = "ok"
-QUESTION_TEXT = "What did Omer do with Kubernetes at Nexyte in 2024?"
+QUESTION_TEXT = "What did he do with Kubernetes in 2024?"
 AUTH_HEADER_NAME = "Authorization"
 TLDR_MARKER = "TLDR:"
 WRAP_MARKER = "Wrap:"
 FIRST_PERSON_PRONOUNS = [" I ", " my ", " me "]
+RATE_LIMIT_DETAIL = "rate_limited"
+KEY_LOGIN_MAX_ATTEMPTS_PER_FINGERPRINT = 5
+DUMMY_ACCESS_KEY = "rate-limit-dummy-key"
 
 def _get_base_url() -> str:
     base_url = os.getenv(BASE_URL_ENV, "")
@@ -109,3 +114,22 @@ def test_real_backend_first_person(base_url: str, http_client: httpx.Client) -> 
     assert TLDR_MARKER in answer_text and WRAP_MARKER in answer_text
     # In real mode, response should include first-person pronouns.
     assert any(pronoun in answer_text for pronoun in FIRST_PERSON_PRONOUNS)
+
+
+@pytest.mark.integration
+def test_real_backend_key_login_rate_limit(base_url: str, http_client: httpx.Client) -> None:
+    """Verify live key-login rate limiting triggers for a single access key."""
+    saw_rate_limit = False
+    for _ in range(KEY_LOGIN_MAX_ATTEMPTS_PER_FINGERPRINT + 1):
+        response = http_client.post(
+            f"{base_url}{KEY_LOGIN_PATH}",
+            json={"key": DUMMY_ACCESS_KEY},
+            timeout=HEALTH_TIMEOUT_SECONDS,
+        )
+        if response.status_code == HTTP_RATE_LIMIT_STATUS:
+            assert response.json().get("detail") == RATE_LIMIT_DETAIL
+            saw_rate_limit = True
+            break
+        assert response.status_code in (HTTP_OK_STATUS, HTTP_UNAUTHORIZED_STATUS), response.text
+
+    assert saw_rate_limit, "Expected live key-login rate limit to trigger."

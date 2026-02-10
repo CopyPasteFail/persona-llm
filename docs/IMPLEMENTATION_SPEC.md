@@ -48,7 +48,7 @@ Backend configuration is loaded from a dotenv file rather than a global `PRIVATE
 - Use Artifact Registry in the same region as Cloud Run to keep image pulls on Google’s network (no intra-GCP egress) and avoid Docker Hub rate/availability issues.
 - IAM stays in GCP (no Docker Hub tokens), with audit logs and org policies applied uniformly across projects and environments.
 - One registry works for Cloud Build, CI, Cloud Run, and GKE; tagging per environment fits the same workflow.
-- Cost for the current `persona-backend:local` image (~0.212 GB) is $0/month because the first 0.5 GB is free; even 1 GB of images is only about $0.10/month.
+- Cost for the current `persona-backend:local` image (~0.212 GB) is \$0/month because the first 0.5 GB is free; even 1 GB of images is only about $0.10/month.
 
 
 ## Backend API
