@@ -100,77 +100,87 @@ Verify installation:
 gcloud --version
 ```
 
-### Step 2. First-time setup
+### Step 2. Authenticate once
 
-Authenticate with Google Cloud:
 ```bash
 gcloud auth login
+gcloud auth application-default login
 ```
 
-(Optional) Create a **new Firebase project** if you haven’t already, or skip if you want to reuse an existing one
-```bash
-make fe-firebase:create
-```
-If you see an error like this:
-```
-firebase > firebase projects:create YOUR_PROJECT_NAME
-✔ What would you like to call your project? (defaults to your project ID) YOUR_PROJECT_NAME
-✖ Creating Google Cloud Platform project
-Error: Failed to create project because there is already a project with ID YOUR_PROJECT_NAME. Please try again with a unique project ID.
-```
-It means the project ID you chose is already taken globally. You’ll need to select a different, unique project ID.
+### Step 3. Choose your project workflow
 
-Select the project to be used by Firebase:
-```bash
-make fe-firebase:use
-```
+- [Create a brand-new project](#workflow-new-project)
+- [Reuse an existing GCP project (no Firebase yet)](#workflow-existing-gcp)
+- [Reuse an existing Firebase project](#workflow-existing-firebase)
 
-(Optional) Create a **new GCP project** if you haven’t already, or skip if you want to reuse an existing one.
-
+#### Workflow A: brand-new project {#workflow-new-project}
 ```bash
 make gcp-create-project
+make gcp-set-project
 ```
 
-Set your active project:
+#### Workflow B: existing GCP project (no Firebase yet) {#workflow-existing-gcp}
+```bash
+make gcp-set-project
+make gcp-enable-firebase
+```
 
+#### Workflow C: existing Firebase project {#workflow-existing-firebase}
 ```bash
 make gcp-set-project
 ```
 
-If you see a warning like:
+### Step 4. Billing Account Verification {#billing-verification}
 
-```
-WARNING: Project <PROJECT_ID> does not have billing linked.
-```
+Linking a billing account is **mandatory** when using services such as Cloud Run and Vertex AI. Without billing linked, the rest of the provisioning steps will fail.  
 
-You need to link a billing account. This is **mandatory** for services such as Cloud Run and Vertex AI. Without billing linked, the rest of the provisioning steps will fail.  
-See [Billing account instructions](#billing-account) below.
-
-After linking, re-run:
+Check whether billing is linked:
 ```bash
-make gcp-set-project
+gcloud beta billing projects describe "$PROJECT_ID" --format='value(billingEnabled)'
 ```
-to verify billing is now attached.
+If the command prints nothing or `False`, you need to link a billing account:
+```bash
+gcloud beta billing projects link "$PROJECT_ID" \
+  --billing-account=YOUR_BILLING_ACCOUNT_ID
+```
+Re-run `make gcp-set-project` afterwards.
 
-### Step 4. Enable services and create resources
+### Step 5. Enable services and create resources
 
 Enable APIs
 ```bash
-gcloud services enable aiplatform.googleapis.com storage.googleapis.com
+gcloud services enable \
+  aiplatform.googleapis.com \
+  run.googleapis.com \
+  storage.googleapis.com \
+  firebase.googleapis.com
 ```
 
-Create a bucket for data/artifacts
+Create a bucket for data/artifacts (run once per project)
 ```bash
 make gcp-create-bucket
 ```
 
-### Step 5. Service account and keys
+Enable Firebase features (safe to rerun; it’s a no-op if the project is already linked):
+```bash
+make gcp-enable-firebase
+```
+
+### Step 6. Service account and keys
 
 ```bash
 make gcp-sa-create
-make gcp-sa-grant-builder
-make gcp-sa-key
+make gcp-sa-grant-builder   # Vertex AI admin, Storage write, Firebase admin + hosting
+make gcp-sa-grant-runtime   # Vertex AI user, Storage read
+make gcp-sa-key             # writes $PRIVATE_DIR/secrets/key.json
 ```
+
+Export the key for Application Default Credentials so both pack jobs and Firebase deploys share the same identity:
+```bash
+export GOOGLE_APPLICATION_CREDENTIALS="$PRIVATE_DIR/secrets/key.json"
+```
+
+With ADC set, you can run `make be-pack_and_push`, `gcloud` commands, and `npm run firebase:deploy` without interactive logins.
 
 ## Repo layout
 
