@@ -111,6 +111,8 @@ make test
 
 ## Running integration tests
 
+> To skip integration tests in a broader run, use `-m "not integration"`
+
 ### Real backend integration
 Requirements:
 - Real backend running (for example `uvicorn api.main:app`)
