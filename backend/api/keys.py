@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Callable, Optional, Sequence
+from pathlib import Path
+from typing import Callable, Optional, Protocol, Sequence
 
 import bcrypt
 from fastapi import HTTPException, status
@@ -20,6 +22,10 @@ class KeyRecord:
     id: str
     expires_at: datetime
     label: Optional[str] = None
+
+
+class KeyStore(Protocol):
+    def get_record_by_plain_key(self, plain_key: str) -> KeyRecord: ...
 
 
 def _ensure_aware(dt: datetime) -> datetime:
@@ -53,6 +59,72 @@ def verify_key(plain_key: str, key_hash: str) -> bool:
         return bool(bcrypt.checkpw(plain_key.encode("utf-8"), key_hash.encode("utf-8")))
     except ValueError:
         return False
+
+
+class JsonKeyStore:
+    """JSON-backed key store for local/mock auth."""
+
+    def __init__(self, path: Path) -> None:
+        self.path = Path(path)
+
+    def _load(self) -> dict:
+        try:
+            raw = self.path.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            logger.error("mock key store missing: %s", self.path)
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="key_store_missing")
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            logger.exception("mock key store invalid json: %s", self.path)
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="key_store_invalid")
+        if not isinstance(data, dict):
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="key_store_invalid")
+        return data
+
+    def _parse_expires_at(self, value) -> datetime:
+        if not value:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="key_store_invalid")
+        if isinstance(value, datetime):
+            expires_at = value
+        elif isinstance(value, str):
+            ts = value
+            if ts.endswith("Z"):
+                ts = ts[:-1] + "+00:00"
+            try:
+                expires_at = datetime.fromisoformat(ts)
+            except ValueError:
+                raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="key_store_invalid")
+        else:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="key_store_invalid")
+        return _ensure_aware(expires_at)
+
+    def get_record_by_plain_key(self, plain_key: str) -> KeyRecord:
+        if not plain_key:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="missing_key")
+
+        data = self._load()
+        entries = data.get("keys", [])
+        if not isinstance(entries, list):
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="key_store_invalid")
+
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            if entry.get("key") != plain_key:
+                continue
+            if entry.get("revoked", False):
+                raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="key_revoked")
+
+            expires_at = self._parse_expires_at(entry.get("expires_at"))
+            if _now() >= expires_at:
+                raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="key_expired")
+
+            key_id = str(entry.get("id") or "mock")
+            label = entry.get("label")
+            return KeyRecord(id=key_id, expires_at=expires_at, label=label)
+
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid_key")
 
 
 class FirestoreKeyStore:
@@ -153,23 +225,23 @@ class FirestoreKeyStore:
         self.collection.document(key_id).update({"revoked": True})
 
 
-_key_store: Optional[FirestoreKeyStore] = None
+_key_store: Optional[KeyStore] = None
 
 
-def get_key_store() -> FirestoreKeyStore:
+def get_key_store() -> KeyStore:
     global _key_store
     if _key_store is None:
         _key_store = FirestoreKeyStore()
     return _key_store
 
 
-def set_key_store(store: Optional[FirestoreKeyStore]) -> None:
+def set_key_store(store: Optional[KeyStore]) -> None:
     """Override the key store (primarily for tests)."""
     global _key_store
     _key_store = store
 
 
-def verify_plain_key_and_get_record(plain_key: str, *, key_store: Optional[FirestoreKeyStore] = None) -> KeyRecord:
+def verify_plain_key_and_get_record(plain_key: str, *, key_store: Optional[KeyStore] = None) -> KeyRecord:
     """Validate plain key via Firestore and return its metadata."""
     store = key_store or get_key_store()
     return store.get_record_by_plain_key(plain_key)

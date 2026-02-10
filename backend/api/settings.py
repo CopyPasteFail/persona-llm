@@ -33,6 +33,7 @@ class Settings(BaseModel):
     MAX_INPUT_TOKENS: int = Field(default=8000, ge=1, le=10000)
     MAX_OUTPUT_TOKENS: int = Field(..., ge=1, le=2000)
     REQ_TIMEOUT_MS: int = Field(..., ge=1000, le=60000)
+    MOCK_ACCESS_KEYS_PATH: str | None = Field(default=None)
 
     @field_validator("PERSONA_NAME")
     @classmethod
@@ -179,6 +180,7 @@ def load_settings() -> Settings:
             MAX_INPUT_TOKENS=max_input_tokens or 8000,
             MAX_OUTPUT_TOKENS=max_output_tokens,
             REQ_TIMEOUT_MS=os.getenv("REQ_TIMEOUT_MS"),
+            MOCK_ACCESS_KEYS_PATH=os.getenv("MOCK_ACCESS_KEYS_PATH"),
         )
     except ValidationError as e:
         fields = [err["loc"][0] for err in e.errors()]
