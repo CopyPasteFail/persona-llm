@@ -74,77 +74,77 @@ CollectionStore = dict[str, DocumentData]
 
 
 class FakeSnapshot:
-    # Store whether a fake document exists and provide its data.
     def __init__(self, data: DocumentData | None = None):
+        """Store whether a fake document exists and provide its data."""
         self._data = data
         self.exists = data is not None
 
-    # Return the snapshot data in the same shape as the real client.
     def to_dict(self) -> DocumentData:
+        """Return snapshot data in the same shape as the real client."""
         return dict(self._data) if self._data is not None else {}
 
 
 class FakeDocRef:
-    # Represent a document reference and operate on the parent collection data.
     def __init__(self, collection: "FakeCollection", doc_id: str):
+        """Represent a document reference backed by a parent collection."""
         self._collection = collection
         self.id = doc_id
 
-    # Set document data for the referenced document ID.
     def set(self, data: Mapping[str, Any]) -> None:
+        """Set document data for the referenced document ID."""
         self._collection.set_document_data(self.id, data)
 
-    # Read document data into a fake snapshot.
     def get(self) -> FakeSnapshot:
+        """Read document data into a fake snapshot."""
         return FakeSnapshot(self._collection.get_document_data(self.id))
 
-    # Update document data, raising if the document is missing.
     def update(self, data: Mapping[str, Any]) -> None:
+        """Update document data, raising if the document is missing."""
         self._collection.update_document_data(self.id, data)
 
 
 class FakeCollection:
-    # Create an in-memory collection to mimic Firestore behavior.
     def __init__(self):
+        """Create an in-memory collection to mimic Firestore behavior."""
         self._data: CollectionStore = {}
         self._counter = 0
 
-    # Return a document reference, auto-assigning IDs when none are provided.
     def document(self, doc_id: str | None = None) -> FakeDocRef:
+        """Return a document reference, auto-assigning IDs when none are provided."""
         if doc_id is None:
             self._counter += 1
             doc_id = f"auto-{self._counter}"
         return FakeDocRef(self, doc_id)
 
-    # Store document data under the given ID.
     def set_document_data(self, doc_id: str, data: Mapping[str, Any]) -> None:
+        """Store document data under the given ID."""
         self._data[doc_id] = dict(data)
 
-    # Fetch document data for the given ID.
     def get_document_data(self, doc_id: str) -> DocumentData | None:
+        """Fetch document data for the given ID."""
         return self._data.get(doc_id)
 
-    # Update document data under the given ID.
     def update_document_data(self, doc_id: str, data: Mapping[str, Any]) -> None:
+        """Update document data under the given ID."""
         if doc_id not in self._data:
             raise KeyError(MISSING_DOCUMENT_ERROR_MESSAGE)
         self._data[doc_id].update(data)
 
 
 class FakeClient:
-    # Provide collections backed by in-memory data stores.
     def __init__(self):
+        """Provide collections backed by in-memory data stores."""
         self._collections: dict[str, FakeCollection] = {}
 
-    # Return or create a named collection.
     def collection(self, name: str) -> FakeCollection:
+        """Return or create a named collection."""
         if name not in self._collections:
             self._collections[name] = FakeCollection()
         return self._collections[name]
 
 
-# Build CLI args in a consistent shape for tests.
 def make_args_for_command(command: str, **overrides: object) -> argparse.Namespace:
+    """Build CLI args in a consistent shape for tests."""
     defaults: dict[str, object] = {
         ARG_LABEL: None,
         ARG_EXPIRES_IN: DEFAULT_EXPIRES_IN,
@@ -159,11 +159,11 @@ def make_args_for_command(command: str, **overrides: object) -> argparse.Namespa
     return argparse.Namespace(**defaults)
 
 
-# Verify create prints JSON and stores a non-revoked key with expected fields.
 def test_create_prints_json(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    """Print JSON and store a non-revoked key with expected fields."""
     fake_client = FakeClient()
     current_time = CREATE_TIMESTAMP
 
@@ -207,8 +207,8 @@ def test_create_prints_json(
     assert stored_document[REVOKED_FIELD] is False
 
 
-# Verify revoke marks the key as revoked and records who and when.
 def test_revoke_by_key_id(capsys: pytest.CaptureFixture[str]) -> None:
+    """Mark a key as revoked and record who and when."""
     fake_client = FakeClient()
     collection = fake_client.collection(typed_create_access_key.DEFAULT_COLLECTION)
     document_ref = collection.document(REVOKE_KEY_ID)
@@ -236,8 +236,8 @@ def test_revoke_by_key_id(capsys: pytest.CaptureFixture[str]) -> None:
     assert updated_document[REVOKED_AT_FIELD] == current_time
 
 
-# Verify missing keys return a non-zero exit code and a helpful error.
 def test_revoke_missing_key_returns_error(capsys: pytest.CaptureFixture[str]) -> None:
+    """Return non-zero exit code and error for missing keys."""
     fake_client = FakeClient()
     revoke_args = make_args_for_command(COMMAND_REVOKE, key_id=MISSING_KEY_ID)
 

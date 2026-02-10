@@ -31,32 +31,35 @@ class AccessKeyStore(Protocol):
     ) -> str: ...
 
 
-# Builds an async client wired to the mock ASGI app with a seeded access key,
-# so tests can exercise HTTP endpoints and expect authenticated calls to work.
 @pytest_asyncio.fixture
 async def client(
     access_key_store: AccessKeyStore,
 ) -> AsyncGenerator[AsyncClient, None]:
+    """Builds an async client wired to the mock ASGI app with a seeded access key,
+    so tests can exercise HTTP endpoints and expect authenticated calls to work.
+    """
     access_key_store.add_plain_key(TEST_ACCESS_KEY, label="test")
     transport = ASGITransport(app=cast(Any, mock_app))
     async with AsyncClient(transport=transport, base_url=BASE_URL) as client:
         yield client
 
 
-# Calls the health endpoint to verify the service is reachable and reports
-# an OK status payload; expects a 200 response and "ok" status.
 @pytest.mark.asyncio
 async def test_health_ready(client: AsyncClient) -> None:
+    """Calls the health endpoint to verify the service is reachable and reports
+    an OK status payload; expects a 200 response and "ok" status.
+    """
     response = await client.get(HEALTH_ENDPOINT)
     assert response.status_code == HTTP_OK
     response_data: dict[str, Any] = response.json()
     assert response_data.get("status") == EXPECTED_HEALTH_STATUS
 
 
-# Posts a valid access key to the login endpoint to ensure token issuance
-# succeeds; expects HTTP 200 with bearer token data and expiration metadata.
 @pytest.mark.asyncio
 async def test_key_login_returns_token(client: AsyncClient) -> None:
+    """Posts a valid access key to the login endpoint to ensure token issuance
+    succeeds; expects HTTP 200 with bearer token data and expiration metadata.
+    """
     request_payload = {"key": TEST_ACCESS_KEY}
     response = await client.post(KEY_LOGIN_ENDPOINT, json=request_payload)
     assert response.status_code == HTTP_OK
@@ -67,20 +70,22 @@ async def test_key_login_returns_token(client: AsyncClient) -> None:
     assert "expires_at" in response_data
 
 
-# Sends a chat request without auth headers to confirm access control
-# is enforced; expects HTTP 401 unauthorized.
 @pytest.mark.asyncio
 async def test_chat_requires_auth(client: AsyncClient) -> None:
+    """Sends a chat request without auth headers to confirm access control
+    is enforced; expects HTTP 401 unauthorized.
+    """
     request_payload = {"question": SAMPLE_QUESTION}
     response = await client.post(CHAT_ENDPOINT, json=request_payload)
     assert response.status_code == HTTP_UNAUTHORIZED
 
 
-# Logs in to obtain a bearer token, then calls the chat endpoint with auth
-# to validate response shape and content sanity; expects HTTP 200 with
-# answer, citations, and usage fields populated.
 @pytest.mark.asyncio
 async def test_chat_basic(client: AsyncClient) -> None:
+    """Logs in to obtain a bearer token, then calls the chat endpoint with auth
+    to validate response shape and content sanity; expects HTTP 200 with
+    answer, citations, and usage fields populated.
+    """
     login_response = await client.post(
         KEY_LOGIN_ENDPOINT,
         json={"key": TEST_ACCESS_KEY},

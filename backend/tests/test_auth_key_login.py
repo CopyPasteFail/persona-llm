@@ -56,10 +56,11 @@ class AccessKeyStore(Protocol):
     ) -> str: ...
 
 
-# Resets the key-login rate limiters before each test by reinitializing
-# limiter instances so tests run with known defaults.
 @pytest.fixture(autouse=True)
 def reset_key_login_limiters(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Resets the key-login rate limiters before each test by reinitializing
+    limiter instances so tests run with known defaults.
+    """
     monkeypatch.setattr(
         security,
         KEY_LOGIN_IP_LIMITER_ATTR,
@@ -78,29 +79,32 @@ def reset_key_login_limiters(monkeypatch: pytest.MonkeyPatch) -> None:
     )
 
 
-# Builds an async HTTP client for the mock app so tests can perform requests
-# against the key-login endpoint and validate responses.
 @pytest_asyncio.fixture
 async def client(access_key_store: AccessKeyStore) -> AsyncGenerator[AsyncClient, None]:
+    """Builds an async HTTP client for the mock app so tests can perform requests
+    against the key-login endpoint and validate responses.
+    """
     transport = ASGITransport(app=cast(Any, mock_app))
     async with AsyncClient(transport=transport, base_url=TEST_BASE_URL) as async_client:
         yield async_client
 
 
-# Posts an unknown key and expects the API to reject it with HTTP 401 and
-# an "invalid_key" detail in the response payload.
 @pytest.mark.asyncio
 async def test_key_login_invalid_key(client: AsyncClient) -> None:
+    """Posts an unknown key and expects the API to reject it with HTTP 401 and
+    an "invalid_key" detail in the response payload.
+    """
     response = await client.post(AUTH_KEY_LOGIN_ENDPOINT, json={KEY_FIELD: UNKNOWN_KEY})
     assert response.status_code == HTTP_STATUS_UNAUTHORIZED
     response_data: dict[str, Any] = response.json()
     assert response_data[DETAIL_FIELD] == INVALID_KEY_DETAIL
 
 
-# Seeds an expired key and verifies the login request returns HTTP 401 with
-# a "key_expired" detail in the response body.
 @pytest.mark.asyncio
 async def test_key_login_expired_key(client: AsyncClient, access_key_store: AccessKeyStore) -> None:
+    """Seeds an expired key and verifies the login request returns HTTP 401 with
+    a "key_expired" detail in the response body.
+    """
     access_key_store.add_plain_key(
         KEY_LOGIN_TEST_KEY,
         expires_at=datetime.now(timezone.utc) - timedelta(minutes=EXPIRED_KEY_MINUTES),
@@ -111,10 +115,11 @@ async def test_key_login_expired_key(client: AsyncClient, access_key_store: Acce
     assert response_data[DETAIL_FIELD] == EXPIRED_KEY_DETAIL
 
 
-# Seeds a revoked key and ensures the login request returns HTTP 401 with
-# a "key_revoked" detail in the response payload.
 @pytest.mark.asyncio
 async def test_key_login_revoked_key(client: AsyncClient, access_key_store: AccessKeyStore) -> None:
+    """Seeds a revoked key and ensures the login request returns HTTP 401 with
+    a "key_revoked" detail in the response payload.
+    """
     access_key_store.add_plain_key(KEY_LOGIN_TEST_KEY, revoked=True)
     response = await client.post(AUTH_KEY_LOGIN_ENDPOINT, json={KEY_FIELD: KEY_LOGIN_TEST_KEY})
     assert response.status_code == HTTP_STATUS_UNAUTHORIZED
@@ -122,10 +127,11 @@ async def test_key_login_revoked_key(client: AsyncClient, access_key_store: Acce
     assert response_data[DETAIL_FIELD] == REVOKED_KEY_DETAIL
 
 
-# Seeds a valid key and verifies the login request returns HTTP 200 with
-# bearer token fields and a populated expiration value.
 @pytest.mark.asyncio
 async def test_key_login_success(client: AsyncClient, access_key_store: AccessKeyStore) -> None:
+    """Seeds a valid key and verifies the login request returns HTTP 200 with
+    bearer token fields and a populated expiration value.
+    """
     access_key_store.add_plain_key(KEY_LOGIN_TEST_KEY, label=SUCCESS_KEY_LABEL)
     response = await client.post(AUTH_KEY_LOGIN_ENDPOINT, json={KEY_FIELD: KEY_LOGIN_TEST_KEY})
     assert response.status_code == HTTP_STATUS_OK
@@ -135,14 +141,15 @@ async def test_key_login_success(client: AsyncClient, access_key_store: AccessKe
     assert response_data[RESPONSE_FIELD_EXPIRES_AT]
 
 
-# Forces tight rate limits, performs allowed logins, then checks the next
-# login returns HTTP 429 with a "rate_limited" detail.
 @pytest.mark.asyncio
 async def test_key_login_rate_limited(
     client: AsyncClient,
     access_key_store: AccessKeyStore,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """Forces tight rate limits, performs allowed logins, then checks the next
+    login returns HTTP 429 with a "rate_limited" detail.
+    """
     access_key_store.add_plain_key(KEY_LOGIN_TEST_KEY)
     tight_ip_limiter = security.SlidingWindowRateLimiter(
         TIGHT_RATE_LIMIT_MAX_ATTEMPTS,
@@ -168,14 +175,15 @@ async def test_key_login_rate_limited(
     assert response_data[DETAIL_FIELD] == RATE_LIMITED_DETAIL
 
 
-# Enables session cookie settings and verifies a successful login returns
-# HTTP 200 and sets the expected cookie attributes.
 @pytest.mark.asyncio
 async def test_key_login_sets_cookie_when_enabled(
     client: AsyncClient,
     access_key_store: AccessKeyStore,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """Enables session cookie settings and verifies a successful login returns
+    HTTP 200 and sets the expected cookie attributes.
+    """
     access_key_store.add_plain_key(KEY_LOGIN_TEST_KEY, label=SESSION_LABEL)
     monkeypatch.setattr(security.settings, SETTINGS_SESSION_COOKIE_ENABLED_ATTR, True)
     monkeypatch.setattr(security.settings, SETTINGS_SESSION_COOKIE_NAME_ATTR, SESSION_COOKIE_NAME)

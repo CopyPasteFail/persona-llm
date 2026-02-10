@@ -17,7 +17,7 @@ FIRST_PERSON_PHRASES = [" I ", " my ", " me "]
 HTTP_OK_STATUS = 200
 TEST_BASE_URL = "http://test"
 TEST_KEY = "persona-voice-key"
-TEST_QUESTION = "What did Omer do with Kubernetes at Nexyte in 2024?"
+TEST_QUESTION = "What did John do with Kubernetes at Google in 2021?"
 
 
 class AccessKeyStore(Protocol):
@@ -40,7 +40,7 @@ async def test_client(
 @pytest.mark.asyncio
 async def test_first_person_normalization(test_client: AsyncClient) -> None:
     """
-    The mock normalizes third-person mentions of 'Omer' to first person.
+    The mock normalizes third-person mentions of 'John' to first person.
     This is a sanity check to ensure the normalization logic is working.
     """
     login_response: Response = await test_client.post(
