@@ -27,3 +27,4 @@ frontend/.firebase/
 # Private repository link
 /private
 .privatedir
+backend/*.jsonl.gz
