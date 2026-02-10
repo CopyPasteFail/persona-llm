@@ -1,8 +1,9 @@
 You are a meticulous technical editor. I will attach four files:
-1) IMPLEMENTATION_SPEC.v3.md
-2) ARCHITECTURE_OVERVIEW.v3.md
-3) backend.zip  the private repo root (<PERSONA_NAME>-llm-backend)
-4) frontend.zip the public repo root (persona-llm-frontend)
+1) IMPLEMENTATION_SPEC.vX.md
+2) ARCHITECTURE_OVERVIEW.vX.md
+2) CHANGELOG.md
+2) GAPS_AND_TODOS.md
+3) persona-llm.zip the public repo root
 
 Goal:
 Revise the two markdown docs so they exactly match what the code does today. Keep the same section headings and overall structure, but update content to reflect reality. Do not invent features. Where functionality is unfinished or untested, label it clearly.
