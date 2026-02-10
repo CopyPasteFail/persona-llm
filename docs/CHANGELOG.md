@@ -1,8 +1,5 @@
 # V4 to V5
 
-Updated on 2025-08-30 19:15:42 UTC to reflect the merged mono-repo and current code state.
-
-## Docs vs v4
 - Repos merged into a single public repo with `api/`, `jobs/`, and `web/` in one tree. Prior v4 assumed separate repos. fileciteturn0file3 fileciteturn0file1
 - Frontend now present under `web/`; previous docs marked frontend as unverified. Verified structure and environment files existence, functional details still require real backend. fileciteturn0file3
 - Environment variables list updated based on code scanning. Placeholders still disallowed by settings loader.
