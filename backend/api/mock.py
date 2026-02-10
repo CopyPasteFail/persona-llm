@@ -3,6 +3,7 @@ from __future__ import annotations
 import time
 import uuid
 import logging
+from contextlib import asynccontextmanager
 from pathlib import Path
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,8 +15,27 @@ from .security import get_current_session
 from .retrieval import normalize_question_for_first_person
 from .keys import JsonKeyStore, set_key_store
 
-app = FastAPI(title="Persona LLM API (mock)", version="0.0.0-mock")
 logger = logging.getLogger("api.mock")
+
+def _resolve_mock_key_store_path() -> Path | None:
+    if settings.MOCK_ACCESS_KEYS_PATH:
+        return Path(settings.MOCK_ACCESS_KEYS_PATH).expanduser()
+    default_path = Path(__file__).resolve().parents[1] / "mock_access_keys.json"
+    return default_path if default_path.exists() else None
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    path = _resolve_mock_key_store_path()
+    if not path:
+        yield
+        return
+    set_key_store(JsonKeyStore(path))
+    logger.info("mock key store enabled: %s", path)
+    yield
+
+
+app = FastAPI(title="Persona LLM API (mock)", version="0.0.0-mock", lifespan=lifespan)
 
 # CORS for local dev
 origins = [
@@ -31,23 +51,6 @@ app.add_middleware(
 )
 
 app.include_router(auth_router)
-
-
-def _resolve_mock_key_store_path() -> Path | None:
-    if settings.MOCK_ACCESS_KEYS_PATH:
-        return Path(settings.MOCK_ACCESS_KEYS_PATH).expanduser()
-    default_path = Path(__file__).resolve().parents[1] / "mock_access_keys.json"
-    return default_path if default_path.exists() else None
-
-
-@app.on_event("startup")
-def _configure_mock_key_store() -> None:
-    path = _resolve_mock_key_store_path()
-    if not path:
-        return
-    set_key_store(JsonKeyStore(path))
-    logger.info("mock key store enabled: %s", path)
-
 
 @app.get("/health")
 def health():
