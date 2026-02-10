@@ -198,6 +198,24 @@
 }
 ```
 
+---
+
+## 12. Embedding Batch Size
+
+**What:** Number of fragments sent per Vertex AI embeddings request (`--batch-size`, default 16).
+
+**Alternatives considered:** Larger batches (e.g., 50–250) vs. very small batches (e.g., 1–4).
+
+**Pros:**
+- Larger: higher throughput, fewer API calls, better server utilization.
+- Smaller: lower per-request latency, simpler retries, lower memory footprint.
+
+**Cons:**
+- Larger: higher risk of timeouts/failures, bigger payloads, more memory per call.
+- Smaller: lower throughput, more API calls, higher chance of hitting rate limits.
+
+**Decision:** Use a moderate default (16) to cut round trips without risking payload limits. Increase for bulk backfills on stable networks; decrease if reliability/latency is critical or if service/model limits are tight.
+
 **Query usage:**
 - ANN call with metadata filter: `tags CONTAINS "role:infra"`.
 - Rerank boost: `tags CONTAINS "topic:kubernetes"`.
