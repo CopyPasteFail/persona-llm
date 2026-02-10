@@ -19,6 +19,7 @@ help:
 	@echo "  test-int     - run integration tests against real backend (requires GCP + uvicorn)"
 	@echo "  check        - quick import check"
 	@echo "  build_datapoints - build embedding datapoints JSONL for upsert"
+	@echo "  test-retrieval-vector - run vector adapter unit tests"
 	@echo "  envs         - print required env variables"
 	@echo "  clean        - remove caches"
 	@echo "  clean-all    - remove caches and venv"
@@ -56,6 +57,9 @@ test-vector-live: $(VENV)/bin/activate
 	embedding=`$(PY) -m scripts.emit_test_embedding` || exit 1; \
 	test -n "$$embedding" || { echo "Failed to derive embedding from $(DATAPOINTS_FILE)"; exit 1; }; \
 	RUN_VERTEX_SEARCH_TEST=1 VERTEX_TEST_EMBEDDING="$$embedding" $(PY) -m pytest -q tests/test_vector_search_integration.py
+
+test-retrieval-vector: $(VENV)/bin/activate
+	$(PY) -m pytest -q tests/test_retrieval_vector.py
 
 check: $(VENV)/bin/activate
 	$(PY) -c "import api.main, api.mock, api.retrieval, api.llm, api.settings"
