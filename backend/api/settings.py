@@ -125,7 +125,7 @@ def _load_env_files_if_available() -> tuple[Path | None, Path | None]:
     env_path = Path(env_dir).expanduser().resolve() / "secrets" / "backend.env"
     common_env_path = env_path.with_name("common.env")
 
-    missing = [str(p) for p in (common_env_path, env_path) if not p.exists()]
+    missing: list[str] = [str(p) for p in (common_env_path, env_path) if not p.exists()]
     if missing:
         raise RuntimeError(f"Missing secrets file(s): {', '.join(missing)}")
 
@@ -138,13 +138,36 @@ def _missing_env_vars() -> list[str]:
     """List required env names that are unset/empty, leveraging str typing."""
     return [name for name in REQUIRED_ENV_VARS if not os.getenv(name)]
 
+def _require_env(name: str) -> str:
+    value = os.getenv(name)
+    if value is None or value == "":
+        raise RuntimeError(f"Missing required env var: {name}")
+    return value
+
+def _env_int(name: str, default: int | None = None) -> int | None:
+    value = os.getenv(name)
+    if value is None or value == "":
+        return default
+    return int(value)
+
+def _env_bool(name: str, default: bool) -> bool:
+    value = os.getenv(name)
+    if value is None or value == "":
+        return default
+    normalized = value.strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    return default
+
 def load_settings() -> Settings:
     """Load dotenvs when present, verify required envs, and return typed Settings."""
     env_path, common_env_path = _load_env_files_if_available()
 
     missing_vars = _missing_env_vars()
     if missing_vars:
-        hint_parts = []
+        hint_parts: list[str] = []
         if env_path and common_env_path:
             hint_parts.append(f"checked {common_env_path}")
             hint_parts.append(f"{env_path}")
@@ -155,31 +178,31 @@ def load_settings() -> Settings:
         hint = "; ".join(hint_parts)
         raise RuntimeError(f"Missing required env vars: {sorted(set(missing_vars))}. {hint}")
 
-    bucket_name = os.getenv("BUCKET_NAME")
-    chunk_path = os.getenv("CHUNKS_PATH")
+    bucket_name = _require_env("BUCKET_NAME")
+    chunk_path = _require_env("CHUNKS_PATH")
 
     try:
-        max_input_tokens = os.getenv("MAX_INPUT_TOKENS")
-        max_output_tokens = os.getenv("MAX_OUTPUT_TOKENS")
+        max_input_tokens = _env_int("MAX_INPUT_TOKENS", 8000)
+        max_output_tokens = int(_require_env("MAX_OUTPUT_TOKENS"))
         return Settings(
-            PERSONA_NAME=os.getenv("PERSONA_NAME"),
-            PROJECT_ID=os.getenv("PROJECT_ID"),
-            REGION=os.getenv("REGION"),
-            INDEX_ENDPOINT_ID=os.getenv("INDEX_ENDPOINT_ID"),
-            DEPLOYED_INDEX_ID=os.getenv("DEPLOYED_INDEX_ID"),
+            PERSONA_NAME=_require_env("PERSONA_NAME"),
+            PROJECT_ID=_require_env("PROJECT_ID"),
+            REGION=_require_env("REGION"),
+            INDEX_ENDPOINT_ID=_require_env("INDEX_ENDPOINT_ID"),
+            DEPLOYED_INDEX_ID=_require_env("DEPLOYED_INDEX_ID"),
             BUCKET_NAME=bucket_name,
             CHUNKS_PATH=chunk_path,
-            API_KEY=os.getenv("API_KEY"),
+            API_KEY=_require_env("API_KEY"),
             JWT_SECRET=os.getenv("JWT_SECRET"),
-            JWT_SESSION_TTL_SECONDS=os.getenv("JWT_SESSION_TTL_SECONDS") or 3600,
-            SESSION_COOKIE_ENABLED=os.getenv("SESSION_COOKIE_ENABLED") or False,
+            JWT_SESSION_TTL_SECONDS=_env_int("JWT_SESSION_TTL_SECONDS", 3600),
+            SESSION_COOKIE_ENABLED=_env_bool("SESSION_COOKIE_ENABLED", False),
             SESSION_COOKIE_NAME=os.getenv("SESSION_COOKIE_NAME") or "session",
             SESSION_COOKIE_SAMESITE=os.getenv("SESSION_COOKIE_SAMESITE") or "lax",
-            SESSION_COOKIE_SECURE=os.getenv("SESSION_COOKIE_SECURE") or True,
+            SESSION_COOKIE_SECURE=_env_bool("SESSION_COOKIE_SECURE", True),
             SESSION_COOKIE_PATH=os.getenv("SESSION_COOKIE_PATH") or "/",
             MAX_INPUT_TOKENS=max_input_tokens or 8000,
             MAX_OUTPUT_TOKENS=max_output_tokens,
-            REQ_TIMEOUT_MS=os.getenv("REQ_TIMEOUT_MS"),
+            REQ_TIMEOUT_MS=int(_require_env("REQ_TIMEOUT_MS")),
             MOCK_ACCESS_KEYS_PATH=os.getenv("MOCK_ACCESS_KEYS_PATH"),
         )
     except ValidationError as e:
