@@ -143,7 +143,7 @@ If you see a warning like:
 WARNING: Project <PROJECT_ID> does not have billing linked.
 ```
 
-you need to link a billing account. This is **mandatory** for services such as Cloud Run and Vertex AI. Without billing linked, the rest of the provisioning steps will fail.  
+You need to link a billing account. This is **mandatory** for services such as Cloud Run and Vertex AI. Without billing linked, the rest of the provisioning steps will fail.  
 See [Billing account instructions](#billing-account) below.
 
 After linking, re-run:

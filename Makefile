@@ -1,4 +1,4 @@
-.PHONY: install dev mock build fe-% fe-install be-% be-install require-private require-gcp-env clean clean-all gcp-create-project gcp-set-project gcp-create-bucket gcp-sa-create gcp-sa-delete gcp-sa-bind-roles gcp-sa-roles gcp-sa-key
+.PHONY: install dev mock build fe-% fe-install be-install be-% require-private require-gcp-env clean clean-all gcp-create-project gcp-set-project gcp-create-bucket gcp-sa-create gcp-sa-delete gcp-sa-bind-roles gcp-sa-roles gcp-sa-key
 
 # -------------------------------
 # Private directory resolution
@@ -48,6 +48,9 @@ fe-install:
 # ----- Backend passthrough -----
 be-%: require-private
 	$(MAKE) -C backend $*
+
+be-install: require-private
+	$(MAKE) -C backend install
 
 install:
 	$(MAKE) fe-install
