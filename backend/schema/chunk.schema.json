@@ -9,14 +9,14 @@
   "properties": {
     "schema_version": { "type": "integer", "const": 2 },
 
-    "doc_id":   { "type": "string", "minLength": 1 },       // e.g., "cv-infra-2025"
-    "chunk_id": { "type": "string", "minLength": 1 },       // e.g., "infra-001"
-    "position": { "type": "integer", "minimum": 1 },        // order in document
+    "doc_id":   { "type": "string", "minLength": 1 },
+    "chunk_id": { "type": "string", "minLength": 1 }, 
+    "position": { "type": "integer", "minimum": 1 },
     "text":     { "type": "string", "minLength": 1 },
 
     "role": {
       "type": "string",
-      "enum": ["infra", "product"]                          // collapsed roles
+      "enum": ["infra", "product"]
     },
 
     "topics": {
@@ -34,12 +34,12 @@
       "uniqueItems": true
     },
 
-    "section": { "type": "string", "minLength": 1 },        // e.g., "Experience", "Education"
+    "section": { "type": "string", "minLength": 1 },
 
-    "start_year": { "type": "integer" },                    // optional (use start=end for single-year)
-    "end_year":   { "type": "integer" },                    // optional
+    "start_year": { "type": "integer" },
+    "end_year":   { "type": "integer" },
 
-    "lang": { "type": "string", "minLength": 2 },           // e.g., "en"
+    "lang": { "type": "string", "minLength": 2 },
     "updated_at": { "type": "string", "format": "date-time" },
     "source_uri": { "type": "string", "format": "uri" },
 
