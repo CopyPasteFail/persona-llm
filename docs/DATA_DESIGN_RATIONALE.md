@@ -233,7 +233,7 @@
 
 **Decision:** Use a moderate default (16) to cut round trips without risking payload limits. Increase for bulk backfills on stable networks; decrease if reliability/latency is critical or if service/model limits are tight.
 
-**Related guardrail:** `DATAPOINTS_DIMENSIONS` defaults to `3072` so the embeddings we request from `text-embedding-004` always match the Matching Engine index configuration. Only change it when you plan to recreate the index with a different dimensionality.
+**Related guardrail:** `DATAPOINTS_DIMENSIONS` defaults to the selected model’s native dimensionality (3,072 for `gemini-embedding-001`, 768 for the `text-embedding-00x` family) so the embeddings always match the Matching Engine index configuration. Only change it when you also plan to recreate the index with that different dimensionality.
 
 **Query usage:**
 - ANN call with metadata filter: `tags CONTAINS "role:infra"`.

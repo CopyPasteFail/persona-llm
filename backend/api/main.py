@@ -68,7 +68,7 @@ async def chat(
         norm_q = retrieval.normalize_question_for_first_person(question)
 
         emb = retrieval.embed_query(norm_q)
-        cands = retrieval.search_vector_store(emb, top_k=32)
+        cands = retrieval.search_vector_store(emb, top_k=8)
         selected = retrieval.apply_filters_and_boosting(cands)
 
         # Out-of-scope honesty: if no usable chunks, do not hallucinate

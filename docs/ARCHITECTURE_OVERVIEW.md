@@ -8,7 +8,7 @@ A reusable public showcase where people can query a "persona" LLM representing a
 - Frontend: Next.js static export, hosted on Firebase Hosting
 - Backend: FastAPI on Cloud Run
 - Vector search: Vertex AI Matching Engine (Tree-AH, dot product; use unit-normalized vectors for cosine equivalence)
-- Embeddings: text-embedding-004 (3072d)
+- Embeddings: gemini-embedding-001 (3072d) via Vertex AI (switchable via `DATAPOINTS_MODEL`)
 - Side store: JSONL gzip in GCS bucket, loaded at startup
 - LLM: Gemini 2.0 Flash with strict grounding and short answer style
 - Monitoring: Cloud Logging and Cloud Monitoring metrics. Budget alerts only
