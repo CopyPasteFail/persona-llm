@@ -5,7 +5,6 @@
 - Rate limiting (enhancement): move rate-limit storage to a shared store (Redis/Firestore; currently per-pod in-memory) for multi-instance deployments.
 - Auth/session (enhancement): revoking an access key should immediately invalidate existing JWT sessions (not just block new logins).
 - Auth/session (enhancement): Server-side session invalidation to mitigate stolen-token reuse. Currently, logout is cookie deletion only (no server-side session invalidation). Good enough for small invite-only access-key sharing, and keeps the system stateless.
-- Rate limiting (enhancement): Per-IP limiting on `/chat`.
 
 ## Ingestion
 - (enhancement) Automate the upsert flow (or integrate with `pack_and_push`) if you want a single command to run the whole pipeline. Currently, `jobs/build_datapoints.py` now generates embeddings.
