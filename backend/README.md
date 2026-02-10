@@ -94,8 +94,10 @@ Example JSON:
 ```
 
 ## API
-The canonical API contract and error semantics live in `docs/IMPLEMENTATION_SPEC.md`.
-Summary:
+> The canonical information about the API can be found here:
+> [API contract and error semantics](../docs/IMPLEMENTATION_SPEC.md#backend-api)
+> [Security context (auth, CORS, rate limits, cookies)](../docs/ARCHITECTURE_OVERVIEW.md#security)
+
 - `GET /health` liveness signal.
 - `GET /ready` readiness signal (real app only).
 - `POST /auth/key-login` issues a bearer token.

@@ -56,10 +56,11 @@ Backend configuration is loaded from a dotenv file rather than a global `PRIVATE
 **Public**
 - `GET /health` (liveness) – returns `{ "status": "ok" }`.
 - `GET /ready` (readiness) – returns `{ "ready": true }` when startup completed (local readiness only), otherwise 503.
-- `POST /auth/key-login` – rate-limited, accepts `{ "key": "<access key>" }` and returns a bearer token.
+- `POST /auth/key-login` – accepts `{ "key": "<access key>" }` and returns a bearer token.
 - `POST /auth/logout` – returns 204 and clears the session cookie when enabled.
+
 **Protected**
-- `POST /chat` – requires bearer token or session cookie, accepts JSON and returns structured JSON. Real mode returns 503 when the chunk store is not loaded at startup or downstream services are unavailable.
+- `POST /chat` – accepts JSON and returns structured JSON. Real mode returns 503 when the chunk store is not loaded at startup or downstream services are unavailable.
 
 ### Request schema
 - `question`: str
@@ -158,9 +159,6 @@ See [`DATA_DESIGN_RATIONALE.md`](./DATA_DESIGN_RATIONALE.md) for discussion.
   - `backend/tests/test_normalize_question_punct.py`
   - `backend/tests/test_persona_voice.py`
   - `backend/tests/test_smoke.py`
-
-## Deployment notes
-- Cloud Run and Firebase steps exist in docs, but are not verified in code. Keep them as unverified. Ensure CORS allowlist uses your deployed Hosting origin.
 
 ## Compatibility and tooling
 - Python 3.13 compatible, avoid optional wheels unless verified. `orjson` is optional.

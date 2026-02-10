@@ -76,6 +76,5 @@ Notes:
 ---
 
 ## Notes
-- CORS: the backend allowlists `http://localhost:3000` and your Firebase Hosting URL.
 - `.env.local` is ignored. `.env.local.example` documents variables. `.env.production` has placeholders for static export.
 - Do not run `next export` directly — static export is enabled by `output: 'export'` in `web/next.config.mjs`.
