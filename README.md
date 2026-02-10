@@ -57,7 +57,6 @@ PRIVATE_DIR=/abs/path/to/your-private-overlay make run
 
 
 At this stage you can locally run the mock backend and frontend, see [here](#mode-a-mock-frontend--mock-backend-local).
-The mock backend can use a lightweight JSON access-key store for local testing (see [backend/README.md](backend/README.md))
 
 ## Preparing GCP and Firebase Environments
 
@@ -189,6 +188,7 @@ Create Firestore database (run once per project)
 ```bash
 make gcp-firestore-init
 ```
+
 
 ### Phase 6. Choose your deployment identity
 
@@ -391,6 +391,8 @@ PID=$(lsof -ti :8080) && [ -n "$PID" ] && kill -9 $PID
 
 Open the UI at `http://localhost:8080`
 
+Mock access keys come from [mock_access_keys.json](backend/mock_access_keys.json); the access key value is the `key` field.
+
 ---
 
 ### Mode B: Local frontend + Cloud Run backend
@@ -407,6 +409,10 @@ Run Next.js locally but call the real Cloud Run API.
   ```bash
   make gcp-cloud-run-deploy-mock
   ```
+
+Access keys for the real backend live in Firestore. You can view them in the console [here](https://console.cloud.google.com/firestore/databases/-default-/data/panel).
+
+For managing the keys, see [admin CLI access key management](backend/README.md#admin-cli--access-keys).
 
 3) Verify the deployed API (point at the Cloud Run URL from deploy):
   ```bash
@@ -476,6 +482,32 @@ Static export on Firebase Hosting. API served by Cloud Run.
    ```bash
    make fe-firebase:deploy
    ```
+
+7) Manage Access keys
+  Access keys for the real backend live in Firestore. You can view them in the console [here](https://console.cloud.google.com/firestore/databases/-default-/data/panel).
+
+  For managing the keys, see [admin CLI access key management](backend/README.md#admin-cli--access-keys).
+
+---
+
+## Undeploy / Teardown
+
+### Cloud Run
+Delete the deployed backend service:
+```bash
+make gcp-cloud-run-delete
+```
+
+Delete the deployed mock backend service:
+```bash
+make gcp-cloud-run-delete-mock
+```
+
+### Firebase Hosting
+Disable Hosting for the configured Firebase project:
+```bash
+make fe-firebase:hosting:disable
+```
 
 ## Appendix
 
