@@ -222,9 +222,16 @@ Set up a Matching Engine index before you embed and upsert persona chunks.
    ```
    - Optional: override the configured deployment name with `make gcp-index-deploy DEPLOYED_INDEX_ID=persona-deployment`.
 
-4. After you generate embeddings, upsert datapoints into the deployed index (pass the JSONL vector file via `DATAPOINTS_FILE`):
+4. Generate embedding datapoints for the persona chunks:
    ```bash
-   make gcp-index-upsert DATAPOINTS_FILE=/abs/path/to/vectors.jsonl
+   make be-datapoints
+   ```
+   - Produces `private/persona/data/datapoints.jsonl` with `datapointId` + `featureVector` rows ready for Matching Engine.
+   - Override defaults via `ARGS="--output ... --model text-embedding-005"` as needed.
+
+5. Upsert (update and insert) the datapoints into the deployed index (point `DATAPOINTS_FILE` at the generated file):
+   ```bash
+   make gcp-index-upsert DATAPOINTS_FILE="$PWD/private/persona/data/datapoints.jsonl"
    ```
 
 Record `INDEX_ENDPOINT_ID` (bare endpoint ID), `INDEX_ID`, and `DEPLOYED_INDEX_ID` in `private/secrets/backend.env`. Re-run the upsert target whenever persona data changes.

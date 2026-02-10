@@ -7,7 +7,7 @@
 - Confirm rate limits persistence if scaling beyond one instance.
 
 ## Ingestion
-- Enhance `jobs/pack_and_push.py` to embed and upsert vectors to Vertex AI Matching Engine.
+- `jobs/build_datapoints.py` now generates embeddings, but automate the upsert flow (or integrate with `pack_and_push`) to complete the pipeline.
 - Emit a side-store manifest and checksum for the `CHUNKS_PATH` artifact.
 - Add `make ingest` target.
 

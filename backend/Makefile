@@ -5,7 +5,7 @@ VENV := .venv
 PY := $(VENV)/bin/python
 PIP := $(VENV)/bin/pip
 
-.PHONY: help install run mock test test-voice test-int check envs clean
+.PHONY: help install run mock test test-voice test-int check envs clean datapoints
 
 help:
 	@echo "Targets:"
@@ -16,6 +16,7 @@ help:
 	@echo "  test-voice   - run persona voice + normalization tests (mock)"
 	@echo "  test-int     - run integration tests against real backend (requires GCP + uvicorn)"
 	@echo "  check        - quick import check"
+	@echo "  datapoints   - build embedding datapoints JSONL for upsert"
 	@echo "  envs         - print required env variables"
 	@echo "  clean        - remove caches"
 	@echo "  clean-all    - remove caches and venv"
@@ -36,6 +37,9 @@ mock: $(VENV)/bin/activate
 
 pack_and_push: $(VENV)/bin/activate
 	$(PY) jobs/pack_and_push.py
+
+datapoints: $(VENV)/bin/activate
+	$(PY) jobs/build_datapoints.py $(ARGS)
 
 test: $(VENV)/bin/activate
 	$(PY) -m pytest -q tests/test_smoke.py
