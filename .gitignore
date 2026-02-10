@@ -1,0 +1,36 @@
+# Node
+node_modules/
+frontend/node_modules/
+frontend/web/node_modules/
+
+frontend/web/.next/
+frontend/web/out/
+frontend/web/.turbo/
+
+# Python
+backend/.venv/
+*.pyc
+backend/__pycache__/
+backend/.pytest_cache/
+backend/config/settings.yaml
+
+# Env files
+*.env
+*.env.local
+*.env.production
+frontend/.env*
+!frontend/.env.example
+backend/.env*
+
+# OS and editors
+.DS_Store
+.idea/
+.vscode/
+
+# Build artifacts
+dist/
+build/
+coverage/
+
+# Firebase
+frontend/.firebase/

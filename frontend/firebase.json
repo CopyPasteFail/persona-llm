@@ -1,0 +1,10 @@
+{
+  "hosting": {
+    "public": "web/out",
+
+    "ignore": [
+      "**/.*",
+      "**/node_modules/**"
+    ]
+  }
+}
