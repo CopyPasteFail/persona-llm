@@ -7,7 +7,7 @@ PIP := $(VENV)/bin/pip
 
 include ../make/env.mk
 
-.PHONY: help install run mock test test-voice test-int test-vector-live check envs clean build_datapoints
+.PHONY: help install run run-debug mock test test-voice test-int test-vector-live check envs clean build_datapoints
 
 help:
 	@echo "Targets:"
@@ -33,7 +33,10 @@ $(VENV)/bin/activate: requirements.txt
 install: $(VENV)/bin/activate
 
 run: $(VENV)/bin/activate
-	$(PY) -m uvicorn api.main:app --reload --port 8000
+	$(RUN_ENV) $(PY) -m uvicorn api.main:app --reload --port 8000
+
+run-debug: RUN_ENV=RETRIEVAL_DEBUG=1 UVICORN_LOG_LEVEL=debug
+run-debug: run
 
 mock: $(VENV)/bin/activate
 	$(PY) -m uvicorn api.mock:app --reload --port 8080

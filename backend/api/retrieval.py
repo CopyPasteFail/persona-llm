@@ -15,6 +15,7 @@ import gzip
 import io
 import itertools
 import json
+import logging
 import math
 import os
 import re
@@ -40,6 +41,10 @@ from .settings import settings
 
 # Apostrophe: support curly and straight
 _APOS = r"[’']"
+
+logger = logging.getLogger(" api.retrieval")
+if os.getenv("RETRIEVAL_DEBUG") == "1":
+    logger.setLevel(logging.DEBUG)
 
 
 def _persona_variants() -> list[str]:
@@ -216,7 +221,14 @@ def search_vector_store(embedding: Optional[Sequence[float]], top_k: int = 8) ->
 
     normalized = _l2_normalize(vector)
     client = _get_vector_client()
-    return client.query(normalized, top_k=top_k)
+    neighbors = client.query(normalized, top_k=top_k)
+    logger.debug(
+        " vector_search: top_k=%d neighbors=%d distances=%s",
+        top_k,
+        len(neighbors),
+        [float(n.get("distance", 0.0)) for n in neighbors[:5]],
+    )
+    return neighbors
 
 _MAX_CONTEXT_CHUNKS = 8
 _ROLE_BOOST = 0.05
@@ -450,6 +462,15 @@ def configure_chunk_store(chunks: Optional[Iterable[Mapping[str, Any]]]) -> None
         _chunks_by_id = mapping
         _bm25_index = _Bm25Index(mapping) if mapping else None
 
+def warm_chunk_store() -> bool:
+    """
+    Force-load the chunk side store so Cloud Run knows whether it is ready.
+    Returns True if any chunks were loaded.
+    """
+    _ensure_chunk_store_loaded()
+    size = len(_chunks_by_id or {})
+    logger.info(" Loaded %d persona chunks into memory", size)
+    return bool(size)
 
 def _resolve_local_chunks_path(name: str) -> Optional[Path]:
     candidate = Path(name)

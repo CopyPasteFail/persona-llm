@@ -1,9 +1,8 @@
-# Version 5
+# Version 6
 
 ## Backend
 - Strengthen retrieval in `api/retrieval.py`: expand tests around `embed_query`, `search_vector_store`, `apply_filters_and_boosting`, and `build_context_prompt`, and validate live client integration.
-- Wire LLM call in `api/llm.py::call_gemini_flash` with limits from settings.
-- Replace `/chat` `NotImplementedError` with real response. Add structured success logs.
+- Add regression tests + observability for the Gemini client (`api/llm.py::call_gemini_flash`): stubbed unit tests, usage parsing coverage, and explicit timeout/error handling.
 - Confirm rate limits persistence if scaling beyond one instance.
 
 ## Ingestion
@@ -31,7 +30,7 @@ References to prior docs for context: fileciteturn0file2 filecite
 
 # V4
 
-## Must-do to enable real mode
+## Must-do to enable real mode *(completed in v6, retained for reference)*
 - Implement embeddings and vector search:
   - `api/retrieval.py::embed_query`.
   - `api/retrieval.py::search_vector_store`.
