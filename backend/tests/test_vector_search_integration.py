@@ -23,7 +23,15 @@ DEFAULT_VERTEX_TEST_TOP_K = 4
 
 @pytest.mark.integration
 def test_vertex_vector_search_live_roundtrip():
-    """Optional live test; requires credentials and a real Matching Engine deployment."""
+    """Verify live Vertex search returns a list of results.
+
+    What is tested:
+        search_vector_store integration against the real Matching Engine endpoint.
+    How it's tested:
+        Parse env-provided embedding, call search_vector_store, and inspect output.
+    Expected result format:
+        The result is a list (contents vary with live service).
+    """
     if os.getenv(RUN_VERTEX_SEARCH_ENV_VAR) != "1":
         pytest.skip(f"Set {RUN_VERTEX_SEARCH_ENV_VAR}=1 to enable live vector search test")
 

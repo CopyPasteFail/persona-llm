@@ -108,7 +108,7 @@ def test_split_sentences_returns_single_fragment_when_under_limit() -> None:
     How it's tested:
         Call split_sentences with TEXT_SHORT and a max_chars value larger than
         the input length.
-    Expected result:
+    Expected result format:
         The returned list contains exactly one element equal to TEXT_SHORT.
     """
     # Arrange
@@ -129,7 +129,7 @@ def test_split_sentences_splits_on_sentence_boundaries_when_over_limit() -> None
         while respecting the max_chars bound.
     How it's tested:
         Call split_sentences with TEXT_LONG and a small max_chars limit.
-    Expected result:
+    Expected result format:
         The result has more than one fragment and every fragment length is
         less than or equal to max_chars.
     """
@@ -151,7 +151,7 @@ def test_deterministic_id_returns_stable_hex_fragment() -> None:
         Deterministic IDs should be reproducible and have the expected format.
     How it's tested:
         Call deterministic_id twice with the same input string.
-    Expected result:
+    Expected result format:
         Both outputs match, have length EXPECTED_ID_LENGTH, and match the
         hex-only regex pattern.
     """
@@ -177,7 +177,7 @@ def test_build_metadata_includes_expected_fields_and_copies_collections() -> Non
     How it's tested:
         Build a chunk dict with all expected fields, call _build_metadata, and
         compare the output against known values.
-    Expected result:
+    Expected result format:
         Metadata contains the expected scalar fields and list contents, plus
         fragment_index/fragment_count, and list values are new lists.
     """
@@ -237,7 +237,7 @@ def test_load_chunks_raises_on_schema_violation(tmp_path: Path) -> None:
     How it's tested:
         Write a schema file, then a JSONL file containing one valid chunk and
         one invalid chunk (missing a required field), and iterate _load_chunks.
-    Expected result:
+    Expected result format:
         A ValidationError is raised when the invalid chunk is processed.
     """
     # Arrange
@@ -281,7 +281,7 @@ def test_build_persona_records_splits_text_and_sets_fragment_metadata(
     How it's tested:
         Write a schema and a JSONL file with a two-sentence text, then call
         build_persona_records with a small max_chars value.
-    Expected result:
+    Expected result format:
         Multiple records are returned, record IDs start with the base chunk ID,
         and fragment_index/fragment_count are set appropriately.
     """
@@ -321,7 +321,7 @@ def test_serialize_records_returns_expected_payload_and_filename() -> None:
     How it's tested:
         Serialize two minimal records and inspect the returned payload and
         filename.
-    Expected result:
+    Expected result format:
         The filename has the expected prefix/suffix, the payload decodes into
         two JSON lines, and the first line matches the first record ID.
     """
@@ -353,7 +353,7 @@ def test_sha256_digest_matches_expected_value(tmp_path: Path) -> None:
     How it's tested:
         Write FILE_CONTENT_BYTES to disk and compare _sha256_digest against a
         locally computed hashlib.sha256 hexdigest.
-    Expected result:
+    Expected result format:
         The computed digest equals the expected_digest string.
     """
     # Arrange
@@ -379,7 +379,7 @@ def test_write_manifest_creates_manifest_with_checksum(tmp_path: Path) -> None:
     How it's tested:
         Create a fake artifact file, minimal schema/input files, then call
         _write_manifest and read the JSON output.
-    Expected result:
+    Expected result format:
         The manifest filename ends with EXPECTED_MANIFEST_SUFFIX, the recorded
         size matches the artifact, the checksum matches SHA-256, and the
         generated_at timestamp ends with "Z".
@@ -423,7 +423,7 @@ def test_resolve_existing_path_returns_existing_candidate(
     How it's tested:
         Create a file under a root directory, set cwd to tmp_path, then call
         resolve_existing_path with the filename and root directory.
-    Expected result:
+    Expected result format:
         The returned path equals the path to the created file.
     """
     # Arrange
@@ -453,7 +453,7 @@ def test_upload_to_bucket_uses_storage_client_and_returns_uri(
     How it's tested:
         Monkeypatch storage.Client with a fake client that records bucket, object,
         and upload calls; then invoke upload_to_bucket with a temp file.
-    Expected result:
+    Expected result format:
         The returned URI matches the bucket/object pair, the upload was recorded
         once, and the recorded bucket/object names match the inputs.
     """

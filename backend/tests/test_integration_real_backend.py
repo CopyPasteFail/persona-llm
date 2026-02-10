@@ -58,6 +58,15 @@ def http_client() -> Generator[httpx.Client, None, None]:
 
 @pytest.mark.integration
 def test_real_backend_health(base_url: str, http_client: httpx.Client) -> None:
+    """Verify the live health endpoint returns ok.
+
+    What is tested:
+        /health response status and payload.
+    How it's tested:
+        GET the health endpoint on the configured base URL.
+    Expected result format:
+        Status is 200 and JSON contains status == EXPECTED_STATUS.
+    """
     response = http_client.get(
         f"{base_url}{HEALTH_PATH}",
         timeout=HEALTH_TIMEOUT_SECONDS,
@@ -69,7 +78,15 @@ def test_real_backend_health(base_url: str, http_client: httpx.Client) -> None:
 
 @pytest.mark.integration
 def test_real_backend_first_person(base_url: str, http_client: httpx.Client) -> None:
-    """Integration test: requires uvicorn api.main:app running locally with real GCP creds/envs."""
+    """Verify real backend answers in first person.
+
+    What is tested:
+        Auth flow and chat response content against a live backend.
+    How it's tested:
+        Log in with a real access key, then call /chat and inspect the answer.
+    Expected result format:
+        Statuses are 200, answer includes TLDR/Wrap markers and first-person.
+    """
     access_key = _get_access_key()
 
     login_response = http_client.post(

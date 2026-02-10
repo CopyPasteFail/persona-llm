@@ -91,8 +91,14 @@ async def client(access_key_store: AccessKeyStore) -> AsyncGenerator[AsyncClient
 
 @pytest.mark.asyncio
 async def test_key_login_invalid_key(client: AsyncClient) -> None:
-    """Posts an unknown key and expects the API to reject it with HTTP 401 and
-    an "invalid_key" detail in the response payload.
+    """Verify unknown keys are rejected with an invalid_key detail.
+
+    What is tested:
+        Key-login endpoint behavior when the key is not in the store.
+    How it's tested:
+        Post UNKNOWN_KEY to /auth/key-login and inspect the response JSON.
+    Expected result format:
+        Status is 401 and the response detail equals INVALID_KEY_DETAIL.
     """
     response = await client.post(AUTH_KEY_LOGIN_ENDPOINT, json={KEY_FIELD: UNKNOWN_KEY})
     assert response.status_code == HTTP_STATUS_UNAUTHORIZED
@@ -102,8 +108,14 @@ async def test_key_login_invalid_key(client: AsyncClient) -> None:
 
 @pytest.mark.asyncio
 async def test_key_login_expired_key(client: AsyncClient, access_key_store: AccessKeyStore) -> None:
-    """Seeds an expired key and verifies the login request returns HTTP 401 with
-    a "key_expired" detail in the response body.
+    """Verify expired keys are rejected with a key_expired detail.
+
+    What is tested:
+        Key-login behavior when a key is expired.
+    How it's tested:
+        Seed an expired key and post it to /auth/key-login.
+    Expected result format:
+        Status is 401 and the response detail equals EXPIRED_KEY_DETAIL.
     """
     access_key_store.add_plain_key(
         KEY_LOGIN_TEST_KEY,
@@ -117,8 +129,14 @@ async def test_key_login_expired_key(client: AsyncClient, access_key_store: Acce
 
 @pytest.mark.asyncio
 async def test_key_login_revoked_key(client: AsyncClient, access_key_store: AccessKeyStore) -> None:
-    """Seeds a revoked key and ensures the login request returns HTTP 401 with
-    a "key_revoked" detail in the response payload.
+    """Verify revoked keys are rejected with a key_revoked detail.
+
+    What is tested:
+        Key-login behavior when a key is revoked.
+    How it's tested:
+        Seed a revoked key and post it to /auth/key-login.
+    Expected result format:
+        Status is 401 and the response detail equals REVOKED_KEY_DETAIL.
     """
     access_key_store.add_plain_key(KEY_LOGIN_TEST_KEY, revoked=True)
     response = await client.post(AUTH_KEY_LOGIN_ENDPOINT, json={KEY_FIELD: KEY_LOGIN_TEST_KEY})
@@ -129,8 +147,14 @@ async def test_key_login_revoked_key(client: AsyncClient, access_key_store: Acce
 
 @pytest.mark.asyncio
 async def test_key_login_success(client: AsyncClient, access_key_store: AccessKeyStore) -> None:
-    """Seeds a valid key and verifies the login request returns HTTP 200 with
-    bearer token fields and a populated expiration value.
+    """Verify valid keys return a bearer token payload.
+
+    What is tested:
+        Successful key-login response shape and token metadata.
+    How it's tested:
+        Seed a valid key and post it to /auth/key-login.
+    Expected result format:
+        Status is 200 with token_type, access_token, and expires_at fields.
     """
     access_key_store.add_plain_key(KEY_LOGIN_TEST_KEY, label=SUCCESS_KEY_LABEL)
     response = await client.post(AUTH_KEY_LOGIN_ENDPOINT, json={KEY_FIELD: KEY_LOGIN_TEST_KEY})
@@ -147,8 +171,14 @@ async def test_key_login_rate_limited(
     access_key_store: AccessKeyStore,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Forces tight rate limits, performs allowed logins, then checks the next
-    login returns HTTP 429 with a "rate_limited" detail.
+    """Verify rate limits return a rate_limited detail after max attempts.
+
+    What is tested:
+        Key-login rate limiting across IP and fingerprint limiters.
+    How it's tested:
+        Tighten limiters, perform max allowed logins, then attempt one more.
+    Expected result format:
+        Status is 429 and the response detail equals RATE_LIMITED_DETAIL.
     """
     access_key_store.add_plain_key(KEY_LOGIN_TEST_KEY)
     tight_ip_limiter = security.SlidingWindowRateLimiter(
@@ -181,8 +211,14 @@ async def test_key_login_sets_cookie_when_enabled(
     access_key_store: AccessKeyStore,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Enables session cookie settings and verifies a successful login returns
-    HTTP 200 and sets the expected cookie attributes.
+    """Verify successful logins set a session cookie when enabled.
+
+    What is tested:
+        Cookie-based session issuance behavior from key login.
+    How it's tested:
+        Enable session cookie settings and post a valid key.
+    Expected result format:
+        Status is 200 and Set-Cookie includes name, path, samesite, and secure.
     """
     access_key_store.add_plain_key(KEY_LOGIN_TEST_KEY, label=SESSION_LABEL)
     monkeypatch.setattr(security.settings, SETTINGS_SESSION_COOKIE_ENABLED_ATTR, True)

@@ -50,7 +50,15 @@ ESTIMATED_CHARS_PER_TOKEN = 4
 
 
 def test_build_llm_prompt_contract_includes_persona_and_context():
-    """Ensure the prompt payload includes persona name and context chunks."""
+    """Verify prompt payload includes persona and context.
+
+    What is tested:
+        build_llm_prompt message contract and content interpolation.
+    How it's tested:
+        Build a prompt with two chunks and inspect system/user messages.
+    Expected result format:
+        Two messages exist, persona appears in system prompt, and context is listed.
+    """
     context_chunks: list[dict[str, str]] = [
         {"id": FIRST_CHUNK_ID, "text": "Worked on distributed systems."},
         {"id": SECOND_CHUNK_ID, "text": "Shipped data pipelines."},
@@ -81,7 +89,15 @@ def test_build_llm_prompt_contract_includes_persona_and_context():
 
 
 def test_trim_chunks_to_budget_truncates_first_chunk_when_tight():
-    """Verify tight budgets truncate the first chunk to remaining capacity."""
+    """Verify tight budgets truncate the first chunk.
+
+    What is tested:
+        _trim_chunks_to_budget behavior when only one token remains.
+    How it's tested:
+        Compute a max budget with one extra token and trim a long first chunk.
+    Expected result format:
+        Only the first chunk remains and its text is truncated to token budget.
+    """
     system_prompt = SYSTEM_PROMPT_PLACEHOLDER
     question = QUESTION_PLACEHOLDER
     context_chunks: list[dict[str, str]] = [
@@ -111,7 +127,15 @@ def test_trim_chunks_to_budget_truncates_first_chunk_when_tight():
 
 
 def test_trim_chunks_to_budget_keeps_first_full_chunk_when_budget_exact():
-    """Confirm exact budgets allow the first full chunk without truncation."""
+    """Verify exact budgets keep the first chunk intact.
+
+    What is tested:
+        _trim_chunks_to_budget behavior when budget equals first chunk cost.
+    How it's tested:
+        Compute a max budget equal to base + first block tokens and trim.
+    Expected result format:
+        Only the first chunk remains and its text is unchanged.
+    """
     system_prompt = SYSTEM_PROMPT_PLACEHOLDER
     question = QUESTION_PLACEHOLDER
     context_chunks: list[dict[str, str]] = [
