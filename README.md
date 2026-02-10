@@ -1,46 +1,50 @@
-# persona-llm public monorepo
+# persona-llm
 
-Public monorepo for the persona demo. It contains the frontend in `web` and the backend in `backend`. Persona data and secrets live in a private submodule named `private` that you host yourself.
+Monorepo for the persona demo. Frontend in `web`, backend in `backend`. Persona data and secrets live in a private submodule at `private/`.
 
-## Layout
+## Quick start
 
-    persona-llm/
-    ├─ web/                  # Next.js app
-    ├─ backend/              # FastAPI app
-    ├─ private-template/     # Example layout for your private repo
-    │  ├─ persona/
-    │  │  ├─ persona.yaml
-    │  │  ├─ starters.json
-    │  │  ├─ assets/
-    │  │  └─ vector-seed/
-    │  └─ secrets.example/
-    │     ├─ backend.env.example
-    │     └─ frontend.env.example
-    ├─ .gitmodules           # Placeholder submodule config
-    ├─ .gitignore
-    └─ Makefile
+```bash
+git submodule update --init --recursive   # after you add your private repo
+make install
+make dev
+```
 
-## Private repo as a submodule
+## Repo layout
 
-Create your own private repo and copy `private-template/` into it. Then wire it here as a submodule.
+- [`web/`](./frontend/README.md) — Next.js app, scripts and env vars
+- [`backend/`](./backend/README.md) — FastAPI app, env vars, API docs
+- `private/` — your private submodule (not included here). See below.
+- `private-template/` — example structure for your private repo
 
-    git submodule add -b main git@github.com:YOUR_USER/persona-llm-private.git private
-    git submodule update --init --recursive
+## Private submodule
+
+Create a private repo from `private-template/`, then add it:
+
+```bash
+git submodule add -b main https://github.com/YOUR_USER/YOUR_PRIVATE_REPO_NAME.git private
+git submodule update --init --recursive
+```
 
 Or use the Makefile helper:
 
-    make add-private PRIVATE_REMOTE=git@github.com:YOUR_USER/persona-llm-private.git
+```bash
+make add-private PRIVATE_REMOTE=git@github.com:YOUR_USER/persona-llm-private.git
+```
 
 Your private repo will contain:
 - `persona/` with `persona.yaml`, `starters.json`, optional assets and seed docs
 - `secrets/` with real `.env` files or SOPS encrypted files
 
-## Install and run
+## Develop
 
-    make install
-    make dev
+- Run both apps: `make dev`
+- Mock mode if available: `make dev:mock`
+- Build: `make build`
 
-`make dev:mock` is available if the backend supports it.
+More:
+- Frontend scripts: [`web/README.md`](./web/README.md)
+- Backend commands and API: [`backend/README.md`](./backend/README.md)
 
 ## Notes
 
