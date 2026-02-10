@@ -1,4 +1,5 @@
-# IMPLEMENTATION_SPEC v6
+# IMPLEMENTATION_SPEC
+_Version 6_
 
 ## Repos
 - Public mono-repo: this zip contains both backend and frontend. The backend is in `api/` and jobs under `jobs/`. The frontend is in `web/`. A private folder for secrets may be referenced during runtime, not committed.
@@ -93,7 +94,7 @@ Backend configuration is loaded from a dotenv file rather than a global `PRIVATE
   - `REGION`: GCP region.
   - `INDEX_ENDPOINT_ID`: Vertex AI Index Endpoint ID.
   - `DEPLOYED_INDEX_ID`: Deployed Index resource ID.
-  - `CHUNKS_URI`: `gs://` or `file://` URI of packed chunk data.
+  - `CHUNKS_PATH`: Object name of the packed chunk data.
   - `API_KEY`: Key for calling Vertex AI endpoints.
   - `MAX_INPUT_TOKENS`: Input context budget for LLM calls.
   - `MAX_OUTPUT_TOKENS`: Output budget for LLM calls.

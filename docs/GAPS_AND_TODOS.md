@@ -1,4 +1,4 @@
-# V5
+# Version 5
 
 ## Backend
 - Wire retrieval in `api/retrieval.py`: implement `embed_query`, `search_vector_store`, `apply_filters_and_boosting`, and `build_context_prompt`.
