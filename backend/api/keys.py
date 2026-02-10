@@ -6,7 +6,8 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Iterable, Optional, Protocol, Sequence, TypeVar, cast
+from collections.abc import Iterable as IterableABC
+from typing import Any, Callable, Iterable, Optional, Protocol, Sequence, TypeGuard, TypeVar, cast
 
 import bcrypt
 from fastapi import HTTPException, status
@@ -66,7 +67,10 @@ class FirestoreDocumentReference(Protocol):
 
 
 class FirestoreTransaction(Protocol):
-    def get(self, doc_ref: FirestoreDocumentReference) -> FirestoreDocumentSnapshot: ...
+    def get(
+        self,
+        doc_ref: FirestoreDocumentReference,
+    ) -> FirestoreDocumentSnapshot | Iterable[FirestoreDocumentSnapshot]: ...
 
     def update(self, doc_ref: FirestoreDocumentReference, data: dict[str, Any]) -> Any: ...
 
@@ -92,6 +96,14 @@ class FirestoreClient(Protocol):
     def collection(self, name: str) -> Any: ...
 
     def transaction(self) -> FirestoreTransaction: ...
+
+
+def _is_document_snapshot(obj: Any) -> TypeGuard[FirestoreDocumentSnapshot]:
+    return (
+        hasattr(obj, "to_dict")
+        and hasattr(obj, "id")
+        and hasattr(obj, "exists")
+    )
 
 
 def _ensure_aware(dt: datetime) -> datetime:
@@ -361,15 +373,20 @@ class FirestoreKeyStore:
         document reference, so normalize to a single snapshot.
         """
         snapshot = transaction.get(doc_ref)
-        if hasattr(snapshot, "to_dict"):
+        if _is_document_snapshot(snapshot):
             return snapshot
-        try:
-            return next(iter(snapshot))
-        except StopIteration:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail=ERROR_CODE_INVALID_KEY,
-            )
+        if isinstance(snapshot, IterableABC):
+            try:
+                return next(iter(snapshot))
+            except StopIteration:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail=ERROR_CODE_INVALID_KEY,
+                )
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=ERROR_CODE_INVALID_KEY,
+        )
 
     def _transaction_update(
         self,
