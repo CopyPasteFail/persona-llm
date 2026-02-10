@@ -18,6 +18,8 @@ export PRIVATE_DIR
 # Convenience: secrets paths
 BACKEND_ENV  := $(PRIVATE_DIR)/secrets/backend.env
 FRONTEND_ENV := $(PRIVATE_DIR)/secrets/frontend.env
+-include $(BACKEND_ENV) # Ignore if doesn't exist
+-include $(FRONTEND_ENV) # Ignore if doesn't exist
 
 require-private:
 	@test -d "$(PRIVATE_DIR)" || { echo "Missing PRIVATE_DIR=$(PRIVATE_DIR). Set PRIVATE_DIR, create .privatedir, or add ./private symlink."; exit 1; }
@@ -67,12 +69,19 @@ clean-all:
 # Create a new GCP project
 gcp-create-project: require-private require-gcp-env
 	@gcloud projects create "$(PROJECT_ID)" --name="Persona LLM"
-	@echo "⚠️ Remember to link billing manually if needed:"
+	@echo "⚠️ Remember to link a billing account to the project:"
 	@echo "  gcloud beta billing projects link \"$(PROJECT_ID)\" --billing-account=YOUR_BILLING_ACCOUNT_ID"
 
-# Set active GCP project
-gcp-set-project: require-private require-gcp-env
+# Set active GCP project and show billing info (warn if not linked)
+# Set active GCP project and show billing info (warn if not linked)
+gcp-set-project: require-gcp-env
 	@gcloud config set project "$(PROJECT_ID)"
+	@echo "Checking billing for project $(PROJECT_ID)..."
+	@if billing_info="$$(gcloud beta billing projects describe "$(PROJECT_ID)" 2>/dev/null)"; then \
+		echo "$$billing_info"; \
+	else \
+		echo "WARNING: Project $(PROJECT_ID) does not have billing linked."; \
+	fi
 
 # Create bucket "gs://$(BUCKET_NAME)" in REGION
 gcp-create-bucket: require-private require-gcp-env
