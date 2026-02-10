@@ -1,27 +1,31 @@
-    # Root Makefile for monorepo
-    # After cloning, run:
-    #   git submodule init
-    #   git submodule update
+.PHONY: install dev mock build fe-% be-%
 
-    .PHONY: add-private install dev dev:mock build
+# ----- Generic frontend passthrough -----
+# Usage: make fe-dev, make fe-dev:mock, make fe-build, etc.
+fe-%:
+	npm --prefix frontend run $*
 
-    add-private:
-    	@if [ -z "$$PRIVATE_REMOTE" ]; then echo "Set PRIVATE_REMOTE=git@github.com:<you>/persona-llm-private.git"; exit 1; fi
-    	git submodule add -b main $$PRIVATE_REMOTE private || true
-    	git submodule update --init --recursive
+# ----- Generic backend passthrough -----
+# Usage: make be-dev, make be-test, etc. (delegates to backend/Makefile)
+be-%:
+	$(MAKE) -C backend $*
 
-    install:
-    	npm install
-    	python3.13 -m venv backend/.venv && backend/.venv/bin/pip install -r backend/requirements.txt || true
+# ----- Orchestration -----
+install:
+	$(MAKE) fe-install
+	$(MAKE) be-install
 
-    dev:
-    	( cd backend && ./run-dev.sh || make dev || true ) & \
-		( cd web && npm run dev )
+# Dev: load env from private if present, else fall back
+dev:
+	@set -a; [ -f private/secrets/backend.env ] && . private/secrets/backend.env || true; set +a; \
+	PERSONA_DIR="$${PERSONA_DIR:-private/persona}" $(MAKE) be-dev & \
+	NEXT_PUBLIC_API_URL="$${NEXT_PUBLIC_API_URL:-http://localhost:8080}" $(MAKE) fe-dev
 
-    dev:mock:
-    	( cd backend && make mock || true ) & \
-		( cd web && npm run dev:mock )
+# Mock: always use localhost
+mock:
+	$(MAKE) be-mock & \
+	NEXT_PUBLIC_API_URL=http://localhost:8080 $(MAKE) fe-dev:mock
 
-    build:
-    	( cd backend && make docker-build || true ) & \
-    	( cd web && npm run build )
+build:
+	$(MAKE) be-docker-build
+	$(MAKE) fe-build
