@@ -15,6 +15,7 @@ from .auth import router as auth_router
 from . import retrieval, llm
 
 READY = False
+INIT_DONE = False
 logger = logging.getLogger(" api")
 logging.basicConfig(level=logging.INFO)
 
@@ -39,7 +40,7 @@ app.include_router(auth_router)
 
 @app.on_event("startup")
 def on_startup():
-    global READY
+    global READY, INIT_DONE
     try:
         READY = retrieval.warm_chunk_store()
         if not READY:
@@ -47,10 +48,18 @@ def on_startup():
     except Exception:
         READY = False
         logger.exception("Failed to warm chunk store during startup.")
+    finally:
+        INIT_DONE = True
 
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+@app.get("/ready")
+def ready():
+    if not INIT_DONE:
+        raise HTTPException(status_code=503, detail="not ready")
+    return {"ready": True}
 
 @app.post("/chat")
 async def chat(
@@ -96,9 +105,18 @@ async def chat(
                     "key_id": getattr(session, "key_id", None),
                 }
             )
-            return ChatResponse(answer=answer, citations=[], usage=usage)
+            return ChatResponse(
+                answer=answer,
+                citations=[],
+                usage=usage,
+                input_token_limit=settings.MAX_INPUT_TOKENS,
+            )
 
-        prompt_payload = llm.build_llm_prompt(norm_q, selected)
+        prompt_payload = llm.build_llm_prompt(
+            norm_q,
+            selected,
+            max_input_tokens=settings.MAX_INPUT_TOKENS,
+        )
         answer_text, usage_meta = llm.call_gemini_flash(
             prompt_payload,
             max_output_tokens=settings.MAX_OUTPUT_TOKENS,
@@ -124,7 +142,12 @@ async def chat(
             }
         )
 
-        return ChatResponse(answer=answer_final, citations=citations, usage=usage)
+        return ChatResponse(
+            answer=answer_final,
+            citations=citations,
+            usage=usage,
+            input_token_limit=settings.MAX_INPUT_TOKENS,
+        )
 
     except HTTPException:
         raise

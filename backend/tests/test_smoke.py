@@ -55,7 +55,7 @@ async def test_chat_basic(client):
     assert resp.status_code == 200
     data = resp.json()
     # Contract
-    assert set(data.keys()) == {"answer", "citations", "usage"}
+    assert {"answer", "citations", "usage"}.issubset(data.keys())
     assert isinstance(data["answer"], str) and data["answer"]
     assert isinstance(data["citations"], list) and data["citations"]
     assert "id" in data["citations"][0]

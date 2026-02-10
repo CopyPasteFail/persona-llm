@@ -96,9 +96,10 @@ Backend configuration is loaded from a dotenv file rather than a global `PRIVATE
   - `BUCKET_NAME`: GCS bucket used for persona artifacts.
   - `CHUNKS_PATH`: Object name of the packed chunk data.
   - `API_KEY`: Shared secret for JWT signing fallback and any internal calls; **not** an access key.
-  - `MAX_INPUT_TOKENS`: Input context budget for LLM calls.
+  - `MAX_INPUT_TOKENS`: Input context budget for LLM calls (defaults to 8000 if unset).
   - `MAX_OUTPUT_TOKENS`: Output budget for LLM calls.
-  - `REQ_TIMEOUT_MS`: Request timeout in milliseconds.
+- `REQ_TIMEOUT_MS`: Request timeout in milliseconds.
+  - Applied to outbound calls that accept timeouts (GCS chunk download, Matching Engine queries, Gemini generation). Some SDK calls may ignore this if they lack timeout support.
 
 - **Access keys (Firestore):**
   - Stored in collection `access_keys` with fields: `key_hash` (bcrypt), `key_fingerprint` (SHA-256), `expires_at`, `revoked`, optional `label`, `created_at`, `created_by`, `used_count`, `max_uses`.
@@ -112,14 +113,16 @@ Backend configuration is loaded from a dotenv file rather than a global `PRIVATE
 
 ## Backend API
 ### Endpoints
-- `GET /health` returns `{ "ready": <bool> }`.
-- `POST /chat` accepts JSON and returns structured JSON. The real backend currently returns 503 until retrieval and LLM are wired.
+- `GET /health` returns `{ "status": "ok" }`.
+- `GET /ready` returns `{ "ready": true }` when startup completed (local readiness only), otherwise 503.
+- `POST /chat` accepts JSON and returns structured JSON. Real mode returns 503 when the chunk store is not loaded at startup or downstream services are unavailable.
 ### Request schema
 - `question`: str
 ### Response schema
 - `answer`: str
 - `citations`: List[Citation]
 - `usage`: Usage
+- `input_token_limit`: Optional[int] (echoes the configured MAX_INPUT_TOKENS)
 
 ### Minimal examples
 Mock app (if running at port 8000):
@@ -130,7 +133,7 @@ curl -s -X POST http://localhost:8000/chat -H 'content-type: application/json' -
 
 ## Retrieval and LLM pipeline
 - `api/retrieval.py`: first-person normalization and retrieval pipeline (`embed_query`, `search_vector_store`, `apply_filters_and_boosting`, `build_context_prompt`) implemented; focus now on tests, tuning, and live Vertex integration.
-- `api/llm.py`: `build_llm_prompt` returns the strict format. `call_gemini_flash` not implemented.
+- `api/llm.py`: `build_llm_prompt` returns the strict format, and `call_gemini_flash` is implemented via the Vertex AI Python SDK (Gemini Flash) with basic usage extraction.
 
 ## Ingestion jobs
 - `jobs/pack_and_push.py` validates JSONL against `schema/chunk.schema.json`, and if any bullet **or paragraph** exceeds ~2.2k characters (~450 tokens), splits it by sentence boundaries (never mid-sentence). Writes `chunks-<sha>.jsonl.gz` with enriched metadata and prints a `gs://` URI if a `bucket:` is provided in a YAML file passed with `--settings`.

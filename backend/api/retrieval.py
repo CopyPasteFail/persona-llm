@@ -535,7 +535,7 @@ def _iter_chunk_records() -> Iterable[Dict[str, Any]]:
     client: Any = storage.Client()
     bucket: Any = client.bucket(bucket_id)
     blob: Any = bucket.blob(blob_name)
-    data: bytes = blob.download_as_bytes()
+    data: bytes = blob.download_as_bytes(timeout=settings.request_timeout_seconds)
 
     is_gzip = blob_name.endswith(".gz")
     stream = io.BytesIO(data)
@@ -725,11 +725,19 @@ class _MatchingEngineClient:
 
     def query(self, embedding: Sequence[float], *, top_k: int) -> List[Dict[str, Any]]:
         endpoint = self._ensure_endpoint()
-        responses = endpoint.find_neighbors(
-            deployed_index_id=self._deployed_index_id,
-            queries=[list(embedding)],
-            num_neighbors=top_k,
-        )
+        try:
+            responses = endpoint.find_neighbors(
+                deployed_index_id=self._deployed_index_id,
+                queries=[list(embedding)],
+                num_neighbors=top_k,
+                timeout=settings.request_timeout_seconds,
+            )
+        except TypeError:
+            responses = endpoint.find_neighbors(
+                deployed_index_id=self._deployed_index_id,
+                queries=[list(embedding)],
+                num_neighbors=top_k,
+            )
 
         if not responses:
             return []

@@ -59,6 +59,7 @@ export type ChatResponse = {
   answer: string;
   citations?: Array<{ id: string; title?: string; url?: string }>;
   usage?: { input_tokens?: number; output_tokens?: number };
+  input_token_limit?: number;
 };
 
 export type KeyLoginResponse = {

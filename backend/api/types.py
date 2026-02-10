@@ -19,3 +19,4 @@ class ChatResponse(BaseModel):
     answer: str
     citations: List[Citation]
     usage: Usage
+    input_token_limit: Optional[int] = None

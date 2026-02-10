@@ -18,7 +18,7 @@ export default function IndexPage() {
   const [sessionToken, setSessionToken] = useState<string | null>(null);
   const [cookieSessionActive, setCookieSessionActive] = useState(false);
   const [messages, setMessages] = useState<
-    Array<{ role: "user" | "assistant"; content: string; usage?: Usage }>
+    Array<{ role: "user" | "assistant"; content: string; usage?: Usage; inputTokenLimit?: number }>
   >([]);
 
   const isCookieSession = isCookieMode();
@@ -92,6 +92,7 @@ export default function IndexPage() {
         role: "assistant",
         content: data.answer,
         usage: data.usage,
+        inputTokenLimit: data.input_token_limit,
       }]);
       setQuestion("");
     } catch (err: any) {
@@ -237,7 +238,7 @@ export default function IndexPage() {
                 </div>
               )}
               {messages.map((m, i) => (
-                <Bubble key={i} role={m.role} usage={m.usage}>
+                <Bubble key={i} role={m.role} usage={m.usage} inputTokenLimit={m.inputTokenLimit}>
                   {m.content}
                 </Bubble>
               ))}
@@ -274,7 +275,17 @@ export default function IndexPage() {
   );
 }
 
-function Bubble({ role, children, usage }: { role: "user" | "assistant"; children: any; usage?: Usage }) {
+function Bubble({
+  role,
+  children,
+  usage,
+  inputTokenLimit,
+}: {
+  role: "user" | "assistant";
+  children: any;
+  usage?: Usage;
+  inputTokenLimit?: number;
+}) {
   const isUser = role === "user";
   return (
     <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
@@ -289,6 +300,7 @@ function Bubble({ role, children, usage }: { role: "user" | "assistant"; childre
           <div className="mt-2 flex gap-2 text-[10px] text-zinc-500">
             <span>in: {usage.input_tokens}</span>
             <span>out: {usage.output_tokens}</span>
+            {typeof inputTokenLimit === "number" && <span>limit: {inputTokenLimit}</span>}
           </div>
         )}
       </div>
