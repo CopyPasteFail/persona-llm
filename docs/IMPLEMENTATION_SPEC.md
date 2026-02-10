@@ -1,5 +1,5 @@
 # IMPLEMENTATION_SPEC
-_Version 6_
+_Version 6.02_
 
 ## Repos
 - Public mono-repo: this zip contains both backend and frontend. The backend is in `api/` and jobs under `jobs/`. The frontend is in `web/`. A private folder for secrets may be referenced during runtime, not committed.
@@ -160,7 +160,7 @@ For a human-readable guide explaining the meaning, use cases, benefits, and trad
    - Write `chunks-<sha>.jsonl.gz`.
    - Upload to GCS (sidecar store).
 3. **Embedding + upsert** *(not yet wired)*
-   - Embed each chunk with `text-embedding-004`.
+   - Embed each chunk with `text-embedding-004` (outputs 3,072-dimensional vectors).
    - Upsert `{vector, metadata}` to Vertex AI Matching Engine.
 
 ### Deployment/runtime stage (every query)
