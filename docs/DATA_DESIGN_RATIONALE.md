@@ -82,7 +82,23 @@
 
 ---
 
-## 6. Hybrid Retrieval and Rerank (Wide → Narrow)
+## 6. Build BM25 Index at Startup (for now)
+
+**What:** Recompute the inverted index during container startup right after loading the chunk file.  
+**Alternative:** Precompute BM25 artifacts during ingestion and load them from GCS at runtime.
+
+**Pros:**  
+- Always consistent with whatever chunk revision was just pulled.  
+- Millisecond build time at this corpus size.  
+- Eliminates artifact/version management or cache invalidation logic.  
+
+**Cons:** Startup time will grow with corpus size; cold starts could lengthen if documents explode.  
+
+**Decision:** Add BM25 at startup for now; revisit precomputing only if corpus growth makes boot time material.
+
+---
+
+## 7. Hybrid Retrieval and Rerank (Wide → Narrow)
 
 **What:** Pull ~50 ANN candidates, blend with BM25 + tag boosts, trim to ~8 for the LLM.  
 **Alternative:** Fetch exactly 8 from ANN only.
@@ -100,7 +116,7 @@
 
 ---
 
-## 7. Runtime Classification by Role
+## 8. Runtime Classification by Role
 
 **What:** On each query, classify toward `infra` or `product` (keyword heuristic + optional embedding sim). Leave unclassified if mixed.  
 **Alternatives:** Let LLM decide; or require user to pick a role.
@@ -114,22 +130,6 @@
 **Cons:** Small logic layer to maintain.  
 
 **Decision:** Add a local classifier; bias retrieval softly. Hard filters only if explicitly requested.
-
----
-
-## 8. Build BM25 Index at Startup (for now)
-
-**What:** Recompute the inverted index during container startup right after loading the chunk file.  
-**Alternative:** Precompute BM25 artifacts during ingestion and load them from GCS at runtime.
-
-**Pros:**  
-- Always consistent with whatever chunk revision was just pulled.  
-- Millisecond build time at this corpus size.  
-- Eliminates artifact/version management or cache invalidation logic.  
-
-**Cons:** Startup time will grow with corpus size; cold starts could lengthen if documents explode.  
-
-**Decision:** Add BM25 at startup for now; revisit precomputing only if corpus growth makes boot time material.
 
 ---
 
@@ -223,7 +223,7 @@
 
 ---
 
-## 12. Chunk Identity vs Order (chunk_id and position)
+## 13. Chunk Identity vs Order (chunk_id and position)
 
 **What:** Each chunk carries both a `chunk_id` (unique identifier) and a `position` (order within a document). Today both are generated serially, but they serve different purposes.
 
@@ -253,7 +253,7 @@
 
 ---
 
-## 13. Overlap for Retrieval Continuity
+## 14. Overlap for Retrieval Continuity
 
 **What:** Allow a small (~10%) overlap by sentence between consecutive chunks, but only inside the same role/employer block.  
 
@@ -274,7 +274,7 @@
 
 ---
 
-## 14. Vertex Matching Engine Update Mode (Batch Update)
+## 15. Vertex Matching Engine Update Mode (Batch Update)
 
 **What:** Keep the Matching Engine index in the default `BATCH_UPDATE` mode and refresh data by publishing a new datapoints file to Cloud Storage, then running a batch rebuild (`gcloud ai indexes update`).
 
