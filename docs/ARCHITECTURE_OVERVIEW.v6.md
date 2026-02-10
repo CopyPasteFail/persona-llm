@@ -1,4 +1,4 @@
-# ARCHITECTURE_OVERVIEW v5
+# ARCHITECTURE_OVERVIEW v6
 
 ## Goal
 A reusable public showcase where people can query a "persona" LLM representing a human. Answers are grounded in a provided dataset, for example a CV, using Vertex AI Vector Search. Priorities: low cost, low ops, transparent design.
@@ -36,7 +36,7 @@ Environment variables detected in code:
 - `API_KEY`: used in backend/api/settings.py
 - `CHUNKS_URI`: used in backend/api/settings.py
 - `DEPLOYED_INDEX_ID`: used in backend/api/settings.py
-- `ENV_DIR`: used in backend/api/settings.py
+- `PRIVATE_DIR`: used in backend/api/settings.py
 - `INDEX_ENDPOINT_ID`: used in backend/api/settings.py
 - `MAX_INPUT_TOKENS`: used in backend/api/settings.py
 - `MAX_OUTPUT_TOKENS`: used in backend/api/settings.py
@@ -57,6 +57,6 @@ Environment variables detected in code:
 - **Backend**: FastAPI with two apps.
   - `api.mock:app` for local dev, deterministic answers.
   - `api.main:app` skeleton where `/chat` returns 503 until real retrieval and LLM are wired.
-- **Frontend**: Next.js app in `web/` with starter prompts and a fixed layout. Cold start: min instances 0. Shows "Warming up..." until /health is ready. Verify disabled states when the backend is down, and independent scroll for the conversation pane.
+- **Frontend**: Next.js app in `web/` with starter prompts and a fixed layout. Cold start: min instances 0. Shows “Warming up the API… usually a few seconds.” until `/health` is ready. Verify disabled states when the backend is down, and independent scroll for the conversation pane.
 - **Jobs**: `jobs/pack_and_push.py` to validate and package JSONL chunks.
 - **Tests**: pytest suite focused on the mock app. One integration test expects a real backend and will fail until implemented.
