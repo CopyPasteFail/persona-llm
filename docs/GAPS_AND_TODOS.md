@@ -1,9 +1,7 @@
-# Version 6
-
 ## Backend
 - Strengthen retrieval in `api/retrieval.py`: expand tests around `embed_query`, `search_vector_store`, `apply_filters_and_boosting`, and `build_context_prompt`, and validate live client integration.
 - Add regression tests + observability for the Gemini client (`api/llm.py::call_gemini_flash`): stubbed unit tests, usage parsing coverage, and explicit timeout/error handling.
-- Confirm rate limits persistence if scaling beyond one instance.
+- Move rate-limit storage to Redis/Firestore (currently per-pod in-memory) for multi-instance deployments.
 
 ## Ingestion
 - `jobs/build_datapoints.py` now generates embeddings. Optionally automate the upsert flow (or integrate with `pack_and_push`) if you want a single command to run the whole pipeline.
@@ -23,6 +21,7 @@
 
 ## Deployment
 - Verify Cloud Run deployment and CORS with Hosting origin.
+- Add stricter origin control on CORS in prod env (no wildcard).
 - Provision Vertex resources and document teardown.
 - Keep budget alerts and logging hygiene.
 

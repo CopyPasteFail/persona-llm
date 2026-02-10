@@ -23,6 +23,13 @@ class Settings(BaseModel):
     BUCKET_NAME: str = Field(...)
     CHUNKS_PATH: str = Field(...)
     API_KEY: str = Field(...)
+    JWT_SECRET: str | None = Field(default=None)
+    JWT_SESSION_TTL_SECONDS: int = Field(default=3600, ge=300, le=86400)
+    SESSION_COOKIE_ENABLED: bool = Field(default=False)
+    SESSION_COOKIE_NAME: str = Field(default="session")
+    SESSION_COOKIE_SAMESITE: str = Field(default="lax")
+    SESSION_COOKIE_SECURE: bool = Field(default=True)
+    SESSION_COOKIE_PATH: str = Field(default="/")
     MAX_INPUT_TOKENS: int = Field(..., ge=1, le=10000)
     MAX_OUTPUT_TOKENS: int = Field(..., ge=1, le=2000)
     REQ_TIMEOUT_MS: int = Field(..., ge=1000, le=60000)
@@ -52,6 +59,39 @@ class Settings(BaseModel):
         return (
             f"projects/{self.PROJECT_ID}/locations/{self.REGION}/indexEndpoints/{endpoint}"
         )
+
+    @property
+    def jwt_secret(self) -> str:
+        """Return JWT signing secret, preferring JWT_SECRET when set."""
+        return self.JWT_SECRET or self.API_KEY
+
+    @property
+    def session_ttl_seconds(self) -> int:
+        """Session token TTL, capped by access-key expiry in the auth layer."""
+        return int(self.JWT_SESSION_TTL_SECONDS or 3600)
+
+    @property
+    def session_cookie_enabled(self) -> bool:
+        return bool(self.SESSION_COOKIE_ENABLED)
+
+    @property
+    def session_cookie_name(self) -> str:
+        return self.SESSION_COOKIE_NAME or "session"
+
+    @property
+    def session_cookie_samesite(self) -> str:
+        value = (self.SESSION_COOKIE_SAMESITE or "lax").lower()
+        if value not in {"lax", "strict", "none"}:
+            return "lax"
+        return value
+
+    @property
+    def session_cookie_secure(self) -> bool:
+        return bool(self.SESSION_COOKIE_SECURE)
+
+    @property
+    def session_cookie_path(self) -> str:
+        return self.SESSION_COOKIE_PATH or "/"
 
 REQUIRED_ENV_VARS = [
     "PERSONA_NAME",
@@ -123,6 +163,13 @@ def load_settings() -> Settings:
             BUCKET_NAME=bucket_name,
             CHUNKS_PATH=chunk_path,
             API_KEY=os.getenv("API_KEY"),
+            JWT_SECRET=os.getenv("JWT_SECRET"),
+            JWT_SESSION_TTL_SECONDS=os.getenv("JWT_SESSION_TTL_SECONDS") or 3600,
+            SESSION_COOKIE_ENABLED=os.getenv("SESSION_COOKIE_ENABLED") or False,
+            SESSION_COOKIE_NAME=os.getenv("SESSION_COOKIE_NAME") or "session",
+            SESSION_COOKIE_SAMESITE=os.getenv("SESSION_COOKIE_SAMESITE") or "lax",
+            SESSION_COOKIE_SECURE=os.getenv("SESSION_COOKIE_SECURE") or True,
+            SESSION_COOKIE_PATH=os.getenv("SESSION_COOKIE_PATH") or "/",
             MAX_INPUT_TOKENS=os.getenv("MAX_INPUT_TOKENS"),
             MAX_OUTPUT_TOKENS=os.getenv("MAX_OUTPUT_TOKENS"),
             REQ_TIMEOUT_MS=os.getenv("REQ_TIMEOUT_MS"),

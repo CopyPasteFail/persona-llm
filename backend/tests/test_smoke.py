@@ -1,11 +1,15 @@
 import pytest
 import pytest_asyncio
-from httpx import AsyncClient, ASGITransport
+from httpx import ASGITransport, AsyncClient
+
 from api.mock import app as mock_app
+
+TEST_ACCESS_KEY = "test-access-key-123"
 
 
 @pytest_asyncio.fixture
-async def client():
+async def client(access_key_store):
+    access_key_store.add_plain_key(TEST_ACCESS_KEY, label="test")
     transport = ASGITransport(app=mock_app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
@@ -16,15 +20,38 @@ async def test_health_ready(client):
     resp = await client.get("/health")
     assert resp.status_code == 200
     data = resp.json()
-    assert data.get("ready") is True
+    assert data.get("status") == "ok"
+
+
+@pytest.mark.asyncio
+async def test_key_login_returns_token(client):
+    payload = {"key": TEST_ACCESS_KEY}
+    resp = await client.post("/auth/key-login", json=payload)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["token_type"] == "bearer"
+    assert isinstance(data["access_token"], str) and data["access_token"]
+    assert "expires_at" in data
+
+
+@pytest.mark.asyncio
+async def test_chat_requires_auth(client):
+    payload = {"question": "Tell me about my Kubernetes experience and Ansible work."}
+    resp = await client.post("/chat", json=payload)
+    assert resp.status_code == 401
 
 
 @pytest.mark.asyncio
 async def test_chat_basic(client):
-    payload = {
-        "question": "Tell me about my Kubernetes experience and Ansible work."
-    }
-    resp = await client.post("/chat", json=payload)
+    login = await client.post("/auth/key-login", json={"key": TEST_ACCESS_KEY})
+    token = login.json()["access_token"]
+
+    payload = {"question": "Tell me about my Kubernetes experience and Ansible work."}
+    resp = await client.post(
+        "/chat",
+        json=payload,
+        headers={"Authorization": f"Bearer {token}"},
+    )
     assert resp.status_code == 200
     data = resp.json()
     # Contract
