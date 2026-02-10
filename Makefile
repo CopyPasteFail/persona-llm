@@ -99,9 +99,9 @@ gcp-sa-bind-roles: require-private require-gcp-env
 	@gcloud projects add-iam-policy-binding "$(PROJECT_ID)" \
 	  --member="serviceAccount:persona-llm@$(PROJECT_ID).iam.gserviceaccount.com" \
 	  --role="roles/storage.objectAdmin"
-	@gcloud projects add-iam-policy-binding "$(PROJECT_ID)" \
+	@gcloud storage buckets add-iam-policy-binding "gs://$(BUCKET_NAME)" \
 	  --member="serviceAccount:persona-llm@$(PROJECT_ID).iam.gserviceaccount.com" \
-	  --role="roles/aiplatform.admin"
+	  --role="roles/storage.objectViewer"
 
 # Create a key in PRIVATE_DIR/key.json
 gcp-sa-key: require-private require-gcp-env
