@@ -104,8 +104,9 @@ def main() -> None:
         ["PROJECT_ID", "REGION"], optional=["GOOGLE_APPLICATION_CREDENTIALS"]
     )
     default_schema = backend_root / "schema" / "chunk.schema.json"
-    default_input = repo_root / "private" / "persona" / "data" / "chunks.jsonl"
-    default_output = repo_root / "private" / "persona" / "data" / "datapoints.jsonl"
+    private_dir = Path(os.environ.get("PRIVATE_DIR", repo_root / "private")).expanduser()
+    default_input = private_dir / "persona" / "data" / "chunks.jsonl"
+    default_output = private_dir / "persona" / "data" / "datapoints.jsonl"
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--schema", default=str(default_schema))
