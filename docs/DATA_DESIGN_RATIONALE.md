@@ -1,4 +1,4 @@
-# Design Decisions for Persona LLM Retrieval Pipeline
+# Data Design Decisions for Persona LLM Retrieval Pipeline
 
 ## 1. Two CVs, Two Roles (role:infra, role:product)
 
