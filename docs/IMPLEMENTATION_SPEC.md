@@ -3,80 +3,6 @@
 ## Repos
 - Public mono-repo: Contains both backend and frontend. The backend is in `api/` and jobs under `jobs/`. The frontend is in `web/`. A private folder for secrets may be referenced during runtime, not committed.
 
-### Current repo tree (trimmed)
-```
-.
-├── LICENSE
-├── Makefile
-├── README.md
-├── backend
-│   ├── Makefile
-│   ├── README.md
-│   ├── api
-│   │   ├── __init__.py
-│   │   ├── llm.py
-│   │   ├── main.py
-│   │   ├── mock.py
-│   │   ├── retrieval.py
-│   │   ├── security.py
-│   │   ├── settings.py
-│   │   └── types.py
-│   ├── jobs
-│   │   └── pack_and_push.py
-│   ├── pytest.ini
-│   ├── requirements.txt
-│   ├── schema
-│   │   └── chunk.schema.json
-│   └── tests
-│       ├── conftest.py
-│       ├── test_integration_real_backend.py
-│       ├── test_normalize_question_punct.py
-│       ├── test_persona_voice.py
-│       └── test_smoke.py
-├── frontend
-│   ├── README.md
-│   ├── firebase.json
-│   ├── package-lock.json
-│   ├── package.json
-│   └── web
-│       ├── components
-│       │   └── Layout.tsx
-│       ├── next-env.d.ts
-│       ├── next.config.mjs
-│       ├── package.json
-│       ├── pages
-│       │   ├── _app.tsx
-│       │   └── index.tsx
-│       ├── postcss.config.mjs
-│       ├── public
-│       │   ├── android-chrome-192x192.png
-│       │   ├── android-chrome-512x512.png
-│       │   ├── apple-touch-icon.png
-│       │   ├── favicon-16x16.png
-│       │   ├── favicon-32x32.png
-│       │   ├── favicon.ico
-│       │   └── site.webmanifest
-│       ├── styles
-│       │   └── globals.css
-│       ├── tailwind.config.ts
-│       ├── tsconfig.json
-│       └── utils
-│           ├── api.ts
-│           └── types.ts
-├── private-template
-│   ├── persona
-│   │   ├── assets
-│   │   ├── persona.yaml
-│   │   ├── starters.json
-│   │   └── vector-seed
-│   └── secrets
-│       ├── common.env
-│       ├── backend.env
-│       └── frontend.env
-└── scripts
-    └── link-private.sh
-```
-
 ## Environment variables
 Backend configuration is loaded from a dotenv file rather than a global `PRIVATE_DIR`.
 
@@ -109,6 +35,12 @@ Backend configuration is loaded from a dotenv file rather than a global `PRIVATE
   - `NEXT_PUBLIC_API_URL`: URL of the backend (e.g. `http://localhost:8080` during local dev).
 
 `settings.py` uses `python-dotenv` to load `${PRIVATE_DIR}/secrets/common.env` followed by `${PRIVATE_DIR}/secrets/backend.env` into the process environment before FastAPI starts. Missing required values will raise validation errors on startup.
+
+## Container registry choice
+- Use Artifact Registry in the same region as Cloud Run to keep image pulls on Google’s network (no intra-GCP egress) and avoid Docker Hub rate/availability issues.
+- IAM stays in GCP (no Docker Hub tokens), with audit logs and org policies applied uniformly across projects and environments.
+- One registry works for Cloud Build, CI, Cloud Run, and GKE; tagging per environment fits the same workflow.
+- Cost for the current `persona-backend:local` image (~0.212 GB) is $0/month because the first 0.5 GB is free; even 1 GB of images is only about $0.10/month.
 
 
 ## Backend API
@@ -160,11 +92,11 @@ For a human-readable guide explaining the meaning, use cases, benefits, and trad
 ### Ingestion stage (one-time or occasional)
 
 1. **Chunking**
-   - Split CV docs into ~450-token chunks.
+   - Split CV docs into ~450-token chunks (often generated via ChatGPT for the initial corpus; keep source material private).
    - Attach `role` + optional `topic` tags.
    - Validate against `chunk.schema.json`.
 2. **Packaging**
-   - Write `chunks-<sha>.jsonl.gz`.
+   - Write `chunks-<sha>.jsonl.gz` with metadata fragments.
    - Upload to GCS (sidecar store).
 3. **Embedding + upsert**
    - `backend/jobs/build_datapoints.py` (invoked via `make be-build_datapoints`) batches persona chunks, calls the selected Vertex embedding model (default `gemini-embedding-001`), and writes the `DATAPOINTS_FILE` artifact with ready-to-upload datapoints.
@@ -196,17 +128,11 @@ For a human-readable guide explaining the meaning, use cases, benefits, and trad
    - **Trim**: keep top ~8 chunks (aligns with intended architecture).
    - **Prompt LLM**: feed 8 chunks into Gemini Flash, generate strict, grounded first-person answer.
    - **Return**: `{answer, citations, usage}` JSON.
-
-### Why this design works
-
-- **Chunks** = source of truth, always recoverable.
-- **Vertex AI Vector Search** = scalable semantic ANN engine.
-- **BM25** = cheap keyword precision, especially for acronyms, IDs, rare terms.
-- **Hybrid retrieval** = best of both worlds, with reranking and role boosts.
-- **Sidecar store in GCS** = portable, versioned artifacts.
-- **Runtime classification** = answers stay persona-consistent but context-aware.
-
 See [`DATA_DESIGN_RATIONALE.md`](./DATA_DESIGN_RATIONALE.md) for discussion.
+
+## Security details
+- `/auth/key-login` rate limits before bcrypt: 10 attempts per 10 minutes per IP and 5 per fingerprint (in-memory today).
+- `/chat` requires auth and rate limits per access key (no per-IP limiting on `/chat`).
 
 ## Frontend behavior
 - Frontend present under `frontend/web/`.

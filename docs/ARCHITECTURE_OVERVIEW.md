@@ -12,19 +12,8 @@ A reusable public showcase where people can query a "persona" LLM representing a
 - LLM: Gemini 2.0 Flash with strict grounding and short answer style
 - Monitoring: Cloud Logging and Cloud Monitoring metrics. Budget alerts only
 
-## Container registry choice
-- Use Artifact Registry in the same region as Cloud Run to keep image pulls on Google’s network (no intra-GCP egress) and avoid Docker Hub rate/availability issues.
-- IAM stays in GCP (no Docker Hub tokens), with audit logs and org policies applied uniformly across projects and environments.
-- One registry works for Cloud Build, CI, Cloud Run, and GKE; tagging per environment fits the same workflow.
-- Cost for the current `persona-backend:local` image (~0.212 GB) is $0/month because the first 0.5 GB is free; even 1 GB of images is only about $0.10/month.
-
-## Ingestion steps
-1. Convert CV .docx to JSONL chunks using ChatGPT with max ~450 tokens per chunk. Store in the private repo only
-2. Validate the JSONL against the schema, splits long entries, add metadata fragments, and upload the `chunks-<sha>.jsonl.gz` to GCS for the backend side store.
-3. Load the same chunks, call Vertex AI embedding to embed each fragment, and write a JSONL ready for Matching Engine upserts.
-
-Chunks are validated using [`chunk.schema.json`](../backend/schema/chunk.schema.json).  
-Field-level explanations and rationale are documented in [`SCHEMA.md`](SCHEMA.md).
+## Ingestion overview
+The ingestion pipeline validates persona content, chunks it, embeds it, and uploads the resulting artifacts to GCS and Matching Engine for retrieval.
 
 ## Data flow
 **Mock path (available for local dev)**
@@ -37,10 +26,20 @@ Field-level explanations and rationale are documented in [`SCHEMA.md`](SCHEMA.md
 2. User question goes to backend, embed query, Vector Search top K 8, apply mild boosting and filters.
 3. Build a strict grounded prompt, call Gemini Flash, return `{answer, citations, usage}`.
 
+## Why this design works
+- **Chunks** = source of truth, always recoverable.
+- **Vertex AI Vector Search** = scalable semantic ANN engine.
+- **BM25** = cheap keyword precision, especially for acronyms, IDs, rare terms.
+- **Hybrid retrieval** = best of both worlds, with reranking and role boosts.
+- **Sidecar store in GCS** = portable, versioned artifacts.
+- **Runtime classification** = answers stay persona-consistent but context-aware.
+
+See [`DATA_DESIGN_RATIONALE.md`](./DATA_DESIGN_RATIONALE.md) for discussion.
+
 ## Security
 - Access keys live in Firestore collection `access_keys` with `key_hash` (bcrypt), `key_fingerprint` (SHA-256), `expires_at`, `revoked`, and optional labels/usage caps.
   - Rationale: Firestore is a good fit for low-ops, low-traffic access control metadata (expiry/revoke/usage caps) with straightforward admin workflows, and it provides durable, shared state across Cloud Run instances.
-- `/auth/key-login` enforces rate limits before bcrypt: 10 attempts per 10 minutes per IP and 5 per fingerprint (in-memory today).
+- `/auth/key-login` enforces rate limits before bcrypt (in-memory today).
 - `/chat` requires auth and rate limits per access key (no per-IP limiting on `/chat`).
 - Rate limiting is per-instance (in-memory). This is fine for a single Cloud Run instance, but must move to a shared store (Redis/Firestore) to be reliable under multi-instance scaling.
 - Cookie sessions: `/auth/key-login` can set an HttpOnly cookie; logout clears the cookie only (no server-side session invalidation). Future enhancement: revoking an access key should immediately invalidate existing sessions.

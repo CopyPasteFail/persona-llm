@@ -21,6 +21,7 @@
 ## Tests
 - LLM prompt builder (`api/llm.py`): missing tests for strict output instructions, context format, MAX_INPUT_TOKENS trimming, and usage parsing from Vertex responses. Decision: add unit coverage for `build_llm_prompt(...)`, trimming edge cases, and `_extract_usage`/`_usage_value`.
 - Rate limiting (`api/security.py`): missing tests for `/chat` 429s after thresholds and `/auth/key-login` IP/fingerprint limits (before key verification). Decision: add rate-limit tests for both endpoints and ordering.
+- Rate limiting tests: add coverage for `/chat` rate limiting in `api.main` (via `check_rate_limit_dependency`), since the mock app does not exercise `api.main`’s `/chat` path.
 - Invalid/bad-key login (`api/auth.py`, `api/keys.py`): missing 401 coverage for wrong, revoked, expired, and overused keys, plus 429s for rate-limited login attempts. Decision: add negative auth tests to lock in these cases.
 - Add integration tests for real backend once wired.
 
