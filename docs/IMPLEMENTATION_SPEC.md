@@ -92,7 +92,7 @@ Backend configuration is loaded from a dotenv file rather than a global `PRIVATE
 - **Backend variables (loaded from backend.env):**
   - `PERSONA_NAME`: Display name used in mock responses.
   - `REGION`: GCP region.
-  - `INDEX_ENDPOINT_ID`: Vertex AI Index Endpoint ID.
+  - `INDEX_ENDPOINT_ID`: Vertex AI Index Endpoint ID (store the trailing ID; the service reconstructs the full resource name).
   - `DEPLOYED_INDEX_ID`: Deployed Index resource ID.
   - `BUCKET_NAME`: GCS bucket used for persona artifacts.
   - `CHUNKS_PATH`: Object name of the packed chunk data.
