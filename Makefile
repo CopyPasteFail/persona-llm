@@ -1,18 +1,28 @@
-.PHONY: install dev mock build fe-% be-% require-private
+.PHONY: install dev mock build fe-% be-% require-private clean clean-all
 
-# ENV_DIR points to the private folder (override per run if needed)
-ENV_DIR ?= $(abspath private)
+# -------------------------------
+# Private directory resolution
+# Precedence: ENV > .privatedir > ./private
+# -------------------------------
 
-# Required files
-BACKEND_ENV := $(ENV_DIR)/secrets/backend.env
-FRONTEND_ENV := $(ENV_DIR)/secrets/frontend.env
+# If PRIVATE_DIR is not provided by the environment, resolve it.
+ifeq ($(origin PRIVATE_DIR), undefined)
+  ifneq ("$(wildcard .privatedir)","")
+    PRIVATE_DIR := $(shell cat .privatedir)
+  else
+    PRIVATE_DIR := $(abspath private)
+  endif
+endif
+export PRIVATE_DIR
 
-export ENV_DIR
+# Convenience: secrets paths
+BACKEND_ENV  := $(PRIVATE_DIR)/secrets/backend.env
+FRONTEND_ENV := $(PRIVATE_DIR)/secrets/frontend.env
 
 require-private:
-	@test -d "$(ENV_DIR)" || { echo "Missing ENV_DIR=$(ENV_DIR)"; exit 1; }
-	@test -f "$(BACKEND_ENV)" || { echo "Missing $(BACKEND_ENV)"; exit 1; }
-	@test -f "$(FRONTEND_ENV)" || { echo "Missing $(FRONTEND_ENV)"; exit 1; }
+	@test -d "$(PRIVATE_DIR)" || { echo "Missing PRIVATE_DIR=$(PRIVATE_DIR). Set PRIVATE_DIR, create .privatedir, or add ./private symlink."; exit 1; }
+	@test -f "$(BACKEND_ENV)" || { echo "Missing $(BACKEND_ENV). Copy private-template/ and populate secrets/backend.env."; exit 1; }
+	@test -f "$(FRONTEND_ENV)" || { echo "Missing $(FRONTEND_ENV). Copy private-template/ and populate secrets/frontend.env."; exit 1; }
 
 # ----- Frontend passthrough -----
 fe-%:
@@ -22,7 +32,7 @@ fe-install:
 	npm --prefix frontend install
 
 # ----- Backend passthrough -----
-# We do not pass file paths here. Backend code reads ENV_DIR itself.
+# We do not pass file paths here. Backend code reads PRIVATE_DIR itself.
 be-%: require-private
 	$(MAKE) -C backend $*
 
@@ -32,11 +42,11 @@ install:
 	$(MAKE) be-install
 
 dev: require-private
-	PERSONA_DIR="$${PERSONA_DIR:-$(ENV_DIR)/persona}" $(MAKE) be-dev & \
-	ENV_DIR="$(ENV_DIR)" $(MAKE) fe-dev
+	PERSONA_DIR="$${PERSONA_DIR:-$(PRIVATE_DIR)/persona}" $(MAKE) be-dev & \
+	PRIVATE_DIR="$(PRIVATE_DIR)" $(MAKE) fe-dev
 
 mock: require-private
-	( $(MAKE) be-mock & ENV_DIR="$(ENV_DIR)" $(MAKE) fe-dev:mock )
+	( $(MAKE) be-mock & PRIVATE_DIR="$(PRIVATE_DIR)" $(MAKE) fe-dev:mock )
 
 build:
 	$(MAKE) be-docker-build

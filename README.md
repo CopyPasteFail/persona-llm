@@ -11,77 +11,148 @@ Persona data and secrets point the backend at a local/private folder using `PRIV
 
 ## Quick start
 
-### Step 1
+### Step 1. Clone and set up your private overlay
+
 1. Clone this public repo.
-2. Create a private repo from `private-template/`.
-3. Link it or point `PRIVATE_DIR` to its `persona/` folder.
+2. Copy `private-template/` into a new private repo or folder.  
+   This holds your secrets and persona data and must not be committed.
+3. Link it or point `PRIVATE_DIR` to its location.
 
-#### Option A: symlink at repo root
+#### Option A: symlink the private overlay into ./private
 ```bash
-# from repo root
 ln -s /abs/path/to/your-private-overlay ./private
-echo "PRIVATE_DIR=private/persona" > backend/.env
-make dev
 ```
 
-#### Option B: no symlink, use absolute path
+#### Option B: sticky override (gitignored)
 ```bash
-echo "PRIVATE_DIR=/abs/path/to/your-private-overlay/persona" > backend/.env
-make dev
+echo "/abs/path/to/your-private-overlay" > .privatedir
 ```
 
-`backend` should read persona files from `$PRIVATE_DIR`.
+#### Option C: ad-hoc override
+```bash
+PRIVATE_DIR=/abs/path/to/your-private-overlay make run
+```
 
-### Step 2
+> **After this step:**  
+> Check the prerequisites and installation instructions in:
+> - `backend/README.md` (Python version, venv, installing deps)  
+> - `frontend/README.md` (Node version, npm install, etc.)
 
-You need the [Google Cloud CLI](https://cloud.google.com/sdk/docs/install) (`gcloud`).
+At this stage you can locally run the mock backend and frontend, see [here](#mode-a-mock-frontend--mock-backend-local).
 
+## Preparing GCP and Firebase Environments
 
-If this is your first time using it:
+### Required environment variables
 
---------- CLI auth (first time) ---------
-Google Cloud CLI must be installed.
-1) Login to gcloud (user account)
+Inside your private overlay pointed to by `PRIVATE_DIR`, you must include these files with the following variables.
+`FIREBASE_PROJECT_ID` and `PROJECT_ID` will be used to either create new projects with the given IDs or to reference existing ones.
+
+- `secrets/frontend.env`  
+  - `FIREBASE_PROJECT_ID` — the Firebase project ID used for hosting and deployment.
+    Typically this is the same as `PROJECT_ID`. It must follow Google’s project ID naming conventions.
+    *(lowercase letters, digits, and hyphens, 6–30 characters, starting with a letter, and not ending with a hyphen)*
+
+- `secrets/backend.env`  
+  - `PROJECT_ID` — the GCP project ID to use for backend resources. In most setups this matches the backend `FIREBASE_PROJECT_ID`.
+  - `REGION` — the GCP region where resources (like Cloud Run and buckets) will be created, for example `europe-west1`.
+
+### Step 1. Install CLI tools
+
+#### Firebase CLI:
+
+```bash
+make firebase:login
+```
+
+#### Google Cloud CLI
+
+You can either run the commands below or check the [official instructions](https://cloud.google.com/sdk/docs/install#linux).
+
+Commands for Linux:
+
+```bash
+(
+  cd ~
+  curl -O https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-linux-x86_64.tar.gz
+  tar -xf google-cloud-cli-linux-x86_64.tar.gz
+  rm google-cloud-cli-linux-x86_64.tar.gz
+  ./google-cloud-sdk/install.sh
+)
+```
+
+When running `install.sh` you will be prompted:
+- *Do you want to help improve the Google Cloud CLI (y/N)?* → type **n**  
+- *Modify profile to update your $PATH and enable shell command completion? (Y/n)* → type **y**  
+- *Enter a path to an rc file to update, or leave blank to use [/home/YOUR_USERNAME/.bashrc]:* → press **Enter**
+
+Finally, update your shell environment:
+
+```bash
+source ~/.bashrc
+```
+
+Verify installation:
+```bash
+gcloud --version
+```
+
+### Step 2. First-time setup
+
+Authenticate with Google Cloud:
 ```bash
 gcloud auth login
 ```
-2) Select the project
-```bash
-gcloud config set project omer-persona-llm-frontend
-```
-3) (Optional but handy for some SDKs) Application-default login for user account
-gcloud auth application-default login
 
---------- If you DO NOT have a GCP project yet (optional) ---------
+(Optional) Create a **new Firebase project** if you haven’t already, or skip if you want to reuse an existing one
 ```bash
-gcloud projects create "$PROJECT_ID" --name="Persona LLM"  # needs billing set separately
-gcloud beta billing projects link "$PROJECT_ID" --billing-account=YOUR_BILLING_ACCOUNT_ID
+make fe-firebase:create
 ```
+If you see an error like this:
+```
+firebase > firebase projects:create YOUR_PROJECT_NAME
+✔ What would you like to call your project? (defaults to your project ID) YOUR_PROJECT_NAME
+✖ Creating Google Cloud Platform project
+Error: Failed to create project because there is already a project with ID YOUR_PROJECT_NAME. Please try again with a unique project ID.
+```
+It means the project ID you chose is already taken globally. You’ll need to select a different, unique project ID.
 
---------- Firebase CLI (optional) ----------
-npm install -g firebase-tools
+Select the project to be used by Firebase:
 ```bash
-firebase login
-```
-If you need to create a Firebase project (optional):
-```bash
-firebase projects:create "$PROJECT_ID" --display-name "Persona LLM"
-```
-If the project already exists, just select it in your local firebase state:
-```bash
-firebase use "$PROJECT_ID"
+make fe-firebase:use
 ```
 
-# --------- enable APIs you need ---------
+(Optional) If you want a **separate GCP project** (not tied to Firebase), create it manually:
+**Note:**  
+- By default, creating a project with `firebase projects:create` will also create it in GCP.  
+- Only use `gcloud projects create` if you want to manage a different GCP project separately from your Firebase project.
+```bash
+gcloud projects create "$PROJECT_ID" --name="Persona LLM"
+# gcloud beta billing projects link "$PROJECT_ID" --billing-account=YOUR_BILLING_ACCOUNT_ID
+```
+
+Finally, set your active project:
+
+```bash
+gcloud config set project "$PROJECT_ID"
+```
+
+### Step 4. Enable services and create resources
+
+```bash
+# enable APIs
 gcloud services enable aiplatform.googleapis.com storage.googleapis.com
 
-# --------- bucket for data/artifacts ---------
-gcloud storage buckets create "gs://${BUCKET}" --location="${REGION}"
+# bucket for data/artifacts
+gcloud storage buckets create "gs://${PROJECT_ID}-persona" --location=${REGION}
+```
 
-# --------- service account (for local/dev + CI) ---------
+### Step 5. Service account and keys
+
+```bash
+# create service account
 gcloud iam service-accounts create persona-llm --display-name="Persona LLM"
 
-# Minimal roles for runtime querying + GCS access
+# grant minimal roles for querying and GCS access
 gcloud projects add-iam-policy-binding "$PROJECT_ID" \
   --member="serviceAccount:persona-llm@${PROJECT_ID}.iam.gserviceaccount.com" \
   --role="roles/aiplatform.user"
@@ -90,15 +161,15 @@ gcloud projects add-iam-policy-binding "$PROJECT_ID" \
   --member="serviceAccount:persona-llm@${PROJECT_ID}.iam.gserviceaccount.com" \
   --role="roles/storage.objectAdmin"
 
-# For *index creation/management* you (or a CI SA) will also need admin during setup.
-# Easiest for now: give the same SA admin. You can tighten later.
+# for index creation/management during setup (tighten later)
 gcloud projects add-iam-policy-binding "$PROJECT_ID" \
   --member="serviceAccount:persona-llm@${PROJECT_ID}.iam.gserviceaccount.com" \
   --role="roles/aiplatform.admin"
 
-# --------- create a key INSIDE the private dir ---------
-gcloud iam service-accounts keys create "$ENV_DIR/key.json" \
+# create key inside your private dir
+gcloud iam service-accounts keys create "$PRIVATE_DIR/key.json" \
   --iam-account "persona-llm@${PROJECT_ID}.iam.gserviceaccount.com"
+```
 
 ## Repo layout
 
@@ -169,7 +240,6 @@ Run Next.js locally but call the real Cloud Run API.
 
 1) Ensure secrets/backend.env are set in your private repository
 
-
 2) Start the dev server. Choose one:
 - Fast start (uses cached build):
   ```bash
@@ -182,7 +252,6 @@ Run Next.js locally but call the real Cloud Run API.
   ```
 
 App: http://localhost:3000
-
 
 ---
 

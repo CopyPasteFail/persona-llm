@@ -1,0 +1,44 @@
+[debug] [2025-08-31T12:12:55.220Z] ----------------------------------------------------------------------
+[debug] [2025-08-31T12:12:55.221Z] Command:       /home/omer/.nvm/versions/node/v20.19.4/bin/node /home/omer/repos/persona-llm/frontend/node_modules/.bin/firebase projects:create trump-2 --display-name trump-2
+[debug] [2025-08-31T12:12:55.221Z] CLI Version:   14.15.1
+[debug] [2025-08-31T12:12:55.221Z] Platform:      linux
+[debug] [2025-08-31T12:12:55.221Z] Node Version:  v20.19.4
+[debug] [2025-08-31T12:12:55.222Z] Time:          Sun Aug 31 2025 15:12:55 GMT+0300 (Israel Daylight Time)
+[debug] [2025-08-31T12:12:55.222Z] ----------------------------------------------------------------------
+[debug] 
+[debug] [2025-08-31T12:12:55.366Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2025-08-31T12:12:55.367Z] > authorizing via signed-in user (omer.big@gmail.com)
+[debug] [2025-08-31T12:12:55.370Z] Checked if tokens are valid: true, expires at: 1756645536218
+[debug] [2025-08-31T12:12:55.371Z] Checked if tokens are valid: true, expires at: 1756645536218
+[debug] [2025-08-31T12:12:55.372Z] >>> [apiv2][query] POST https://cloudresourcemanager.googleapis.com/v1/projects [none]
+[debug] [2025-08-31T12:12:55.372Z] >>> [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects {"projectId":"trump-2","name":"trump-2"}
+[debug] [2025-08-31T12:12:56.449Z] <<< [apiv2][status] POST https://cloudresourcemanager.googleapis.com/v1/projects 409
+[debug] [2025-08-31T12:12:56.449Z] <<< [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects {"error":{"code":409,"message":"Requested entity already exists","status":"ALREADY_EXISTS"}}
+[debug] [2025-08-31T12:12:56.660Z] FirebaseError: Request to https://cloudresourcemanager.googleapis.com/v1/projects had HTTP Error: 409, Requested entity already exists
+    at responseToError (/home/omer/repos/persona-llm/frontend/node_modules/firebase-tools/lib/responseToError.js:52:12)
+    at RetryOperation._fn (/home/omer/repos/persona-llm/frontend/node_modules/firebase-tools/lib/apiv2.js:312:77)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+[error] 
+[error] Error: Failed to create project because there is already a project with ID trump-2. Please try again with a unique project ID.
+[debug] [2025-08-31T12:16:19.811Z] ----------------------------------------------------------------------
+[debug] [2025-08-31T12:16:19.813Z] Command:       /home/omer/.nvm/versions/node/v20.19.4/bin/node /home/omer/repos/persona-llm/frontend/node_modules/.bin/firebase projects:create trump-2 --display-name trump-2
+[debug] [2025-08-31T12:16:19.813Z] CLI Version:   14.15.1
+[debug] [2025-08-31T12:16:19.813Z] Platform:      linux
+[debug] [2025-08-31T12:16:19.813Z] Node Version:  v20.19.4
+[debug] [2025-08-31T12:16:19.813Z] Time:          Sun Aug 31 2025 15:16:19 GMT+0300 (Israel Daylight Time)
+[debug] [2025-08-31T12:16:19.813Z] ----------------------------------------------------------------------
+[debug] 
+[debug] [2025-08-31T12:16:19.968Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2025-08-31T12:16:19.968Z] > authorizing via signed-in user (omer.big@gmail.com)
+[debug] [2025-08-31T12:16:19.972Z] Checked if tokens are valid: true, expires at: 1756645536218
+[debug] [2025-08-31T12:16:19.972Z] Checked if tokens are valid: true, expires at: 1756645536218
+[debug] [2025-08-31T12:16:19.973Z] >>> [apiv2][query] POST https://cloudresourcemanager.googleapis.com/v1/projects [none]
+[debug] [2025-08-31T12:16:19.973Z] >>> [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects {"projectId":"trump-2","name":"trump-2"}
+[debug] [2025-08-31T12:16:21.037Z] <<< [apiv2][status] POST https://cloudresourcemanager.googleapis.com/v1/projects 409
+[debug] [2025-08-31T12:16:21.037Z] <<< [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects {"error":{"code":409,"message":"Requested entity already exists","status":"ALREADY_EXISTS"}}
+[debug] [2025-08-31T12:16:21.249Z] FirebaseError: Request to https://cloudresourcemanager.googleapis.com/v1/projects had HTTP Error: 409, Requested entity already exists
+    at responseToError (/home/omer/repos/persona-llm/frontend/node_modules/firebase-tools/lib/responseToError.js:52:12)
+    at RetryOperation._fn (/home/omer/repos/persona-llm/frontend/node_modules/firebase-tools/lib/apiv2.js:312:77)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+[error] 
+[error] Error: Failed to create project because there is already a project with ID trump-2. Please try again with a unique project ID.
