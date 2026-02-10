@@ -267,14 +267,14 @@ Set up a Matching Engine index before you embed and upsert persona chunks.
    ```bash
    make be-build_datapoints
    ```
-   - Produces `$PRIVATE_DIR/persona/data/datapoints.jsonl` by default with `datapointId` + `featureVector` rows ready for Matching Engine.
-   - Override defaults via `ARGS="--output /tmp/foo.jsonl --model text-embedding-005"` as needed.
+   - Produces the path configured in `DATAPOINTS_FILE` (set in `private/secrets/backend.env`) with `datapointId` + `featureVector` rows ready for Matching Engine.
+   - Optional overrides live in the same env file, e.g. set `DATAPOINTS_MODEL=text-embedding-005`, `DATAPOINTS_BATCH_SIZE=32`, `DATAPOINTS_MAX_CHARS=1800`, or `DATAPOINTS_GZIP=1` to adjust behavior without command-line flags.
 
 5. Batch-update the index (rebuild from the new datapoints file):
    ```bash
    make gcp-index-upsert
    ```
-   - Defaults to `DATAPOINTS_FILE=$PRIVATE_DIR/persona/data/datapoints.jsonl`; override on demand with `make gcp-index-upsert DATAPOINTS_FILE=/custom/path.jsonl`.
+   - Requires `DATAPOINTS_FILE` to be configured in `private/secrets/backend.env` (for example `$PRIVATE_DIR/persona/data/datapoints.jsonl`).
    - The target stages the datapoints as `datapoints.json` in a timestamped folder under `gs://$BUCKET_NAME/matching-engine/` (it will decompress `.jsonl.gz` automatically) and invokes `gcloud ai indexes update` with that folder URI as `contentsDeltaUri`.
    - `gcloud ai indexes update` refreshes the Vertex AI Vector Search (Matching Engine) index by ingesting the staged datapoints JSON from GCS and rebuilding the index contents.
    - If you prefer manual control, run the `gsutil cp` + `gcloud ai indexes update` commands yourself; the generated metadata snippet lives at `/tmp/` and can be inspected/edited before re-running.
