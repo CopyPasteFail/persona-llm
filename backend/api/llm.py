@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from typing import Dict, List
-from backend.api.settings import settings
+from .settings import settings
 
 
 def build_llm_prompt(question: str, chunks: List[Dict]) -> Dict:
