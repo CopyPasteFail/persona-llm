@@ -25,7 +25,7 @@ Planned or referenced, **not implemented in current code**:
 
 **Mock path (active today)**
 1. Client POSTs `/chat` with `{"question": "..."}`.
-2. The server normalizes third-person mentions of “Omer” to first person.
+2. The server normalizes third-person mentions of “<PERSONA_NAME>” to first person.
 3. Returns a deterministic first-person answer with a dummy citation and usage.
 
 **Intended real path (not implemented yet)**
