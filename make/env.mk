@@ -36,4 +36,12 @@ MAKE_ENV_EXPORT_VARS ?= \
 
 export $(MAKE_ENV_EXPORT_VARS)
 
+BACKEND_DIR ?= $(REPO_ROOT)/backend
+DOCKERFILE ?= $(BACKEND_DIR)/Dockerfile
+LOCAL_IMAGE ?= persona-backend:local
+AR_REPO ?= persona-llm
+IMAGE_NAME ?= persona-backend
+IMAGE_TAG ?= latest
+IMAGE_URI ?= $(REGION)-docker.pkg.dev/$(PROJECT_ID)/$(AR_REPO)/$(IMAGE_NAME):$(IMAGE_TAG)
+
 endif

@@ -173,7 +173,8 @@ gcloud services enable \
   aiplatform.googleapis.com \
   run.googleapis.com \
   storage.googleapis.com \
-  firebase.googleapis.com
+  firebase.googleapis.com \
+  cloudbuild.googleapis.com
 ```
 
 ### Phase 5.B Create resources
@@ -411,23 +412,46 @@ App: http://localhost:3000
 ### Mode C: Production (Firebase Hosting + Cloud Run)
 Static export on Firebase Hosting. API served by Cloud Run.
 
-1) Ensure secrets/backend.env and secrets/frontend.env are set in your private repository
+> Note: ensure `secrets/backend.env` and `secrets/frontend.env` are set in your private repo.
 
-2) Build the static export:
-```bash
-make fe-build
-```
+1) Create Artifact Registry once:
+   ```bash
+   make gcp-create-artifact-registry
+   ```
 
-3) Optional: preview locally:
-```bash
-make fe-preview
-# serves web/out at http://localhost:4173
-```
+2) Build and push the backend image (choose one):
+   - Cloud Build (no local Docker needed):
+     ```bash
+     make gcp-cloud-build
+     ```
+   - Local Docker, then push to Artifact Registry (requires Docker and AR auth):
+     ```bash
+     make be-docker-build
+     gcloud auth configure-docker "$(REGION)-docker.pkg.dev"  # once per machine
+     docker tag persona-backend:local "$(IMAGE_URI)"
+     docker push "$(IMAGE_URI)"
+     ```
 
-4) Deploy Hosting:
-```bash
-make fe-firebase:deploy
-```
+3) Deploy to Cloud Run and note the service URL:
+   ```bash
+   make gcp-cloud-run-deploy
+   ```
+   Set `NEXT_PUBLIC_API_URL` to that URL for the frontend. Drop `--allow-unauthenticated` in the Makefile if you want a private service.
+
+4) Build the static export:
+   ```bash
+   make fe-build
+   ```
+
+5) Optional: preview locally:
+   ```bash
+   make fe-preview
+   ```
+
+6) Deploy Hosting:
+   ```bash
+   make fe-firebase:deploy
+   ```
 
 ## Appendix
 

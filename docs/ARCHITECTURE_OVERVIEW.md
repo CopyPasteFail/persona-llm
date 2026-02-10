@@ -1,5 +1,5 @@
 # ARCHITECTURE_OVERVIEW
-_Version 6.0.04_
+_Version 6.0.05_
 
 ## Goal
 A reusable public showcase where people can query a "persona" LLM representing a human. Answers are grounded in a provided dataset, for example a CV, using Vertex AI Vector Search. Priorities: low cost, low ops, transparent design.
@@ -12,6 +12,12 @@ A reusable public showcase where people can query a "persona" LLM representing a
 - Side store: JSONL gzip in GCS bucket, loaded at startup
 - LLM: Gemini 2.0 Flash with strict grounding and short answer style
 - Monitoring: Cloud Logging and Cloud Monitoring metrics. Budget alerts only
+
+## Container registry choice
+- Use Artifact Registry in the same region as Cloud Run to keep image pulls on Google’s network (no intra-GCP egress) and avoid Docker Hub rate/availability issues.
+- IAM stays in GCP (no Docker Hub tokens), with audit logs and org policies applied uniformly across projects and environments.
+- One registry works for Cloud Build, CI, Cloud Run, and GKE; tagging per environment fits the same workflow.
+- Cost for the current `persona-backend:local` image (~0.212 GB) is $0/month because the first 0.5 GB is free; even 1 GB of images is only about $0.10/month.
 
 ## Ingestion steps
 1. Convert CV .docx to JSONL chunks using ChatGPT with max ~450 tokens per chunk. Store in the private repo only
