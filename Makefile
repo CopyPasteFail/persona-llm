@@ -1,4 +1,4 @@
-.PHONY: install dev mock build fe-% fe-install be-install be-% require-private require-gcp-env require-index-ids require-datapoints-file require-operation-id clean clean-all gcp-create-project gcp-set-project gcp-create-bucket gcp-create-artifact-registry gcp-sa-create gcp-sa-delete gcp-sa-bind-roles gcp-sa-roles gcp-sa-key gcp-index-create gcp-index-endpoint-create gcp-index-deploy gcp-index-upsert gcp-index-list gcp-index-op-describe gcp-index-op-done gcp-index-update-time
+.PHONY: install dev mock build fe-% fe-install be-install be-% require-private require-gcp-env require-index-ids require-datapoints-file require-operation-id clean clean-all gcp-create-project gcp-set-project gcp-create-bucket gcp-create-artifact-registry gcp-sa-create gcp-sa-delete gcp-sa-bind-roles gcp-sa-roles gcp-sa-key gcp-index-create gcp-index-endpoint-create gcp-index-deploy gcp-index-upsert gcp-index-list gcp-index-op-describe gcp-index-op-done gcp-index-update-time gcp-cloud-run-deploy-mock gcp-cloud-run-delete gcp-cloud-run-delete-mock
 
 # -------------------------------
 # Private directory resolution
@@ -69,6 +69,26 @@ gcp-cloud-run-deploy: require-private require-gcp-env
 		--set-env-vars "$$env_vars" \
 		--allow-unauthenticated
 	@echo "Deployed Cloud Run service persona-backend in $(REGION)"
+
+gcp-cloud-run-deploy-mock: require-private require-gcp-env
+	@env_vars="PERSONA_NAME=$(PERSONA_NAME),PROJECT_ID=$(PROJECT_ID),REGION=$(REGION),INDEX_ENDPOINT_ID=$(INDEX_ENDPOINT_ID),DEPLOYED_INDEX_ID=$(DEPLOYED_INDEX_ID),BUCKET_NAME=$(BUCKET_NAME),CHUNKS_PATH=$(CHUNKS_PATH),API_KEY=$(API_KEY),MAX_INPUT_TOKENS=$(MAX_INPUT_TOKENS),MAX_OUTPUT_TOKENS=$(MAX_OUTPUT_TOKENS),REQ_TIMEOUT_MS=$(REQ_TIMEOUT_MS)"; \
+	gcloud run deploy persona-backend-mock \
+		--image "$(IMAGE_URI)" \
+		--region "$(REGION)" \
+		--project "$(PROJECT_ID)" \
+		--set-env-vars "$$env_vars" \
+		--allow-unauthenticated \
+		--command uvicorn \
+		--args "api.mock:app,--host,0.0.0.0,--port,8080"
+	@echo "Deployed Cloud Run service persona-backend-mock in $(REGION)"
+
+gcp-cloud-run-delete: require-gcp-env
+	@echo "Deleting Cloud Run service persona-backend in $(REGION)..."; \
+	gcloud run services delete persona-backend --region="$(REGION)" --project="$(PROJECT_ID)" --quiet || true
+
+gcp-cloud-run-delete-mock: require-gcp-env
+	@echo "Deleting Cloud Run service persona-backend-mock in $(REGION)..."; \
+	gcloud run services delete persona-backend-mock --region="$(REGION)" --project="$(PROJECT_ID)" --quiet || true
 
 # ----- Backend passthrough -----
 be-%: require-private
