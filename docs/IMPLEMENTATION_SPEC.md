@@ -94,6 +94,7 @@ Backend configuration is loaded from a dotenv file rather than a global `PRIVATE
   - `REGION`: GCP region.
   - `INDEX_ENDPOINT_ID`: Vertex AI Index Endpoint ID.
   - `DEPLOYED_INDEX_ID`: Deployed Index resource ID.
+  - `BUCKET_NAME`: GCS bucket used for persona artifacts.
   - `CHUNKS_PATH`: Object name of the packed chunk data.
   - `API_KEY`: Key for calling Vertex AI endpoints.
   - `MAX_INPUT_TOKENS`: Input context budget for LLM calls.
@@ -145,7 +146,7 @@ For a human-readable guide explaining the meaning, use cases, benefits, and trad
 - **Tags**:
   - Always add `role:infra` or `role:product`.
   - Optionally add `topic:*` for precision (`topic:kubernetes`, `topic:roadmap`).
-- **Chunks**: store as JSONL lines with text + metadata; keep gzipped in GCS (`CHUNKS_URI`) as a sidecar store.
+- **Chunks**: store as JSONL lines with text + metadata; keep gzipped in GCS as the object named by `CHUNKS_PATH` in `BUCKET_NAME`.
 - **Vectors**: embeddings from each chunk → upsert to **Vertex AI Matching Engine** for semantic search.
 - **BM25**: lightweight inverted index over the same chunks; built in memory at startup.
 
@@ -167,7 +168,7 @@ For a human-readable guide explaining the meaning, use cases, benefits, and trad
 1. **Startup (Cloud Run container)**
    - Load `chunks-<sha>.jsonl.gz` from GCS.
    - Build in-memory BM25 inverted index (tokenize chunks, compute idf, etc.).
-   - Load env vars (`CHUNKS_URI`, `PROJECT_ID`, `INDEX_ENDPOINT_ID`, etc.).
+   - Load env vars (`BUCKET_NAME`, `CHUNKS_PATH`, `PROJECT_ID`, `INDEX_ENDPOINT_ID`, etc.).
 2. **Query flow**
    - **First-person normalization** (convert “Omer Reznik” → “I”).
    - **Role classification**: cheap heuristic/embedding sim → `role=infra` or `role=product`. Leave unclassified for mixed queries.

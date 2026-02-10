@@ -12,7 +12,8 @@ os.environ.setdefault(
     "projects/proj-test-123/locations/us-central1/indexEndpoints/1234567890",
 )
 os.environ.setdefault("DEPLOYED_INDEX_ID", "deployed-test-1")
-os.environ.setdefault("CHUNKS_URI", "gs://test-bucket/chunks-abc.jsonl.gz")
+os.environ.setdefault("BUCKET_NAME", "test-bucket")
+os.environ.setdefault("CHUNKS_PATH", "chunks-abc.jsonl.gz")
 os.environ.setdefault("API_KEY", "test-key-123")
 
 # Token limits and timeout as strings so Pydantic coerces to int
