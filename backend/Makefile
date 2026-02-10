@@ -7,7 +7,7 @@ PIP := $(VENV)/bin/pip
 
 include ../make/env.mk
 
-.PHONY: help install run run-debug mock test test-voice test-int test-vector-live test-build_datapoints test-auth-key-login test-create-access-key-cli test-keys-store test-llm-prompt test-security-session check envs clean build_datapoints
+.PHONY: help install run run-debug mock test test-core test-voice test-int test-vector-live test-build_datapoints test-auth-key-login test-create-access-key-cli test-keys-store test-llm-prompt test-security-session check envs clean build_datapoints
 
 help:
 	@echo "Targets:"
@@ -17,6 +17,7 @@ help:
 	@echo "  docker-build - build local backend image"
 	@echo "  docker-run   - run local backend image with mounted secrets"
 	@echo "  test         - run pytest smoke tests against mock app"
+	@echo "  test-core    - run all mock-safe backend tests"
 	@echo "  test-voice   - run persona voice + normalization tests (mock)"
 	@echo "  test-int     - run integration tests against real backend (requires GCP + uvicorn)"
 	@echo "  test-auth-key-login - run auth key login tests"
@@ -81,6 +82,8 @@ test-build_datapoints: $(VENV)/bin/activate
 
 test: $(VENV)/bin/activate
 	$(PY) -m pytest -q tests/test_smoke.py
+
+test-core: test test-voice test-auth-key-login test-security-session test-keys-store test-llm-prompt test-create-access-key-cli test-build_datapoints test-retrieval-vector
 
 test-voice: $(VENV)/bin/activate
 	$(PY) -m pytest -q tests/test_persona_voice.py tests/test_normalize_question_punct.py
