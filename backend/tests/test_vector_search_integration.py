@@ -15,24 +15,39 @@ import pytest
 
 from api import retrieval
 
+RUN_VERTEX_SEARCH_ENV_VAR = "RUN_VERTEX_SEARCH_TEST"
+VERTEX_TEST_EMBEDDING_ENV_VAR = "VERTEX_TEST_EMBEDDING"
+VERTEX_TEST_TOP_K_ENV_VAR = "VERTEX_TEST_TOP_K"
+DEFAULT_VERTEX_TEST_TOP_K = 4
+
 
 @pytest.mark.integration
 def test_vertex_vector_search_live_roundtrip():
     """Optional live test; requires credentials and a real Matching Engine deployment."""
-    if os.getenv("RUN_VERTEX_SEARCH_TEST") != "1":
-        pytest.skip("Set RUN_VERTEX_SEARCH_TEST=1 to enable live vector search test")
+    if os.getenv(RUN_VERTEX_SEARCH_ENV_VAR) != "1":
+        pytest.skip(f"Set {RUN_VERTEX_SEARCH_ENV_VAR}=1 to enable live vector search test")
 
-    embedding_env = os.getenv("VERTEX_TEST_EMBEDDING")
-    if not embedding_env:
-        pytest.skip("Provide VERTEX_TEST_EMBEDDING as comma-separated floats")
+    embedding_env_value = os.getenv(VERTEX_TEST_EMBEDDING_ENV_VAR)
+    if not embedding_env_value:
+        pytest.skip(f"Provide {VERTEX_TEST_EMBEDDING_ENV_VAR} as comma-separated floats")
 
-    embedding = [float(piece.strip()) for piece in embedding_env.split(",") if piece.strip()]
-    if not embedding:
-        pytest.skip("VERTEX_TEST_EMBEDDING did not yield any floats")
+    embedding_values = _parse_embedding_values(embedding_env_value)
+    if not embedding_values:
+        pytest.skip(f"{VERTEX_TEST_EMBEDDING_ENV_VAR} did not yield any floats")
 
-    top_k = int(os.getenv("VERTEX_TEST_TOP_K", "4"))
+    top_k = int(os.getenv(VERTEX_TEST_TOP_K_ENV_VAR, str(DEFAULT_VERTEX_TEST_TOP_K)))
 
     retrieval.configure_vector_client(None)
-    results = retrieval.search_vector_store(embedding, top_k=top_k)
+    results = retrieval.search_vector_store(embedding_values, top_k=top_k)
 
     assert isinstance(results, list)
+
+
+def _parse_embedding_values(embedding_env_value: str) -> list[float]:
+    embedding_values: list[float] = []
+    for raw_value in embedding_env_value.split(","):
+        stripped_value = raw_value.strip()
+        if not stripped_value:
+            continue
+        embedding_values.append(float(stripped_value))
+    return embedding_values
