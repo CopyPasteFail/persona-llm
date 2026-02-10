@@ -1,11 +1,11 @@
 # persona-llm
 
-Monorepo for the persona demo. Frontend in `web`, backend in `backend`.
+Monorepo for the persona demo. Frontend in `frontend`, backend in `backend`.
 Persona data and secrets point the backend at a local/private folder using `PERSONA_DIR`.
 
 ## Why not a submodule?
-- Submodules expose the private repo URL in `.gitmodules` and are awkward in GUIs.
-- VS Code revert/undo is clunky with submodules.
+- Submodules expose the private repo URL in `.gitmodules`.
+- Workarounds like locally setting the Submodule private-url are clunky, for example VS Code revert/undo won't work.
 - CI is simpler if we fetch the private overlay explicitly.
 
 ## Quick start
