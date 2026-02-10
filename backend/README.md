@@ -6,39 +6,47 @@ FastAPI service for the persona demo. Real mode integrates with Vertex AI Matchi
 - Two apps:
   - `api.mock:app` for local development.
   - `api.main:app` skeleton. `/chat` raises not implemented until retrieval and LLM are wired.
-- Health endpoint and minimal `/chat` contract exist.
+- `/health` endpoint and minimal `/chat` contract exist.
 
 ## Prerequisites
 - Python 3.13
 - `uvicorn`, `fastapi`, and deps from `pyproject.toml` or `requirements.txt`.
 
-## Setup
-```bash
-# optional: create virtualenv
-python3.13 -m venv .venv
-source .venv/bin/activate
+### Installing Dependencies on Debian/Ubuntu
 
-# install deps
-pip install -U pip
-pip install -e .  # adjust per your repo
+#### Set desired Python version
+```bash
+PY_VER=3.13
 ```
 
-## Run
-Mock server, default port 8080:
+#### Update packages and install Python
 ```bash
-python -m uvicorn api.mock:app --reload --port 8080
+sudo apt update
+sudo apt install -y software-properties-common
+sudo add-apt-repository -y ppa:deadsnakes/ppa
+sudo apt update
+sudo apt install -y python${PY_VER} python${PY_VER}-venv python${PY_VER}-dev
 ```
 
-Real server, unverified:
+Verify:
 ```bash
-python -m uvicorn api.main:app --reload --port 8000
-# /chat will return 503 or raise NotImplemented until retrieval and LLM are wired
+python${PY_VER} --version
 ```
 
-If a `Makefile` is present, common targets:
+#### Install `pip`
 ```bash
-make BACKEND_ENV FRONTEND_ENV build clean clean-all dev fe-install install mock require-private
+sudo apt install -y python${PY_VER}-distutils
 ```
+
+Verify:
+```bash
+python${PY_VER} -m pip --version
+```
+## Development Setup
+
+
+## Commands
+
 
 ## Environment variables
 Provide these through your shell or a private folder loader. Do not commit secrets.
@@ -75,11 +83,26 @@ Strict allowlist. Real mode allows `http://localhost:3000` and `https://<project
 Per IP, 10 per minute and 100 per day on `/chat`. `/health` is never limited.
 
 ## Tests
-- Run pytest from repo root if tests are present:
-```bash
-pytest -q
-```
-Some tests target the mock app. Integration tests for real mode will fail until that path is implemented.
+
+The repository includes several layers of automated tests to validate both the mock and real backend behavior, as well as the normalization logic for persona references:
+
+- **Smoke tests** (`test_smoke.py`)  
+  Basic checks against the mock API endpoints. They verify that `/health` responds as ready and that `/chat` returns an answer, citations, and token usage in the expected contract:contentReference[oaicite:0]{index=0}.
+
+- **Persona voice tests** (`test_persona_voice.py`)  
+  Ensure that the system correctly normalizes references to the persona name into first-person phrasing. These cover edge cases like possessives, bare name substitutions, curly/straight apostrophes, and strings that must not be changed (emails, handles, paths, etc.):contentReference[oaicite:1]{index=1}.
+
+- **Question punctuation normalization tests** (`test_normalize_question_punct.py`)  
+  Focus on punctuation handling and string transformations for consistent first-person responses, with exhaustive parameterization across variants of the persona’s name:contentReference[oaicite:2]{index=2}.
+
+- **Integration tests (real backend)** (`test_integration_real_backend.py`)  
+  Run against a locally running backend (`uvicorn api.main:app`) with real GCP credentials. They check that `/chat` produces valid responses, includes the expected structure (`answer`, `citations`, `usage`), and returns first-person answers containing pronouns like *I*, *my*, or *me*:contentReference[oaicite:3]{index=3}.
+  Integration tests for real mode will fail until that path is implemented.
+
+- **Environment setup for tests** (`conftest.py`)  
+  Provides default environment variables so tests can run consistently without requiring manual configuration. These cover persona name, project and region identifiers, index endpoints, tokens, and API keys:contentReference[oaicite:4]{index=4}.
+
+Together, these tests ensure that both the mock and real backends return well-structured responses, and that persona normalization logic behaves correctly under a variety of input forms.
 
 ## Deployment
 - Cloud Run and related steps exist in the docs but are not verified in code.
