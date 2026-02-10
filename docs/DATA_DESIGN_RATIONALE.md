@@ -253,3 +253,22 @@
 - Requires careful implementation to ensure overlaps stay inside role/employer blocks only.
 
 **Decision:** Add ~10% overlap by sentence within the same role/employer block. Never overlap across roles, employers, or across sections (e.g., Experience → Education). This improves retrieval quality by ensuring adjacent chunks share enough context for coherent answers.
+
+---
+
+## 14. Vertex Matching Engine Update Mode (Batch Update)
+
+**What:** Keep the Matching Engine index in the default `BATCH_UPDATE` mode and refresh data by publishing a new datapoints file to Cloud Storage, then running a batch rebuild (`gcloud ai indexes update`).
+
+**Alternative:** Create the index with `STREAM_UPDATE` enabled and push incremental changes with `upsert_datapoints`.
+
+**Pros:**
+- Lower steady-state cost—no streaming ingestion charges or background update jobs when the corpus is idle.
+- Operationally simple: each refresh is just “export datapoints, upload to GCS, kick off update” with no retry loops or live mutation code paths.
+- Matches persona cadence: CV edits happen occasionally, so a longer rebuild window is acceptable.
+
+**Cons:**
+- Updates take longer; you must wait for the batch job to finish before the new data is live.
+- No real-time inserts/deletes. If data starts changing frequently, the pipeline must shift to streaming.
+
+**Decision:** Use `BATCH_UPDATE` for now. The CV persona changes rarely, and keeping the index in batch mode reduces spend and complexity. We’ll revisit streaming only if we need sub-minute freshness.

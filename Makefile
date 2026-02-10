@@ -164,12 +164,47 @@ gcp-index-upsert: require-private require-gcp-env require-index-ids
 	  echo "DATAPOINTS_FILE must point to a JSONL file with datapoints"; \
 	  exit 1; \
 	fi
-	@gcloud ai index-endpoints upsert-datapoints \
-		--index-endpoint="$(INDEX_ENDPOINT_URI)" \
-		--deployed-index-id="$(DEPLOYED_INDEX_ID)" \
-		--region="$(REGION)" \
-		--project="$(PROJECT_ID)" \
-		--datapoints-file="$(DATAPOINTS_FILE)"
+	@set -e; \
+	if [ ! -f "$(DATAPOINTS_FILE)" ]; then \
+	  echo "Missing datapoints file: $(DATAPOINTS_FILE)"; \
+	  exit 1; \
+	fi; \
+	stamp="$$(date +%Y%m%d-%H%M%S)"; \
+	tmp_dir="$$(mktemp -d)"; \
+	convert_target="$$tmp_dir/datapoints.json"; \
+	case "$(DATAPOINTS_FILE)" in \
+	  *.jsonl.gz) \
+	    gzip -dc "$(DATAPOINTS_FILE)" > "$$convert_target" ;; \
+	  *.jsonl) \
+	    cp "$(DATAPOINTS_FILE)" "$$convert_target" ;; \
+	  *.json) \
+	    cp "$(DATAPOINTS_FILE)" "$$convert_target" ;; \
+	  *) \
+	    echo "Unsupported datapoints extension: $(DATAPOINTS_FILE). Supported: .jsonl, .jsonl.gz, .json"; \
+	    rm -rf "$$tmp_dir"; \
+	    exit 1 ;; \
+	esac; \
+	object_dir="gs://$(BUCKET_NAME)/matching-engine/$$stamp/"; \
+	echo "Uploading datapoints to $${object_dir}datapoints.json"; \
+	gsutil cp "$$convert_target" "$${object_dir}" >/dev/null; \
+	metadata_tmp="$$(mktemp)"; \
+	printf '{\n  "contentsDeltaUri": "%s"\n}\n' "$${object_dir}" > "$$metadata_tmp"; \
+	echo "Triggering batch index update (this can take several minutes)..."; \
+	operation_id="$$(gcloud ai indexes update "$(INDEX_ID)" \
+	  --region="$(REGION)" \
+	  --project="$(PROJECT_ID)" \
+	  --metadata-file="$$metadata_tmp" \
+	  --format='value(name)' \
+	  --quiet)"; \
+	rm -f "$$metadata_tmp"; \
+	rm -rf "$$tmp_dir"; \
+	if [ -n "$$operation_id" ]; then \
+	  echo "Index update request submitted."; \
+	  echo "Track progress with:"; \
+	  echo "  gcloud ai operations describe $$operation_id --index=$(INDEX_ID) --region=$(REGION) --project=$(PROJECT_ID)"; \
+	else \
+	  echo "Index update request submitted. Monitor progress in Cloud Console."; \
+	fi
 
 gcp-index-list: require-gcp-env
 	@gcloud ai indexes list --region="$(REGION)" --project="$(PROJECT_ID)"
