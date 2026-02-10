@@ -113,6 +113,8 @@ gcp-cloud-run-deploy: require-private require-gcp-env
 		--region "$(REGION)" \
 		--project "$(PROJECT_ID)" \
 		--set-env-vars "$$env_vars" \
+		--min-instances=0 \
+		--max-instances=1 \
 		--allow-unauthenticated
 	@echo "Deployed Cloud Run service persona-backend in $(REGION)"
 
@@ -123,6 +125,8 @@ gcp-cloud-run-deploy-mock: require-private require-gcp-env
 		--region "$(REGION)" \
 		--project "$(PROJECT_ID)" \
 		--set-env-vars "$$env_vars" \
+		--min-instances=0 \
+		--max-instances=1 \
 		--allow-unauthenticated \
 		--command uvicorn \
 		--args "api.mock:app,--host,0.0.0.0,--port,8080"

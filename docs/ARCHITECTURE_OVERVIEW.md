@@ -46,6 +46,18 @@ See [`DATA_DESIGN_RATIONALE.md`](./DATA_DESIGN_RATIONALE.md) for discussion.
 - Operational note: if Firebase Hosting and Cloud Run are on different origins (for example `*.web.app` and `*.run.app`), browsers may treat session cookies as cross-site and apply stricter rules.
 - CORS allowlist: localhost and your Hosting origin built from `PROJECT_ID`.
 
+## Cloud Run scaling notes
+Important considerations:
+- Service-level vs. revision-level: Cloud Run allows min/max instances at both the service level and the revision level.
+  - For max-instances, the effective limit is the lower of the service-level and revision-level values.
+  - For min-instances, the effective value is the higher of the service-level and revision-level values.
+- Console display: the service details page typically shows service-level scaling. To set global defaults without creating a new revision, use `gcloud run services update` with `--min-instances` and `--max-instances` (note the service-level command and flags).
+- Default min=0: when min is 0, Cloud Run does not store an annotation, so it will not appear in `gcloud run services describe` output or in GCP console.
+
+To view deployed services in the console, open:
+https://console.cloud.google.com/run/services
+Then choose the project.
+
 ### Components
 - **Backend**: FastAPI with two apps.
   - `api.mock:app` for local dev, deterministic answers.
