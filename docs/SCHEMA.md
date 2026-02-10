@@ -1,4 +1,4 @@
-# PersonaChunk Schema - Field Guide
+# PersonaChunk Schema - Fields Guide
 
 This guide explains each field: what it signifies, how the app uses it, the benefits, an example, and what happens if you drop it.
 
@@ -8,7 +8,7 @@ This guide explains each field: what it signifies, how the app uses it, the bene
 
 ### `schema_version` (integer; const: 2)
 - **Meaning**: Version tag for this schema.
-- **Use**: Lets the backend branch logic/migrations safely.
+- **Use**: Lets the backend to handle logic/migrations safely.
 - **Benefit**: Future evolution without breaking old data.
 - **Example**: `2`
 - **If dropped**: Harder to migrate or validate mixed versions.
@@ -26,13 +26,15 @@ This guide explains each field: what it signifies, how the app uses it, the bene
 - **Benefit**: Stable citations and debugging.
 - **Example**: `"infra-014"`
 - **If dropped**: Can’t map ANN hits back to exact text.
+- **See also**: [RATIONALE.md §12](./RATIONALE.md#12-chunk-identity-vs-order-chunk_id-and-position) for design trade-offs around chunk identity vs order.
 
-### `position` (integer >= 1)
+### `position` (integer ≥ 1)
 - **Meaning**: Order of this chunk within the doc.
 - **Use**: Reassemble adjacent chunks; preserve sequence in citations.
 - **Benefit**: Multi-chunk answers remain coherent.
 - **Example**: `14`
 - **If dropped**: Adjacent evidence may appear out of order.
+- **See also**: [RATIONALE.md §12](./RATIONALE.md#12-chunk-identity-vs-order-chunk_id-and-position) for design trade-offs around chunk identity vs order.
 
 ---
 
@@ -138,37 +140,92 @@ This guide explains each field: what it signifies, how the app uses it, the bene
 - **Example**: `["Kubernetes (K8s)","Terraform","Argo CD"]`
 - **If dropped**: You can still rely on `text` for raw wording, but you lose the easy, pretty, de-duplicated tech list.
 
-### `extras.type` (enum: `achievement` | `experience`)
-- **Meaning**: Semantic kind of item.
-- **Use**: Weighting/rules (e.g., prioritize achievements).
-- **Benefit**: Finer control for ranking/formatting.
+### `extras.type` (enum: `achievement` | `experience`) — *Experience-only*
+- **Meaning**: Semantic kind of Experience bullet (either a responsibility or a highlight).
+- **Use**: Optional weighting/formatting (e.g., emphasize achievements).
+- **Benefit**: Lets you distinguish results vs responsibilities within the Experience section.
 - **Example**: `"achievement"`
-- **If dropped**: Less control over how different lines are prioritized or shown.
+- **Omit for**: **Summary** and **Skills** chunks (not applicable there).
+- **If dropped**: No way to distinguish results vs responsibilities, which is fine if you don’t need that nuance.
 
 ---
 
-## Example Chunk
+## Examples
 
+### Summary (omit `extras.type`)
 ```json
 {
   "schema_version": 2,
   "doc_id": "cv-infra-2025",
-  "chunk_id": "infra-014",
-  "position": 14,
-  "text": "Defined SLOs and built Prometheus + Grafana dashboards.",
+  "chunk_id": "infra-001",
+  "position": 1,
+  "text": "DevOps/SRE engineer experienced in automating infrastructure, running Kubernetes in production, and improving observability.",
   "role": "infra",
-  "topics": ["observability","slo","grafana","prometheus"],
-  "tags": ["role:infra","topic:observability","topic:slo","topic:grafana","topic:prometheus"],
+  "topics": ["devops","sre","automation","kubernetes","observability"],
+  "tags": ["role:infra","topic:devops","topic:sre","topic:automation","topic:kubernetes","topic:observability"],
+  "section": "Summary",
+  "start_year": 2025,
+  "end_year": 2025,
+  "lang": "en",
+  "updated_at": "2025-09-02T20:00:00Z",
+  "source_uri": "gs://bucket/cv-infra-2025.docx",
+  "permissions": ["public"],
+  "extras": {
+    "employer": "",
+    "tech": ["Kubernetes","Prometheus","Terraform"]
+  }
+}
+```
+
+### Skills (omit `extras.type`)
+```json
+{
+  "schema_version": 2,
+  "doc_id": "cv-infra-2025",
+  "chunk_id": "infra-010",
+  "position": 10,
+  "text": "Skills: Kubernetes, Terraform, Argo CD, Prometheus, Grafana, AWS, GCP.",
+  "role": "infra",
+  "topics": ["kubernetes","terraform","argocd","prometheus","grafana","aws","gcp"],
+  "tags": ["role:infra","topic:kubernetes","topic:terraform","topic:argocd","topic:prometheus","topic:grafana","topic:aws","topic:gcp"],
+  "section": "Skills",
+  "start_year": 2025,
+  "end_year": 2025,
+  "lang": "en",
+  "updated_at": "2025-09-02T20:00:00Z",
+  "source_uri": "gs://bucket/cv-infra-2025.docx",
+  "permissions": ["public"],
+  "extras": {
+    "employer": "",
+    "tech": ["Kubernetes","Terraform","Argo CD","Prometheus","Grafana","AWS","GCP"]
+  }
+}
+```
+
+### Experience (optionally set `extras.type`)
+```json
+{
+  "schema_version": 2,
+  "doc_id": "cv-infra-2025",
+  "chunk_id": "infra-020",
+  "position": 20,
+  "text": "At Acme Inc., managed production EKS clusters with Terraform and Argo CD, improved monitoring with Prometheus and Grafana, and defined SLOs to improve reliability.",
+  "role": "infra",
+  "topics": ["eks","terraform","argocd","prometheus","grafana","slo","reliability"],
+  "tags": ["role:infra","topic:eks","topic:terraform","topic:argocd","topic:prometheus","topic:grafana","topic:slo","topic:reliability"],
   "section": "Experience",
   "start_year": 2019,
   "end_year": 2021,
   "lang": "en",
-  "updated_at": "2025-09-02T10:00:00Z",
-  "source_uri": "gs://bucket/cv-infra-2025.pdf",
+  "updated_at": "2025-09-02T20:00:00Z",
+  "source_uri": "gs://bucket/cv-infra-2025.docx",
   "permissions": ["public"],
   "extras": {
     "employer": "Acme Inc.",
-    "tech": ["Prometheus","Grafana","SLOs"],
+    "tech": ["EKS","Terraform","Argo CD","Prometheus","Grafana"],
     "type": "experience"
   }
 }
+
+---
+
