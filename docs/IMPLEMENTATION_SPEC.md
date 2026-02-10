@@ -160,9 +160,11 @@ For a human-readable guide explaining the meaning, use cases, benefits, and trad
 2. **Packaging**
    - Write `chunks-<sha>.jsonl.gz`.
    - Upload to GCS (sidecar store).
-3. **Embedding + upsert** *(not yet wired)*
-   - Embed each chunk with `text-embedding-004` (outputs 3,072-dimensional vectors).
-   - Upsert `{vector, metadata}` to Vertex AI Matching Engine.
+3. **Embedding + upsert**
+   - `backend/jobs/build_datapoints.py` (invoked via `make be-build_datapoints`) batches persona chunks, calls Vertex `text-embedding-004`, and writes the `DATAPOINTS_FILE` artifact with ready-to-upload datapoints.
+   - `make gcp-index-upsert` converts that artifact if needed, uploads it to `gs://$BUCKET_NAME/matching-engine/<timestamp>/datapoints.json`, and triggers `gcloud ai indexes update` so Matching Engine serves the embeddings consumed by `embed_query` → `search_vector_store`.
+
+> Next implementation stage: finish the deployment/runtime wiring so `api.main.chat` can return real answers (load the chunk side store on startup, then wire `llm.call_gemini_flash` instead of raising `NotImplementedError`).
 
 ### Vector search configuration (Vertex AI Matching Engine)
 - **Index type:** Tree-AH with dot-product distance; match cosine behaviour by L2-normalizing every embedding (during upsert and query).
