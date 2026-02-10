@@ -125,7 +125,7 @@ curl -s -X POST http://localhost:8000/chat -H 'content-type: application/json' -
 - `api/llm.py`: `build_llm_prompt` returns the strict format. `call_gemini_flash` not implemented.
 
 ## Ingestion jobs
-- `jobs/pack_and_push.py` validates JSONL against `schema/chunk.schema.json`, splits long texts (~2.2k characters, sentence-aware), and writes `chunks-<sha>.jsonl.gz`. Prints a `gs://` URI if a `bucket:` is provided in a YAML file passed with `--settings`. No embedding or upsert yet.
+- `jobs/pack_and_push.py` validates JSONL against `schema/chunk.schema.json`, and if any bullet **or paragraph** exceeds ~2.2k characters (~450 tokens), splits it by sentence boundaries (never mid-sentence). Writes `chunks-<sha>.jsonl.gz`. Prints a `gs://` URI if a `bucket:` is provided in a YAML file passed with `--settings`. No embedding or upsert yet.
 
 Validation is performed against the machine-readable schema:
 - [`chunk.schema.json`](../backend/schema/chunk.schema.json)
@@ -137,7 +137,7 @@ For a human-readable guide explaining the meaning, use cases, benefits, and trad
 
 ### Overall scheme
 
-- **Two CVs**: one infra (DevOps/SRE/Platform) and one product (PM/TPM/PO).
+- **One CV per Role**: one infra (DevOps/SRE/Platform) and one product (PM/TPM/PO).
 - **Tags**:
   - Always add `role:infra` or `role:product`.
   - Optionally add `topic:*` for precision (`topic:kubernetes`, `topic:roadmap`).
