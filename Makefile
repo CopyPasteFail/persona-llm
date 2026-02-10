@@ -28,6 +28,8 @@ FRONTEND_ENV := $(PRIVATE_DIR)/secrets/frontend.env
 SA_EMAIL = persona-llm@$(PROJECT_ID).iam.gserviceaccount.com
 SA_MEMBER = serviceAccount:$(SA_EMAIL)
 BUCKET_URI = gs://$(BUCKET_NAME)
+# Default path for generated service account key; override with `make gcp-sa-key KEY_FILE=/path/to/key.json`
+KEY_FILE ?= $(PRIVATE_DIR)/secrets/key.json
 # Accept either a bare endpoint ID or a full resource path
 INDEX_ENDPOINT_URI = $(if $(findstring /,$(INDEX_ENDPOINT_ID)),\
   $(INDEX_ENDPOINT_ID),\
@@ -242,8 +244,8 @@ gcp-sa-roles: require-private require-gcp-env
 	  | awk '$$2 ~ /^serviceAccount:/')"; \
 	if [ -n "$$OUT" ]; then echo "$$OUT"; else echo "None"; fi
 
-# Create a key in PRIVATE_DIR/key.json
+# Create a service account key (defaults to $(PRIVATE_DIR)/secrets/key.json)
 gcp-sa-key: require-private require-gcp-env
-	@install -d "$(PRIVATE_DIR)"
-	@gcloud iam service-accounts keys create "$(PRIVATE_DIR)/secrets/key.json" \
+	@install -d "$(dir $(KEY_FILE))"
+	@gcloud iam service-accounts keys create "$(KEY_FILE)" \
 	  --iam-account "persona-llm@$(PROJECT_ID).iam.gserviceaccount.com"

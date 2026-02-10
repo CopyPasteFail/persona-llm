@@ -36,8 +36,14 @@ def resolve_existing_path(path_value: str, *roots: Path) -> Path:
 
     raise FileNotFoundError(f"File not found: {candidate}")
 
+def _expand_env_value(value: str) -> str:
+    """Expand env-style tokens like $HOME and ~."""
+    return os.path.expanduser(os.path.expandvars(value))
 
-def load_backend_env(keys: list[str]) -> dict[str, str]:
+
+def load_backend_env(
+    keys: list[str], *, optional: Iterable[str] | None = None
+) -> dict[str, str]:
     """Load selected backend secrets from the private directory."""
     private_dir = os.getenv("PRIVATE_DIR")
     if not private_dir:
@@ -55,17 +61,39 @@ def load_backend_env(keys: list[str]) -> dict[str, str]:
         raw_common: Mapping[str, str | None] = cast(
             Mapping[str, str | None], dotenv_values(common_env_path)
         )
-        env_values.update({k: v for k, v in raw_common.items() if v})
+        env_values.update({k: _expand_env_value(v) for k, v in raw_common.items() if v})
 
     raw_env: Mapping[str, str | None] = cast(Mapping[str, str | None], dotenv_values(env_path))
-    env_values.update({k: v for k, v in raw_env.items() if v})
+    env_values.update({k: _expand_env_value(v) for k, v in raw_env.items() if v})
     selected: dict[str, str] = {}
     for key in keys:
         value = env_values.get(key) or os.getenv(key)
         if not value:
             raise RuntimeError(f"Missing required env var: {key}")
-        selected[key] = value
+        selected[key] = _expand_env_value(value)
+    if optional:
+        for key in optional:
+            value = env_values.get(key) or os.getenv(key)
+            if value:
+                selected[key] = _expand_env_value(value)
     return selected
+
+
+def maybe_set_service_account(env: Mapping[str, str]) -> None:
+    """Apply GOOGLE_APPLICATION_CREDENTIALS from env mapping if present."""
+    credentials_path = env.get("GOOGLE_APPLICATION_CREDENTIALS")
+    if not credentials_path:
+        return
+
+    cred_file = Path(credentials_path)
+    if cred_file.is_file():
+        print(f"Using service account credentials from {cred_file}")
+        os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = str(cred_file)
+    else:
+        print(
+            f"GOOGLE_APPLICATION_CREDENTIALS points to missing file {cred_file}; "
+            "falling back to Application Default Credentials"
+        )
 
 
 @runtime_checkable
@@ -201,7 +229,7 @@ def main() -> None:
 
     backend_root = Path(__file__).resolve().parent.parent
     repo_root = backend_root.parent
-    env = load_backend_env(["BUCKET_NAME"])
+    env = load_backend_env(["BUCKET_NAME"], optional=["GOOGLE_APPLICATION_CREDENTIALS"])
 
     default_schema = backend_root / "schema" / "chunk.schema.json"
     default_input = repo_root / "private" / "persona" / "data" / "chunks.jsonl"
@@ -213,6 +241,8 @@ def main() -> None:
 
     schema_path = resolve_existing_path(args.schema, backend_root)
     input_path = resolve_existing_path(args.input, repo_root, backend_root)
+
+    maybe_set_service_account(env)
 
     records = build_persona_records(schema_path, input_path)
     payload, filename = _serialize_records(records)
