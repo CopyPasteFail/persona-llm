@@ -216,10 +216,15 @@ The runtime loads `datasets/current.json` and expects a coupled dataset folder:
 
 
 Local build (example `v13`). Default input: `$PRIVATE_DIR/persona/data/chunks.jsonl`.
-```bash
-# choose a version and point DATAPOINTS_FILE at the versioned folder
-export DATASET_VERSION=v13
 
+Set these in private/secrets/backend.env
+```bash
+DATASET_VERSION=v13
+DATAPOINTS_FILE=$(PRIVATE_DIR)/persona/data/datasets/$(DATASET_VERSION)/datapoints.jsonl
+```
+
+And run the following commands:
+```bash
 # 1) build chunks.jsonl.gz
 make be-dataset-chunks
 
@@ -237,6 +242,8 @@ Atomic update order (locked):
 1) Upload `datasets/vNN/datapoints.jsonl`, `datasets/vNN/chunks.jsonl.gz`, `datasets/vNN/manifest.json`
 2) Update `datasets/current.json` to `{ "version": "vNN" }`
 3) Call `POST /ops/vector/reload` (or restart service)
+
+For `local-integrated` with a local dataset root (`DATASET_URI=file:/...`), also update the local pointer file used by that root (for example `$PRIVATE_DIR/persona/data/datasets/current.json`) to the same version.
 
 If you plan to use `VECTOR_BACKEND=matching_engine`, keep this dataset flow and then continue to Phase 9 to provision/upgrade the index and run `make gcp-index-upsert` using the same `DATAPOINTS_FILE`.
 
@@ -335,7 +342,7 @@ If you already completed Phase 7, reuse the same `DATAPOINTS_FILE` (from the ver
    ```bash
    make gcp-index-upsert
    ```
-   - Requires `DATAPOINTS_FILE` to be configured in `private/secrets/backend.env` (for example `$PRIVATE_DIR/persona/data/datapoints.jsonl`).
+   - Requires `DATAPOINTS_FILE` to be configured in `private/secrets/backend.env` (for example `$PRIVATE_DIR/persona/data/datasets/$DATASET_VERSION/datapoints.jsonl`).
    - The target stages the datapoints as `datapoints.json` in a timestamped folder under `gs://$BUCKET_NAME/matching-engine/` (it will decompress `.jsonl.gz` automatically) and invokes `gcloud ai indexes update` with that folder URI as `contentsDeltaUri`.
    - `gcloud ai indexes update` refreshes the Vertex AI Vector Search (Matching Engine) index by ingesting the staged datapoints JSON from GCS and rebuilding the index contents.
    - If you prefer manual control, run the `gsutil cp` + `gcloud ai indexes update` commands yourself; the generated metadata snippet lives at `/tmp/` and can be inspected/edited before re-running.

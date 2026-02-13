@@ -1,13 +1,13 @@
 # CVs → JSONL Conversion
 
-You are converting TWO ATTACHED CV FILES into JSONL lines that conform to the PersonaChunk schema.
+You are converting ONE OR MORE ATTACHED CV FILES into JSONL lines that conform to the PersonaChunk schema.
 
 ## Files
 
-* I will attach two files right now.
-* File with name containing ["infra","sre","devops","platform"] → role=infra.
-* File with name containing ["product","pm","tpm","po"] → role=product.
-* If ambiguous, infer from content.
+* I will attach one or more CV files.
+* Each file is a separate CV and must produce its own set of JSONL records.
+* Infer the professional domain `role` from the filename and CV content. Examples: "infra", "product", "marketing", "sales", "finance", "legal", "dentistry".
+* Use a single `role` value per CV. If the CV spans multiple domains, pick the primary role and reflect the rest via `topics`.
 
 ## Output
 
@@ -18,11 +18,11 @@ You are converting TWO ATTACHED CV FILES into JSONL lines that conform to the Pe
 ## Schema
 
 * `schema_version`: 2
-* `doc_id`: stable ID per CV, e.g. `"cv-infra-2025"`. Human-readable, not hashed.
+* `doc_id`: stable ID per CV, derived from role and year when available, e.g. `"cv-infra-2025"`. Human-readable, not hashed.
 * `chunk_id`: `<role>-NNN` (sequential per doc, starting at 001).
 * `position`: integer ≥1.
 * `text`: first-person chunk content.
-* `role`: `"infra"` or `"product"`.
+* `role`: normalized lowercase professional domain inferred from the CV (single value per CV).
 * `topics`: normalized lowercase tokens.
 * `tags`: mirror role + topics (for fast ANN filtering).
 * `section`: "Experience","Projects","Education","Certifications","Skills","Summary","Publications","Awards".
@@ -32,10 +32,16 @@ You are converting TWO ATTACHED CV FILES into JSONL lines that conform to the Pe
 * `source_uri`: `"file://<filename>"`.
 * `permissions`: ["public"].
 * `extras`:
-
   * `employer`: company/institution if applicable.
-  * `tech`: human-friendly names.
+  * `tech`: human-friendly names (tools, systems, methods, platforms, instruments, software, equipment, etc.).
   * `type`: "experience" or "achievement", **only for Experience**.
+
+## Multi-file Rules
+
+* Generate one `doc_id` per input CV file.
+* For each CV, `chunk_id` numbering starts at 001 and increments sequentially within that CV.
+* `position` starts at 1 for each CV and increments sequentially within that CV.
+* `source_uri` must reference the correct filename for each record.
 
 ## Chunking Rules
 
@@ -164,4 +170,4 @@ Each line is a valid JSON object, and the file as a whole is line-delimited JSON
 
 ---
 
-BEGIN: Read both attachments, then output the `chunks.jsonl` file.
+BEGIN: Read all attachments, infer role per CV, then output the `chunks.jsonl` file.

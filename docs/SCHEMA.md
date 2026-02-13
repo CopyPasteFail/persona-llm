@@ -226,6 +226,4 @@ This guide explains each field: what it signifies, how the app uses it, the bene
     "type": "experience"
   }
 }
-
----
-
+```

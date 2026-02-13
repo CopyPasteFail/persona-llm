@@ -139,6 +139,8 @@ Atomic update order:
 2) Update `datasets/current.json` to `{ "version": "vNN" }`
 3) Call `POST /ops/vector/reload` with `x-ops-secret: $OPS_SECRET` (or restart the service)
 
+For `local-integrated` with `DATASET_URI=file:/...`, update the matching local pointer file (for example `$PRIVATE_DIR/persona/data/datasets/current.json`) to the same version.
+
 Local dev can bypass ops auth with `OPS_AUTH=disabled`.
 
 ## CORS

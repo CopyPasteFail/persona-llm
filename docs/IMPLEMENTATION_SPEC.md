@@ -130,16 +130,66 @@ See [backend/README.md#curl-examples](../backend/README.md#curl-examples) for ru
   - indexed fields per chunk: `text`, `metadata.section`, `metadata.topics[]`, `metadata.tags[]`
   - BM25 index is built in memory whenever chunk store is configured or reloaded.
 
-### LLM call gate semantics (deterministic)
-- When `ENABLE_LLM_CALL_GATING=false`, the orchestrator calls the LLM if retrieval selected any chunk.
-- When `ENABLE_LLM_CALL_GATING=true`, gate pass uses OR logic:
-  - Semantic signal passes if:
-    - best weighted score is at least `WEIGHTED_SCORE_THRESHOLD`, and
-    - at least `WEIGHTED_CONSENSUS_COUNT` selected chunks meet `WEIGHTED_SCORE_THRESHOLD`.
-  - BM25 fallback passes if:
-    - best BM25 score is at least `BM25_SCORE_THRESHOLD`, and
-    - the query is considered in-domain for the retrieval call.
-- If gate does not pass, `/chat` returns a no-signal deterministic answer with empty citations.
+### Thinking gate methodology (deterministic)
+- Scope:
+  - Thinking gating only affects the LLM `thinking_budget_tokens` value passed to the backend.
+  - It does **not** decide whether the LLM is called; that is handled by the LLM call gate.
+- Feature flag and defaults:
+  - `THINKING_BUDGET_TOKENS` is the default budget from environment.
+  - `ENABLE_THINKING_GATING` controls whether per-request heuristic gating is applied.
+- Resolution flow (`_resolve_thinking_budget_tokens(...)` in `api/rag_chat_orchestrator.py`):
+  1. If `THINKING_BUDGET_TOKENS` is unset, effective budget is `None` (provider default behavior).
+  2. If thinking gating is disabled, effective budget is exactly `THINKING_BUDGET_TOKENS`.
+  3. If thinking gating is enabled, `choose_thinking_budget_tokens(...)` is used:
+     - Returns `0` for "simple" questions.
+     - Returns the configured default budget for non-simple questions.
+- Simple-question heuristic (`_is_simple_question(...)`):
+  - Empty or whitespace-only question => simple (`true`).
+  - Question length `>= 120` chars => not simple (`false`).
+  - More than 1 question mark => not simple (`false`).
+  - Case-insensitive prefix match on:
+    - `do you have experience`
+    - `what is`
+    - `define`
+    - `list`
+    - `summarize`
+    => simple (`true`).
+  - Otherwise, if question contains any of these reasoning keywords:
+    - `compare`, `tradeoff`, `design`, `debug`, `why`, `how`, `step`,
+      `recommend`, `pros`, `cons`, `architecture`, `root cause`
+    => not simple (`false`).
+  - If none of the above blocks match => simple (`true`).
+- Important implementation note:
+  - `selected_chunks_count` is currently passed into `choose_thinking_budget_tokens(...)` but not used in the heuristic (reserved for future policy changes).
+
+### LLM call gate methodology (deterministic)
+- Scope:
+  - This gate controls whether the orchestrator calls the LLM after retrieval.
+  - The gate computes a deterministic shadow decision for logs/telemetry in all cases.
+- Inputs and normalization (`compute_llm_gate_decision(...)` and `_compute_llm_gate_decision(...)`):
+  - Inputs: `selected_chunks`, `WEIGHTED_SCORE_THRESHOLD`, `BM25_SCORE_THRESHOLD`, `WEIGHTED_CONSENSUS_COUNT`, and optional `question_is_in_domain`.
+  - `WEIGHTED_CONSENSUS_COUNT` is normalized to at least `1`.
+  - If `question_is_in_domain` is omitted, it defaults to `bool(selected_chunks)`.
+- Score extraction:
+  - `top1_*` scores come from the first selected chunk.
+  - `best_weighted_score` and `best_bm25_score` are max values across selected chunks (ignoring missing/non-numeric values).
+  - `weighted_consensus_count` is the number of selected chunks with `score >= WEIGHTED_SCORE_THRESHOLD`.
+- Gate pass logic:
+  - `passes_semantic_signal` is true when:
+    - `best_weighted_score >= WEIGHTED_SCORE_THRESHOLD`, and
+    - `weighted_consensus_count >= WEIGHTED_CONSENSUS_COUNT`.
+  - `passes_bm25_fallback_signal` is true when:
+    - `best_bm25_score >= BM25_SCORE_THRESHOLD`, and
+    - `question_is_in_domain == true`.
+  - `would_call_llm = passes_semantic_signal OR passes_bm25_fallback_signal`.
+- Decision reasons emitted:
+  - `no_candidates`: no selected chunks.
+  - `pass`: gate passes by semantic signal and/or BM25 fallback.
+  - `score_below`: selected chunks exist but pass conditions are not met.
+- Runtime behavior in `/chat`:
+  - If `ENABLE_LLM_CALL_GATING=false`, shadow decision is still computed and logged, but LLM invocation proceeds whenever retrieval selected at least one chunk.
+  - If `ENABLE_LLM_CALL_GATING=true`, LLM invocation follows `would_call_llm`.
+  - When gating is enabled and gate fails, `/chat` returns the deterministic no-signal answer with empty citations (no LLM generation call).
 
 ## Ingestion jobs
 - `jobs/pack_and_push.py` validates JSONL against `schema/chunk.schema.json`, and if any bullet **or paragraph** exceeds ~2.2k characters (~450 tokens), splits it by sentence boundaries (never mid-sentence). It can also write `chunks.jsonl.gz` into a dataset folder via `--output-dir`.
