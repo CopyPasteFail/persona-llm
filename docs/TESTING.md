@@ -10,6 +10,171 @@ This repo currently has backend-focused tests. The frontend does not have a dedi
 make be-install
 ```
 
+## Gating Evaluation
+The dataset for `backend/scripts/eval_gating.py` is JSONL (one JSON object per line).
+`eval_gating.py` always evaluates with both thinking-gating and llm-gating enabled.
+By default, it runs in `integrated_retrieval_only` mode (retrieval-only gate evaluation without LLM generation).
+
+In `integrated_retrieval_only`, each row is processed through:
+- `normalize_question_for_first_person(...)`
+- `embed_query(...)`
+- `search_vector_store(...)` (honors `VECTOR_BACKEND`)
+- `apply_filters_and_boosting(...)`
+- threshold-based LLM gating decision logic in the orchestrator
+
+This mode does not call chat LLM generation and is wired through the same integrated retrieval runtime setup as `api.main:app` (`configure_integrated_retrieval_runtime(...)`).
+
+Privacy guarantees for this mode:
+- No answer text fields are written.
+- No chunk text is written.
+- Output keeps only IDs and numeric metrics.
+
+Minimum schema per row:
+```json
+{
+  "id": "q001",
+  "question": "What are the main themes covered by your indexed data?"
+}
+```
+
+Optional fields:
+- `expected`: one of `CALL`, `SKIP`, `BORDERLINE`
+- `notes`: free-form string
+
+### Eval CLI arguments
+- `--dataset <path>`: Input JSONL dataset file or directory. If omitted, eval uses `private-template/eval_datasets/sample_questions.jsonl`.
+- `--out <path>`: Output destination. Accepts either:
+  - a directory (script writes `gating_eval_output_YYYY-MM-DD_HH-MM-SS.jsonl`), or
+  - a `.jsonl` file path.
+- `--max-rows <int>`: Optional cap on rows processed from each dataset file. Must be greater than 0.
+- `--mode <deterministic|vertex|integrated_retrieval_only>`: Runtime wiring mode.
+  - `deterministic`: Offline deterministic retrieval + deterministic LLM backend.
+  - `vertex`: Integrated retrieval + real LLM backend selection.
+  - `integrated_retrieval_only` (default): Integrated retrieval path only; does not call LLM generation.
+- `--weighted-score-threshold <float>`: Per-run override for weighted-score gating threshold.
+- `--bm25-score-threshold <float>`: Per-run override for BM25 gating threshold.
+- `--top-k <int>`: Per-run override for retrieval candidate depth (`TOP_K`); must be greater than 0.
+
+### Eval output format (JSONL)
+`eval_gating.py` writes a mixed-record JSONL file in this order:
+1. `run_metadata` (single row for the whole run)
+2. `dataset_metadata` (one row per evaluated dataset file)
+3. `question_result` (one row per evaluated question)
+
+Example `run_metadata` fields:
+- `schema_version`
+- `mode`
+- `dataset_argument`, `dataset_path`, `dataset_files`
+- `settings_used` (effective values used for this run)
+  - Includes effective `top_k`, `weighted_score_threshold`, `bm25_score_threshold`,
+    retrieval weights, `vector_backend`, `llm_backend`, and gate-enable flags.
+
+Example `dataset_metadata` fields:
+- `dataset_file`
+- `row_count`
+
+Question rows retain prior metrics and include `record_type: "question_result"`.
+Question rows do not repeat `dataset_file`; join them to the nearest preceding
+`dataset_metadata` record in the JSONL stream.
+Current schema version is `gating_eval_v3`.
+
+`question_result` rows include:
+- `id`, `question`, `mode`, `elapsed_ms`
+- `would_call_llm_if_gated`, `llm_gate_reason`
+  - `would_call_llm_if_gated=true` means threshold gating would call the LLM.
+  - `would_call_llm_if_gated=false` means threshold gating would skip the LLM.
+- `top1_weighted_score`, `top1_bm25_score`, `top1_vector_score`
+- `best_weighted_score`, `best_bm25_score`
+- `weighted_scores`, `bm25_scores`
+- `selected_chunk_ids`, `selected_count`, `candidates_count`
+- `expected` (when present in the dataset)
+
+Run-level threshold/backend config is recorded in `run_metadata.settings_used`.
+
+### Eval environment variables
+`load_settings()` still validates backend settings, so these are required even when LLM generation is skipped:
+- `PERSONA_NAME`
+- `PROJECT_ID`
+- `REGION`
+- `LLM_BACKEND`
+- `API_KEY`
+- `MAX_OUTPUT_TOKENS`
+- `REQ_TIMEOUT_MS`
+- `BUCKET_NAME` (required unless `DATASET_URI` is set)
+
+Integrated retrieval config used by eval:
+- `VECTOR_BACKEND=local|matching_engine`
+- `DATASET_URI` (optional dataset root override; if unset, `BUCKET_NAME` root is used)
+- `EMBEDDING_MODEL` or `DATAPOINTS_MODEL` (optional embedding model override)
+- `WEIGHTED_SCORE_THRESHOLD`, `BM25_SCORE_THRESHOLD` (optional defaults)
+- `RETRIEVAL_VECTOR_WEIGHT`, `RETRIEVAL_BM25_WEIGHT` (optional hybrid scoring weights)
+
+Matching Engine specific:
+- `INDEX_ENDPOINT_ID`
+- `DEPLOYED_INDEX_ID`
+
+Vertex/Google auth:
+- `GOOGLE_APPLICATION_CREDENTIALS` (or other ADC setup) for embedding and Matching Engine calls.
+
+### Naming conventions (recommended)
+Keep multiple dataset types in the same folder by prefixing with a stable dataset type and a version:
+- `gating_questions_v1.jsonl`
+- `gating_questions_v2.jsonl`
+- `retrieval_relevance_v1.jsonl`
+- `answer_quality_v1.jsonl`
+
+File mode:
+```bash
+make be-eval-gating ARGS="--dataset ../private/eval_datasets/gating_questions_v1.jsonl --out ../.out/"
+```
+
+Directory mode (runs every JSONL under the folder):
+```bash
+make be-eval-gating ARGS="--dataset ../private/eval_datasets --out ../.out"
+```
+
+Custom threshold overrides (overrides env/default thresholds for this run only):
+```bash
+make be-eval-gating ARGS="--dataset ../private/eval_datasets/gating_questions_v1.jsonl --out ../.out --weighted-score-threshold 0.62 --bm25-score-threshold 3.0"
+```
+
+Directory mode with custom threshold overrides:
+```bash
+make be-eval-gating ARGS="--dataset ../private/eval_datasets --out ../.out --weighted-score-threshold 0.62 --bm25-score-threshold 3.0"
+```
+
+### BM25 trace debug tool
+Use `backend/scripts/debug_bm25_trace.py` to inspect exact BM25 query/chunk tokens,
+removed tokens, document frequencies, and per-term score contributions.
+
+Required args:
+- `--query`
+- one or more `--chunk-id`
+
+Optional args:
+- `--mode integrated_retrieval_only|deterministic` (default: `integrated_retrieval_only`)
+- `--private-dir` (integrated mode helper)
+- `--backend-env` (explicit dotenv load before backend imports)
+
+Examples:
+```bash
+python3 backend/scripts/debug_bm25_trace.py \
+  --mode integrated_retrieval_only \
+  --private-dir /path/to/private/dir \
+  --backend-env /path/to/private/dir/backend.env \
+  --query "Do you have experience in dentistry?" \
+  --chunk-id <chunk_id>
+```
+
+```bash
+python3 backend/scripts/debug_bm25_trace.py \
+  --mode deterministic \
+  --query "Do you have experience in dentistry?" \
+  --chunk-id product-001 \
+  --chunk-id infra-001
+```
+
+
 ## Test Suites
 
 ### Smoke Test
@@ -26,9 +191,9 @@ make be-test-core
 
 > To skip integration tests in a broader run, use `-m "not integration"`
 
-#### Real backend integration
+#### Integrated backend integration
 Requirements:
-- Real backend running (for example `uvicorn api.main:app`)
+- Integrated backend running (for example `uvicorn api.main:app`)
 - `NEXT_PUBLIC_API_URL` pointing to the running backend
 - `ACCESS_KEY_PLAINTEXT` set to a valid access key
   ```bash
@@ -90,6 +255,13 @@ No frontend test suite is wired up yet.
   Command:
   ```bash
   make be-test-security-session
+  ```
+
+- `backend/tests/test_main_chat_logging.py`  
+  Verifies the `chat.success` structured log payload includes additive llm-gating shadow fields without changing response behavior when gating is disabled.
+  Command:
+  ```bash
+  make be-test-main-chat-logging
   ```
 
 ### Backend voice tests
@@ -154,9 +326,23 @@ make be-test-voice
   make be-test-retrieval-vector
   ```
 
-### Integration tests (real services)
+- `backend/tests/test_thinking_gating.py`  
+  Verifies deterministic thinking-budget gating, including the heuristic for simple questions and the per-request override plumbing into the LLM backend.
+  Command:
+  ```bash
+  make be-test-thinking-gating
+  ```
+
+- `backend/tests/test_llm_gating.py`  
+  Covers deterministic llm-gating decisions in the RAG orchestrator, including weak-signal fallback, strong-signal pass-through, and enabled/disabled gate behavior.
+  Command:
+  ```bash
+  make be-test-llm-gating
+  ```
+
+### Integration tests (live services)
 - `backend/tests/test_integration_real_backend.py`  
-  Runs against a real backend (`uvicorn api.main:app`) with live credentials.
+  Runs against an integrated backend (`uvicorn api.main:app`) with live credentials.
   Sub-tests:
   - `/health`: no access key required; no live vector required.
   - `/auth/key-login`: requires `ACCESS_KEY_PLAINTEXT`; no live vector required.

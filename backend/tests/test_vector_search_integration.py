@@ -1,6 +1,6 @@
 """Optional live integration test for Vertex AI Matching Engine.
 
-The test is skipped by default because it requires real cloud credentials and a
+The test is skipped by default because it requires cloud credentials and a
 running deployment. When opted-in (``RUN_VERTEX_SEARCH_TEST=1`` with a sample
 embedding provided), it exercises the production ``search_vector_store`` path
 end-to-end against the configured Matching Engine endpoint to catch auth or API
@@ -45,6 +45,11 @@ def test_vertex_vector_search_live_roundtrip():
 
     top_k = int(os.getenv(VERTEX_TEST_TOP_K_ENV_VAR, str(DEFAULT_VERTEX_TEST_TOP_K)))
 
+    if os.getenv("VECTOR_BACKEND") != "matching_engine":
+        pytest.skip("Set VECTOR_BACKEND=matching_engine to enable Matching Engine test")
+    for required_env in ("INDEX_ENDPOINT_ID", "DEPLOYED_INDEX_ID", "PROJECT_ID", "REGION"):
+        if not os.getenv(required_env):
+            pytest.skip(f"Missing {required_env}; configure Matching Engine env vars")
     retrieval.configure_vector_client(None)
     results = retrieval.search_vector_store(embedding_values, top_k=top_k)
 

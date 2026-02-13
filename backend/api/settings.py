@@ -7,21 +7,33 @@ to validate shapes and ranges before the app boots.
 from __future__ import annotations
 import os
 from pathlib import Path
+from typing import overload
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
 PERSONA_MAX_CHARS = 50
 PERSONA_MAX_WORDS = 4
+DEFAULT_WEIGHTED_SCORE_THRESHOLD = 0.55
+DEFAULT_BM25_SCORE_THRESHOLD = 3.0
+DEFAULT_WEIGHTED_CONSENSUS_COUNT = 2
+DEFAULT_RETRIEVAL_VECTOR_WEIGHT = 0.7
+DEFAULT_RETRIEVAL_BM25_WEIGHT = 0.3
+DEFAULT_TOP_K = 4
 
 class Settings(BaseModel):
     """Strongly-typed backend config with range/length guards."""
     PERSONA_NAME: str = Field(..., min_length=1, max_length=PERSONA_MAX_CHARS)
     PROJECT_ID: str = Field(...)
     REGION: str = Field(...)
-    INDEX_ENDPOINT_ID: str = Field(...)
-    DEPLOYED_INDEX_ID: str = Field(...)
-    BUCKET_NAME: str = Field(...)
-    CHUNKS_PATH: str = Field(...)
+    LLM_MODEL_NAME: str = Field(default="gemini-2.5-flash")
+    INDEX_ENDPOINT_ID: str | None = Field(default=None)
+    DEPLOYED_INDEX_ID: str | None = Field(default=None)
+    BUCKET_NAME: str | None = Field(default=None)
+    DATASET_URI: str | None = Field(default=None)
+    DATASET_POINTER_PATH: str | None = Field(default=None)
+    CHUNKS_PATH: str | None = Field(default=None)
+    VECTOR_BACKEND: str = Field(default="local")
+    LLM_BACKEND: str = Field(...)
     API_KEY: str = Field(...)
     JWT_SECRET: str | None = Field(default=None)
     JWT_SESSION_TTL_SECONDS: int = Field(default=3600, ge=300, le=86400)
@@ -31,9 +43,39 @@ class Settings(BaseModel):
     SESSION_COOKIE_SECURE: bool = Field(default=True)
     SESSION_COOKIE_PATH: str = Field(default="/")
     MAX_INPUT_TOKENS: int = Field(default=8000, ge=1, le=10000)
-    MAX_OUTPUT_TOKENS: int = Field(..., ge=1, le=2000)
+    MAX_OUTPUT_TOKENS: int = Field(..., ge=1, le=4000)
+    TOP_K: int = Field(default=DEFAULT_TOP_K, ge=1, le=100)
+    THINKING_BUDGET_TOKENS: int | None = Field(default=None, ge=0, le=20000)
+    INCLUDE_THOUGHTS: bool = Field(default=False)
     REQ_TIMEOUT_MS: int = Field(..., ge=1000, le=60000)
+    ENABLE_THINKING_GATING: bool = Field(default=False)
+    ENABLE_LLM_CALL_GATING: bool = Field(default=False)
+    WEIGHTED_SCORE_THRESHOLD: float = Field(
+        default=DEFAULT_WEIGHTED_SCORE_THRESHOLD,
+        ge=0.0,
+    )
+    BM25_SCORE_THRESHOLD: float = Field(
+        default=DEFAULT_BM25_SCORE_THRESHOLD,
+        ge=0.0,
+    )
+    WEIGHTED_CONSENSUS_COUNT: int = Field(
+        default=DEFAULT_WEIGHTED_CONSENSUS_COUNT,
+        ge=1,
+        le=100,
+    )
+    RETRIEVAL_VECTOR_WEIGHT: float = Field(
+        default=DEFAULT_RETRIEVAL_VECTOR_WEIGHT,
+        ge=0.0,
+        le=1.0,
+    )
+    RETRIEVAL_BM25_WEIGHT: float = Field(
+        default=DEFAULT_RETRIEVAL_BM25_WEIGHT,
+        ge=0.0,
+        le=1.0,
+    )
     MOCK_ACCESS_KEYS_PATH: str | None = Field(default=None)
+    OPS_AUTH: str = Field(default="enabled")
+    OPS_SECRET: str | None = Field(default=None)
 
     @field_validator("PERSONA_NAME")
     @classmethod
@@ -47,6 +89,10 @@ class Settings(BaseModel):
     @property
     def chunks_uri(self) -> str:
         """Return a gs:// URI built from typed bucket/path fields."""
+        if not self.CHUNKS_PATH:
+            return ""
+        if not self.BUCKET_NAME:
+            return ""
         bucket = self.BUCKET_NAME.rstrip("/")
         object_name = self.CHUNKS_PATH.lstrip("/")
         return f"gs://{bucket}/{object_name}"
@@ -55,6 +101,8 @@ class Settings(BaseModel):
     def index_endpoint_path(self) -> str:
         """Normalize index endpoint to a full resource path; tolerate prefilled path."""
         endpoint = (self.INDEX_ENDPOINT_ID or "").strip()
+        if not endpoint:
+            raise RuntimeError("INDEX_ENDPOINT_ID is required for matching_engine vector backend")
         if "/" in endpoint:
             return endpoint
         return (
@@ -103,10 +151,7 @@ REQUIRED_ENV_VARS = [
     "PERSONA_NAME",
     "PROJECT_ID",
     "REGION",
-    "INDEX_ENDPOINT_ID",
-    "DEPLOYED_INDEX_ID",
-    "BUCKET_NAME",
-    "CHUNKS_PATH",
+    "LLM_BACKEND",
     "API_KEY",
     "MAX_OUTPUT_TOKENS",
     "REQ_TIMEOUT_MS",
@@ -136,13 +181,22 @@ def _load_env_files_if_available() -> tuple[Path | None, Path | None]:
 
 def _missing_env_vars() -> list[str]:
     """List required env names that are unset/empty, leveraging str typing."""
-    return [name for name in REQUIRED_ENV_VARS if not os.getenv(name)]
+    required = list(REQUIRED_ENV_VARS)
+    if not os.getenv("DATASET_URI"):
+        required.append("BUCKET_NAME")
+    return [name for name in required if not os.getenv(name)]
 
 def _require_env(name: str) -> str:
     value = os.getenv(name)
     if value is None or value == "":
         raise RuntimeError(f"Missing required env var: {name}")
     return value
+
+@overload
+def _env_int(name: str, default: None = None) -> int | None: ...
+
+@overload
+def _env_int(name: str, default: int) -> int: ...
 
 def _env_int(name: str, default: int | None = None) -> int | None:
     value = os.getenv(name)
@@ -161,6 +215,12 @@ def _env_bool(name: str, default: bool) -> bool:
         return False
     return default
 
+def _env_float(name: str, default: float) -> float:
+    value = os.getenv(name)
+    if value is None or value == "":
+        return default
+    return float(value)
+
 def load_settings() -> Settings:
     """Load dotenvs when present, verify required envs, and return typed Settings."""
     env_path, common_env_path = _load_env_files_if_available()
@@ -178,8 +238,14 @@ def load_settings() -> Settings:
         hint = "; ".join(hint_parts)
         raise RuntimeError(f"Missing required env vars: {sorted(set(missing_vars))}. {hint}")
 
-    bucket_name = _require_env("BUCKET_NAME")
-    chunk_path = _require_env("CHUNKS_PATH")
+    dataset_uri = os.getenv("DATASET_URI")
+    bucket_name = _require_env("BUCKET_NAME") if not dataset_uri else os.getenv("BUCKET_NAME")
+    chunk_path = os.getenv("CHUNKS_PATH")
+
+    vector_backend = (os.getenv("VECTOR_BACKEND") or "local").strip().lower()
+    if vector_backend == "matching_engine":
+        for required in ("INDEX_ENDPOINT_ID", "DEPLOYED_INDEX_ID"):
+            _require_env(required)
 
     try:
         max_input_tokens = _env_int("MAX_INPUT_TOKENS", 8000)
@@ -188,10 +254,15 @@ def load_settings() -> Settings:
             PERSONA_NAME=_require_env("PERSONA_NAME"),
             PROJECT_ID=_require_env("PROJECT_ID"),
             REGION=_require_env("REGION"),
-            INDEX_ENDPOINT_ID=_require_env("INDEX_ENDPOINT_ID"),
-            DEPLOYED_INDEX_ID=_require_env("DEPLOYED_INDEX_ID"),
+            LLM_MODEL_NAME=(os.getenv("LLM_MODEL_NAME") or "gemini-2.5-flash").strip(),
+            INDEX_ENDPOINT_ID=os.getenv("INDEX_ENDPOINT_ID"),
+            DEPLOYED_INDEX_ID=os.getenv("DEPLOYED_INDEX_ID"),
             BUCKET_NAME=bucket_name,
+            DATASET_URI=(dataset_uri or None),
+            DATASET_POINTER_PATH=os.getenv("DATASET_POINTER_PATH"),
             CHUNKS_PATH=chunk_path,
+            VECTOR_BACKEND=vector_backend,
+            LLM_BACKEND=_require_env("LLM_BACKEND"),
             API_KEY=_require_env("API_KEY"),
             JWT_SECRET=os.getenv("JWT_SECRET"),
             JWT_SESSION_TTL_SECONDS=_env_int("JWT_SESSION_TTL_SECONDS", 3600),
@@ -202,11 +273,35 @@ def load_settings() -> Settings:
             SESSION_COOKIE_PATH=os.getenv("SESSION_COOKIE_PATH") or "/",
             MAX_INPUT_TOKENS=max_input_tokens or 8000,
             MAX_OUTPUT_TOKENS=max_output_tokens,
+            TOP_K=_env_int("TOP_K", DEFAULT_TOP_K),
+            THINKING_BUDGET_TOKENS=_env_int("THINKING_BUDGET_TOKENS"),
+            INCLUDE_THOUGHTS=_env_bool("INCLUDE_THOUGHTS", False),
             REQ_TIMEOUT_MS=int(_require_env("REQ_TIMEOUT_MS")),
+            ENABLE_THINKING_GATING=_env_bool("ENABLE_THINKING_GATING", False),
+            ENABLE_LLM_CALL_GATING=_env_bool("ENABLE_LLM_CALL_GATING", False),
+            WEIGHTED_SCORE_THRESHOLD=_env_float(
+                "WEIGHTED_SCORE_THRESHOLD", DEFAULT_WEIGHTED_SCORE_THRESHOLD
+            ),
+            BM25_SCORE_THRESHOLD=_env_float(
+                "BM25_SCORE_THRESHOLD", DEFAULT_BM25_SCORE_THRESHOLD
+            ),
+            WEIGHTED_CONSENSUS_COUNT=_env_int(
+                "WEIGHTED_CONSENSUS_COUNT",
+                DEFAULT_WEIGHTED_CONSENSUS_COUNT,
+            ),
+            RETRIEVAL_VECTOR_WEIGHT=_env_float(
+                "RETRIEVAL_VECTOR_WEIGHT", DEFAULT_RETRIEVAL_VECTOR_WEIGHT
+            ),
+            RETRIEVAL_BM25_WEIGHT=_env_float(
+                "RETRIEVAL_BM25_WEIGHT", DEFAULT_RETRIEVAL_BM25_WEIGHT
+            ),
             MOCK_ACCESS_KEYS_PATH=os.getenv("MOCK_ACCESS_KEYS_PATH"),
+            OPS_AUTH=os.getenv("OPS_AUTH") or "enabled",
+            OPS_SECRET=os.getenv("OPS_SECRET"),
         )
     except ValidationError as e:
         fields = [err["loc"][0] for err in e.errors()]
         raise RuntimeError(f"Invalid settings. Fix env vars: {sorted(set(fields))}")
 
-settings = load_settings()
+settings: Settings = load_settings()
+__all__ = ["Settings", "settings"]

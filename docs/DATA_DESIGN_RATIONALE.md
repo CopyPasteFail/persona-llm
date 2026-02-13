@@ -7,7 +7,7 @@
 4. [ANN via Vertex AI Vector Search](#4-ann-via-vertex-ai-vector-search)
 5. [Add BM25 (Keyword Signal)](#5-add-bm25-keyword-signal)
 6. [Build BM25 Index at Startup (for now)](#6-build-bm25-index-at-startup-for-now)
-7. [Hybrid Retrieval and Rerank (Wide → Narrow)](#7-hybrid-retrieval-and-rerank-wide--narrow)
+7. [Hybrid Retrieval and Rerank (Wide to Narrow)](#7-hybrid-retrieval-and-rerank-wide-to-narrow)
 8. [Runtime Classification by Role](#8-runtime-classification-by-role)
 9. [No Elasticsearch/OpenSearch (for now)](#9-no-elasticsearchopensearch-for-now)
 10. [Strict First-Person, Grounded Answers](#10-strict-first-person-grounded-answers)
@@ -16,6 +16,8 @@
 13. [Chunk Identity vs Order (chunk_id and position)](#13-chunk-identity-vs-order-chunk_id-and-position)
 14. [Overlap for Retrieval Continuity](#14-overlap-for-retrieval-continuity)
 15. [Vertex Matching Engine Update Mode (Batch Update)](#15-vertex-matching-engine-update-mode-batch-update)
+16. [Versioned Dataset Folder + Pointer](#16-versioned-dataset-folder--pointer)
+17. [Pre-normalized Embeddings](#17-pre-normalized-embeddings)
 
 ## 1. One CV file per Role (role:infra, role:product)
 
@@ -70,16 +72,16 @@
 
 ## 4. ANN via Vertex AI Vector Search
 
-**What:** Use a vector index to fetch semantically similar chunks quickly.  
-**Alternative:** Brute-force cosine search in-process.  
+**What:** Support two vector backends: local in-process cosine search (default) and Vertex AI Matching Engine (optional).  
+**Alternative:** Matching Engine only.  
 
 **Pros:**  
-- Scales well, millisecond retrieval.  
-- Standard method for semantic recall.  
+- Local backend keeps ops and serving cost minimal.
+- Matching Engine scales to larger corpora and higher query throughput.
 
-**Cons:** Requires embedding + upsert step.  
+**Cons:** Matching Engine requires index provisioning and update steps.  
 
-**Decision:** Use Vertex AI Matching Engine. Brute-force only viable at tiny scale.
+**Decision:** Keep local as default and allow Matching Engine when needed.
 
 ---
 
@@ -93,7 +95,7 @@
 - Zero extra infra when kept in-process.  
 - Example: query “experience with KEDA” → BM25 ensures chunks literally mentioning *KEDA* are promoted, even if embeddings underweight it.  
 
-**Cons:** Slightly more code to maintain scoring/blending logic.  
+**Cons:** Slightly more code to maintain scoring/weighting logic.  
 
 **Decision:** Keep BM25 as a first-class retrieval signal alongside ANN (build/refresh strategy covered in Decision 8).
 
@@ -115,17 +117,17 @@
 
 ---
 
-## 7. Hybrid Retrieval and Rerank (Wide → Narrow)
+## 7. Hybrid Retrieval and Rerank (Wide to Narrow)
 
-**What:** Pull ~50 ANN candidates, blend with BM25 + tag boosts, trim to ~8 for the LLM.  
+**What:** Pull `TOP_K` ANN candidates (default 4), weight with BM25 + metadata boosts, then keep at most 8 chunks for prompt context.  
 **Alternative:** Fetch exactly 8 from ANN only.
 
 **Pros:**  
-- Wider pool reduces ANN misses.  
+- Candidate depth is configurable via `TOP_K`.
 - Reranking improves relevance.  
 - Hybrid = semantics (ANN) + exact matches (BM25).  
 - Example: query “incident response metrics” → ANN finds SRE-related context, BM25 ensures chunks with exact phrase are not missed.  
-- Final ~8 keeps prompt small.  
+- Final cap of 8 keeps prompt size bounded.  
 
 **Cons:** Slightly more CPU per query.  
 
@@ -135,7 +137,7 @@
 
 ## 8. Runtime Classification by Role
 
-**What:** On each query, classify toward `infra` or `product` (keyword heuristic + optional embedding sim). Leave unclassified if mixed.  
+**What:** On each query, classify toward `infra` or `product` using keyword hints. Leave unclassified if mixed.  
 **Alternatives:** Let LLM decide; or require user to pick a role.
 
 **Pros:**  
@@ -309,3 +311,37 @@
 - No real-time inserts/deletes. If data starts changing frequently, the pipeline must shift to streaming.
 
 **Decision:** Use `BATCH_UPDATE` for now. The CV persona changes rarely, and keeping the index in batch mode reduces spend and complexity. We’ll revisit streaming only if we need sub-minute freshness.
+
+---
+
+## 16. Versioned Dataset Folder + Pointer
+
+**What:** Store coupled artifacts in `datasets/<version>/` (`datapoints.jsonl`, `chunks.jsonl.gz`, `manifest.json`) and atomically switch versions by updating `datasets/current.json`.  
+**Alternatives considered:** Use per-deploy env vars or hardcode file names in the service.
+
+**Pros:**
+- Atomic switch with a tiny pointer write, no partial data loads.
+- Easy rollback (republish the pointer to a prior version).
+- Single bucket, predictable paths, and explicit manifest for validation.
+
+**Cons:**  
+- Requires a manifest discipline and a reload call after pointer updates.
+
+**Decision:** Use a versioned folder with a pointer file. It keeps deployments stable while allowing safe, explicit data changes.
+
+---
+
+## 17. Pre-normalized Embeddings
+
+**What:** Normalize embeddings at ingest time and require unit-length vectors in `datapoints.jsonl`.  
+**Alternatives considered:** Normalize at query time only or normalize both sides at runtime.
+
+**Pros:**
+- Dot product equals cosine similarity without extra per-vector work.
+- Consistent across backends (local or Matching Engine).
+- Keeps runtime logic simple and predictable.
+
+**Cons:**  
+- Requires validation and guardrails during ingest and load.
+
+**Decision:** Always normalize embeddings during ingest, validate norms at load, and normalize query vectors at request time.

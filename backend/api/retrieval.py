@@ -2,8 +2,8 @@
 Retrieval helpers. Keep pure and side-effect free.
 
 Name normalization uses the configured persona name from settings.PERSONA_NAME.
-It generates regexes for *all permutations* of up to 4 name parts. For example:
-  "Alex Taylor" -> ["Alex", "Taylor", "Alex Taylor", "Taylor Alex"]
+It generates regexes for *all permutations* of up to the configured name parts.
+For example: "Alex Taylor" -> ["Alex", "Taylor", "Alex Taylor", "Taylor Alex"]
 
 To avoid the issue where regexes were compiled before the environment was
 loaded (tests failed because PERSONA_NAME wasn't set yet), regexes are now
@@ -37,11 +37,142 @@ from typing import (
     cast,
 )
 
+from . import dataset_cache, vector_backends
 from .prompts import QUESTION_PREFIX
 from .settings import settings
 
 # Apostrophe: support curly and straight
 _APOS = r"[’']"
+
+# Business-tuned thresholds and weights.
+_DEFAULT_TOP_K = 8
+_MAX_CONTEXT_CHUNKS = 8
+_ROLE_BOOST = 0.05
+_TOPIC_BOOST = 0.02
+_MAX_TOPIC_BOOST = 0.06
+_DEBUG_NEIGHBOR_SAMPLE = 5
+_DEBUG_BM25_SAMPLE = 5
+
+# BM25 parameters.
+_BM25_K1 = 1.5
+_BM25_B = 0.75
+_BM25_MIN_TOKEN_LENGTH = 3
+_BM25_STOPWORDS: Set[str] = {
+    "a",
+    "about",
+    "after",
+    "again",
+    "all",
+    "also",
+    "am",
+    "an",
+    "and",
+    "any",
+    "are",
+    "as",
+    "at",
+    "be",
+    "been",
+    "before",
+    "being",
+    "between",
+    "both",
+    "btw",
+    "built",
+    "but",
+    "by",
+    "can",
+    "could",
+    "did",
+    "do",
+    "does",
+    "doing",
+    "done",
+    "during",
+    "each",
+    "experience",
+    "for",
+    "from",
+    "further",
+    "had",
+    "has",
+    "have",
+    "having",
+    "how",
+    "if",
+    "in",
+    "into",
+    "is",
+    "it",
+    "its",
+    "just",
+    "let",
+    "like",
+    "may",
+    "me",
+    "more",
+    "most",
+    "much",
+    "my",
+    "nor",
+    "not",
+    "now",
+    "of",
+    "on",
+    "once",
+    "only",
+    "or",
+    "other",
+    "our",
+    "ours",
+    "out",
+    "over",
+    "please",
+    "same",
+    "should",
+    "so",
+    "some",
+    "such",
+    "than",
+    "that",
+    "the",
+    "their",
+    "theirs",
+    "them",
+    "then",
+    "there",
+    "these",
+    "they",
+    "this",
+    "those",
+    "through",
+    "to",
+    "too",
+    "tell",
+    "under",
+    "until",
+    "up",
+    "us",
+    "very",
+    "was",
+    "we",
+    "were",
+    "what",
+    "when",
+    "where",
+    "which",
+    "while",
+    "who",
+    "why",
+    "will",
+    "with",
+    "worked",
+    "would",
+    "you",
+    "your",
+    "yours",
+    "i",
+}
 
 logger = logging.getLogger(" api.retrieval")
 if os.getenv("RETRIEVAL_DEBUG") == "1":
@@ -52,43 +183,57 @@ def _persona_variants() -> list[str]:
     """
     Generate all permutations of all non-empty subsets of the persona name parts.
     Example: "Alex Taylor" -> ["Alex", "Taylor", "Alex Taylor", "Taylor Alex"].
-    Enforced max 4 words in settings prevents combinatorial explosion.
+    Enforced max words in settings prevents combinatorial explosion.
+
+    Inputs:
+        None. Uses settings.PERSONA_NAME.
+    Outputs:
+        A list of unique name variants in deterministic order.
+    Edge cases:
+        Returns an empty list if no persona name is configured.
     """
-    full = (settings.PERSONA_NAME or "").strip()
-    if not full:
+    full_name = (settings.PERSONA_NAME or "").strip()
+    if not full_name:
         return []
 
-    parts = full.split()
+    name_parts = full_name.split()
     variants: list[str] = []
-    n = len(parts)
-    for r in range(1, n + 1):  # subset size
-        for combo in itertools.permutations(parts, r):
-            variants.append(" ".join(combo))
+    part_count = len(name_parts)
+    for subset_size in range(1, part_count + 1):  # subset size
+        for permutation in itertools.permutations(name_parts, subset_size):
+            variants.append(" ".join(permutation))
 
     # de-dupe while preserving order
-    seen: set[str] = set()
-    uniq: list[str] = []
-    for v in variants:
-        if v not in seen:
-            seen.add(v)
-            uniq.append(v)
-    return uniq
+    seen_variants: set[str] = set()
+    unique_variants: list[str] = []
+    for variant in variants:
+        if variant not in seen_variants:
+            seen_variants.add(variant)
+            unique_variants.append(variant)
+    return unique_variants
 
 
 def _compile_regexes():
     """
     Build regexes on demand using the current PERSONA_NAME from settings.
     Returns (possessive_regex, bare_regex).
+
+    Inputs:
+        None. Uses settings.PERSONA_NAME.
+    Outputs:
+        A tuple of compiled regexes or (None, None) if no persona name exists.
+    Edge cases:
+        Returns (None, None) when no variants are produced.
     """
-    variants = _persona_variants()
-    if not variants:
+    persona_variants = _persona_variants()
+    if not persona_variants:
         return None, None
 
     # IMPORTANT: longest-first so "Alex Taylor" beats "Alex" then "Taylor"
-    variants = sorted(variants, key=len, reverse=True)
+    persona_variants = sorted(persona_variants, key=len, reverse=True)
 
-    alt = "|".join(re.escape(v) for v in variants)
-    group = fr"(?:{alt})"
+    alternatives = "|".join(re.escape(variant) for variant in persona_variants)
+    group = fr"(?:{alternatives})"
 
     possessive = re.compile(
         rf"(?<![\w.+-/]){group}{_APOS}s\b(?!@)",
@@ -103,24 +248,31 @@ def _compile_regexes():
     return possessive, bare
 
 
-def normalize_question_for_first_person(q: str) -> str:
+def normalize_question_for_first_person(question: str) -> str:
     """
     Convert references like "<Name>'s" -> "your" and "<Name>" -> "I",
     while avoiding emails, usernames and inside-word matches.
 
     Regexes are compiled lazily from settings.PERSONA_NAME so tests
     can inject env vars without being broken by early imports.
+
+    Inputs:
+        question: The raw user question to normalize.
+    Outputs:
+        A normalized string with persona references rewritten.
+    Edge cases:
+        Returns the input unchanged if it is empty or no persona name is configured.
     """
-    if not q:
-        return q
+    if not question:
+        return question
 
     possessive, bare = _compile_regexes()
     if not possessive or not bare:
-        return q
+        return question
 
-    out = possessive.sub("your", q)
-    out = bare.sub("I", out)
-    return out
+    normalized = possessive.sub("your", question)
+    normalized = bare.sub("I", normalized)
+    return normalized
 
 
 # ---- Real integrations (unimplemented in mock) ----
@@ -138,23 +290,54 @@ _embedding_client: Optional[_EmbeddingClient] = None
 
 
 def configure_embedding_client(client: Optional[_EmbeddingClient]) -> None:
-    """Override the embedding client (facilitates tests)."""
+    """
+    Override the embedding client (facilitates tests).
+
+    Inputs:
+        client: The embedding client to use, or None to clear.
+    Outputs:
+        None. Updates the module-level client reference.
+    Edge cases:
+        Passing None disables embedding until reconfigured.
+    """
     global _embedding_client
     _embedding_client = client
 
 
+def configure_vertex_embedding_client(*, project: str, region: str, model_name: str) -> None:
+    """
+    Configure an embedding client explicitly (used by app startup).
+
+    Inputs:
+        project: GCP project id.
+        region: GCP region for Vertex.
+        model_name: Embedding model name (e.g. text-embedding-004, gemini-embedding-001).
+    Outputs:
+        None. Installs a configured embedding client.
+    Edge cases:
+        Raises if configuration is invalid when used for the first embed call.
+    """
+    configure_embedding_client(
+        _GenaiEmbeddingClient(project=project, region=region, model_name=model_name)
+    )
+
+
 def _get_embedding_client() -> _EmbeddingClient:
+    """
+    Return the configured embedding client.
+
+    Inputs:
+        None.
+    Outputs:
+        The configured embedding client.
+    Edge cases:
+        Raises RuntimeError if the client has not been configured.
+    """
     global _embedding_client
     if _embedding_client is None:
-        model_name = (
-            os.getenv("EMBEDDING_MODEL")
-            or os.getenv("DATAPOINTS_MODEL")
-            or "text-embedding-004"
-        )
-        _embedding_client = _VertexEmbeddingClient(
-            project=settings.PROJECT_ID,
-            region=settings.REGION,
-            model_name=model_name,
+        raise RuntimeError(
+            "Embedding client is not configured. Call configure_embedding_client() "
+            "or configure_vertex_embedding_client() during app startup."
         )
     return _embedding_client
 
@@ -165,6 +348,15 @@ def embed_query(question: str) -> Optional[List[float]]:
 
     The question text is stored in a ContextVar so downstream ranking logic can
     access it without threading issues (FastAPI async requests).
+
+    Inputs:
+        question: The raw user question string.
+    Outputs:
+        A list of floats or None when no embedding is produced.
+    Edge cases:
+        Returns None for empty questions or when the embedding client returns no values.
+    Concurrency:
+        Uses ContextVar to isolate per-request query state across async contexts.
     """
     normalized_question = (question or "").strip()
     _CURRENT_QUERY.set(normalized_question)
@@ -175,12 +367,15 @@ def embed_query(question: str) -> Optional[List[float]]:
     try:
         raw_vector = client.embed(normalized_question)
     except Exception as exc:
-        raise RuntimeError("Failed to embed query") from exc
+        raise RuntimeError(
+            f"Failed to embed query (length={len(normalized_question)})"
+        ) from exc
 
     if not raw_vector:
         return None
 
-    return [float(x) for x in raw_vector]
+    return [float(value) for value in raw_vector]
+
 
 @runtime_checkable
 class _VectorSearchClient(Protocol):
@@ -192,30 +387,70 @@ _vector_client: Optional[_VectorSearchClient] = None
 
 
 def configure_vector_client(client: Optional[_VectorSearchClient]) -> None:
-    """Override the underlying vector search client (primarily used in tests)."""
+    """
+    Override the underlying vector search client (primarily used in tests).
+
+    Inputs:
+        client: The vector search client to use, or None to clear.
+    Outputs:
+        None. Updates the module-level client reference.
+    Edge cases:
+        Passing None forces a fresh backend fetch on the next query.
+    """
     global _vector_client
     _vector_client = client
 
 
 def _l2_normalize(vector: Sequence[float]) -> List[float]:
-    norm = math.sqrt(sum(float(x) * float(x) for x in vector))
+    """
+    Return a unit-normalized copy of the provided vector.
+
+    Inputs:
+        vector: Sequence of floats to normalize.
+    Outputs:
+        A new list of floats, scaled to unit length when norm > 0.
+    Edge cases:
+        Returns a float-cast copy of the input when norm is zero.
+    """
+    norm = math.sqrt(sum(float(value) * float(value) for value in vector))
     if norm == 0:
-        return [float(x) for x in vector]
+        return [float(value) for value in vector]
     scale = 1.0 / norm
-    return [float(x) * scale for x in vector]
+    return [float(value) * scale for value in vector]
 
 
 def _get_vector_client() -> _VectorSearchClient:
+    """
+    Return the configured vector search client, creating it if missing.
+
+    Inputs:
+        None.
+    Outputs:
+        A vector search client instance.
+    Edge cases:
+        Lazily loads the backend the first time this is called.
+    """
     global _vector_client
     if _vector_client is None:
-        _vector_client = _MatchingEngineClient(
-            index_endpoint_path=settings.index_endpoint_path,
-            deployed_index_id=settings.DEPLOYED_INDEX_ID,
-        )
+        _vector_client = vector_backends.get_vector_backend()
     return _vector_client
 
 
-def search_vector_store(embedding: Optional[Sequence[float]], top_k: int = 8) -> List[Dict[str, Any]]:
+def search_vector_store(
+    embedding: Optional[Sequence[float]],
+    top_k: int = _DEFAULT_TOP_K,
+) -> List[Dict[str, Any]]:
+    """
+    Normalize and query the vector backend, returning candidate neighbors.
+
+    Inputs:
+        embedding: The raw embedding vector to search with.
+        top_k: Number of neighbors to request from the backend.
+    Outputs:
+        A list of neighbor records from the backend.
+    Edge cases:
+        Returns an empty list when no embedding is provided or top_k <= 0.
+    """
     if embedding is None:
         return []
     if top_k <= 0:
@@ -232,13 +467,13 @@ def search_vector_store(embedding: Optional[Sequence[float]], top_k: int = 8) ->
         " vector_search: top_k=%d neighbors=%d distances=%s",
         top_k,
         len(neighbors),
-        [float(n.get("distance", 0.0)) for n in neighbors[:5]],
+        [
+            float(neighbor.get("distance", 0.0))
+            for neighbor in neighbors[:_DEBUG_NEIGHBOR_SAMPLE]
+        ],
     )
     return neighbors
 
-_MAX_CONTEXT_CHUNKS = 8
-_ROLE_BOOST = 0.05
-_TOPIC_BOOST = 0.02
 
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
 _INFRA_HINTS: Set[str] = {
@@ -291,12 +526,67 @@ _PRODUCT_HINTS: Set[str] = {
 
 
 def _tokenize(text: str) -> List[str]:
+    """
+    Tokenize text into lowercase alphanumeric terms.
+
+    Inputs:
+        text: Raw input string.
+    Outputs:
+        A list of lowercase tokens.
+    Edge cases:
+        Returns an empty list for empty inputs.
+    """
     if not text:
         return []
     return _TOKEN_RE.findall(text.lower())
 
 
+def _filter_tokens_for_bm25(raw_tokens: Iterable[str]) -> List[str]:
+    """
+    Filter pre-tokenized terms for BM25 indexing and query scoring.
+
+    Inputs:
+        raw_tokens: Lowercased alphanumeric tokens from `_tokenize`.
+    Outputs:
+        Filtered token list preserving order and duplicates.
+    Edge cases:
+        Removes terms shorter than three characters and stopword/template terms.
+    """
+    filtered_tokens: List[str] = []
+    for raw_token in raw_tokens:
+        if len(raw_token) < _BM25_MIN_TOKEN_LENGTH:
+            continue
+        if raw_token in _BM25_STOPWORDS:
+            continue
+        filtered_tokens.append(raw_token)
+    return filtered_tokens
+
+
+def _tokenize_for_bm25(text: str) -> List[str]:
+    """
+    Tokenize text for BM25 use only, applying retrieval-specific filtering.
+
+    Inputs:
+        text: Raw input string.
+    Outputs:
+        Filtered BM25 token list preserving token multiplicity.
+    Edge cases:
+        Empty inputs produce an empty list.
+    """
+    return _filter_tokens_for_bm25(_tokenize(text))
+
+
 def _distance_to_similarity(distance: float) -> float:
+    """
+    Convert a vector distance into a bounded similarity score.
+
+    Inputs:
+        distance: A raw distance value from the vector index.
+    Outputs:
+        A similarity score in (0, 1].
+    Edge cases:
+        Returns 0.0 for NaN distances and uses absolute value for negatives.
+    """
     if math.isnan(distance):
         return 0.0
     if distance < 0:
@@ -305,12 +595,32 @@ def _distance_to_similarity(distance: float) -> float:
 
 
 def _normalize_bm25(score: float) -> float:
+    """
+    Normalize a raw BM25 score into a (0, 1) range.
+
+    Inputs:
+        score: Raw BM25 score.
+    Outputs:
+        Normalized BM25 value.
+    Edge cases:
+        Returns 0.0 for non-positive scores.
+    """
     if score <= 0:
         return 0.0
     return score / (score + 1.0)
 
 
 def _chunk_role(metadata: Mapping[str, Any]) -> Optional[str]:
+    """
+    Extract a role label from chunk metadata.
+
+    Inputs:
+        metadata: Metadata mapping for a chunk.
+    Outputs:
+        A lowercase role string, or None if not present.
+    Edge cases:
+        Supports both "role" field and "role:" tag prefixes.
+    """
     role = metadata.get("role")
     if isinstance(role, str) and role:
         return role.lower()
@@ -324,6 +634,16 @@ def _chunk_role(metadata: Mapping[str, Any]) -> Optional[str]:
 
 
 def _chunk_topics(metadata: Mapping[str, Any]) -> Set[str]:
+    """
+    Extract topic labels from chunk metadata.
+
+    Inputs:
+        metadata: Metadata mapping for a chunk.
+    Outputs:
+        A set of lowercase topic strings.
+    Edge cases:
+        Supports both "topics" field and "topic:" tag prefixes.
+    """
     topics: Set[str] = set()
     raw_topics = metadata.get("topics")
     if isinstance(raw_topics, Iterable):
@@ -339,6 +659,16 @@ def _chunk_topics(metadata: Mapping[str, Any]) -> Set[str]:
 
 
 def _classify_query_role(question: str) -> Optional[str]:
+    """
+    Classify a query as infra or product based on keyword hints.
+
+    Inputs:
+        question: Raw user question.
+    Outputs:
+        "infra", "product", or None if ambiguous.
+    Edge cases:
+        Returns None when tokens overlap or are empty.
+    """
     tokens = set(_tokenize(question))
     if not tokens:
         return None
@@ -353,45 +683,56 @@ def _classify_query_role(question: str) -> Optional[str]:
 
 
 def _extract_chunk_tokens(chunk: Mapping[str, Any]) -> List[str]:
+    """
+    Extract searchable tokens from chunk text and metadata.
+
+    Inputs:
+        chunk: Chunk record containing text and metadata.
+    Outputs:
+        A list of BM25-filtered tokens from text, section, topics, and tags.
+    Edge cases:
+        Skips non-string fields and missing metadata entries.
+    """
     tokens: List[str] = []
     text = chunk.get("text")
     if isinstance(text, str):
-        tokens.extend(_tokenize(text))
+        tokens.extend(_tokenize_for_bm25(text))
 
     metadata_obj = chunk.get("metadata")
     if isinstance(metadata_obj, Mapping):
         metadata_mapping = cast(Mapping[str, Any], metadata_obj)
         metadata_map: Dict[str, Any] = dict(metadata_mapping)
-        for field in ("section", "doc_id", "source_uri"):
+        for field in ("section",):
             value = metadata_map.get(field)
             if isinstance(value, str):
-                tokens.extend(_tokenize(value))
+                tokens.extend(_tokenize_for_bm25(value))
 
         topics = metadata_map.get("topics")
         if isinstance(topics, Iterable):
             for topic in cast(Iterable[Any], topics):
                 if isinstance(topic, str):
-                    tokens.extend(_tokenize(topic))
+                    tokens.extend(_tokenize_for_bm25(topic))
 
         tags = metadata_map.get("tags")
         if isinstance(tags, Iterable):
             for tag in cast(Iterable[Any], tags):
                 if isinstance(tag, str):
-                    tokens.extend(_tokenize(tag))
-
-        extras = metadata_map.get("extras")
-        if isinstance(extras, Mapping):
-            for raw_value in cast(Iterable[Any], extras.values()):
-                if isinstance(raw_value, str):
-                    tokens.extend(_tokenize(raw_value))
-                elif isinstance(raw_value, Iterable):
-                    for item in cast(Iterable[Any], raw_value):
-                        if isinstance(item, str):
-                            tokens.extend(_tokenize(item))
+                    tokens.extend(_tokenize_for_bm25(tag))
     return tokens
 
 
 class _Bm25Index:
+    """
+    Lightweight BM25 index for in-memory chunk search.
+
+    Inputs:
+        chunks: Mapping of chunk id to chunk record.
+    Outputs:
+        A BM25 index instance able to score queries.
+    Edge cases:
+        Handles empty corpora by producing zero scores.
+    """
+
     def __init__(self, chunks: Mapping[str, Mapping[str, Any]]) -> None:
         self._doc_count = len(chunks)
         self._lengths: Dict[str, int] = {}
@@ -413,10 +754,20 @@ class _Bm25Index:
                 self._postings[token][chunk_id] = freq
 
         self._avg_len = (total_len / self._doc_count) if self._doc_count else 0.0
-        self._k1 = 1.5
-        self._b = 0.75
+        self._k1 = _BM25_K1
+        self._b = _BM25_B
 
     def score(self, query_tokens: Iterable[str]) -> Dict[str, float]:
+        """
+        Score each chunk for the provided query tokens.
+
+        Inputs:
+            query_tokens: Iterable of pre-tokenized query terms.
+        Outputs:
+            Mapping of chunk id to BM25 score.
+        Edge cases:
+            Returns an empty dict when no query tokens match the corpus.
+        """
         scores: Dict[str, float] = defaultdict(float)
         query_terms = [token for token in query_tokens if token in self._postings]
         if not query_terms:
@@ -430,7 +781,9 @@ class _Bm25Index:
             idf = math.log(1 + (self._doc_count - df + 0.5) / (df + 0.5))
             for chunk_id, tf in postings.items():
                 doc_len = self._lengths.get(chunk_id, 0)
-                denom = tf + self._k1 * (1 - self._b + self._b * (doc_len / (self._avg_len or 1.0)))
+                denom = tf + self._k1 * (
+                    1 - self._b + self._b * (doc_len / (self._avg_len or 1.0))
+                )
                 scores[chunk_id] += idf * (tf * (self._k1 + 1)) / denom
         return dict(scores)
 
@@ -440,8 +793,21 @@ _chunks_by_id: Optional[Dict[str, Dict[str, Any]]] = None
 _bm25_index: Optional[_Bm25Index] = None
 
 
-def configure_chunk_store(chunks: Optional[Iterable[Mapping[str, Any]]]) -> None:
-    """Allow tests to inject a deterministic chunk corpus."""
+def configure_chunk_store(
+    chunks: Optional[Iterable[Mapping[str, Any]] | Mapping[str, Mapping[str, Any]]]
+) -> None:
+    """
+    Allow tests or callers to inject a deterministic chunk corpus.
+
+    Inputs:
+        chunks: Iterable or mapping of chunk records; None clears the store.
+    Outputs:
+        None. Updates module-level chunk storage and BM25 index.
+    Edge cases:
+        Skips entries missing ids or text fields.
+    Concurrency:
+        Protected by _chunk_lock for atomic swap of shared state.
+    """
     global _chunks_by_id, _bm25_index
     with _chunk_lock:
         if chunks is None:
@@ -450,35 +816,70 @@ def configure_chunk_store(chunks: Optional[Iterable[Mapping[str, Any]]]) -> None
             return
 
         mapping: Dict[str, Dict[str, Any]] = {}
-        for chunk in chunks:
-            chunk_id = str(chunk.get("id") or "")
-            text = chunk.get("text")
-            if not chunk_id or not isinstance(text, str):
-                continue
-            metadata_obj = chunk.get("metadata")
-            metadata_dict: Dict[str, Any] = {}
-            if isinstance(metadata_obj, Mapping):
-                metadata_dict = dict(cast(Mapping[str, Any], metadata_obj))
-            record: Dict[str, Any] = {
-                "id": chunk_id,
-                "text": text,
-                "metadata": metadata_dict,
-            }
-            mapping[chunk_id] = record
+        if isinstance(chunks, Mapping):
+            typed_chunks = cast(Mapping[str, Mapping[str, Any]], chunks)
+            for chunk_id, chunk in typed_chunks.items():
+                text = chunk.get("text")
+                if not chunk_id or not isinstance(text, str):
+                    continue
+                metadata_obj = chunk.get("metadata")
+                metadata_dict: Dict[str, Any] = {}
+                if isinstance(metadata_obj, Mapping):
+                    metadata_dict = dict(cast(Mapping[str, Any], metadata_obj))
+                mapping[chunk_id] = {
+                    "id": chunk_id,
+                    "text": text,
+                    "metadata": metadata_dict,
+                }
+        else:
+            for chunk in chunks:
+                chunk_id = str(chunk.get("id") or "")
+                text = chunk.get("text")
+                if not chunk_id or not isinstance(text, str):
+                    continue
+                metadata_obj = chunk.get("metadata")
+                metadata_dict: Dict[str, Any] = {}
+                if isinstance(metadata_obj, Mapping):
+                    metadata_dict = dict(cast(Mapping[str, Any], metadata_obj))
+                record: Dict[str, Any] = {
+                    "id": chunk_id,
+                    "text": text,
+                    "metadata": metadata_dict,
+                }
+                mapping[chunk_id] = record
         _chunks_by_id = mapping
         _bm25_index = _Bm25Index(mapping) if mapping else None
+
 
 def warm_chunk_store() -> bool:
     """
     Force-load the chunk side store so Cloud Run knows whether it is ready.
     Returns True if any chunks were loaded.
+
+    Inputs:
+        None.
+    Outputs:
+        True when at least one chunk is loaded.
+    Edge cases:
+        Returns False when no chunks are available.
     """
     _ensure_chunk_store_loaded()
     size = len(_chunks_by_id or {})
     logger.info(" Loaded %d persona chunks into memory", size)
     return bool(size)
 
+
 def _resolve_local_chunks_path(name: str) -> Optional[Path]:
+    """
+    Resolve a chunk file path using configured search roots.
+
+    Inputs:
+        name: File path or basename to resolve.
+    Outputs:
+        A resolved Path if a local file exists, otherwise None.
+    Edge cases:
+        Searches PRIVATE_DIR and repo paths when a direct file match fails.
+    """
     candidate = Path(name)
     if candidate.is_file():
         return candidate
@@ -507,7 +908,19 @@ def _resolve_local_chunks_path(name: str) -> Optional[Path]:
 
 
 def _iter_chunk_records() -> Iterable[Dict[str, Any]]:
-    path_value = settings.CHUNKS_PATH
+    """
+    Yield chunk records from local disk or GCS for backward compatibility.
+
+    Inputs:
+        None. Uses settings.CHUNKS_PATH and settings.BUCKET_NAME.
+    Outputs:
+        An iterator of chunk dictionaries loaded from storage.
+    Edge cases:
+        Supports gzip-compressed files and raises on invalid GCS URIs.
+    """
+    path_value = settings.CHUNKS_PATH or ""
+    if not path_value:
+        return
     local_path = _resolve_local_chunks_path(path_value)
     if local_path:
         opener = gzip.open if local_path.suffix.endswith(".gz") else open
@@ -550,6 +963,18 @@ def _iter_chunk_records() -> Iterable[Dict[str, Any]]:
 
 
 def _ensure_chunk_store_loaded() -> None:
+    """
+    Ensure the chunk store is loaded before applying filters.
+
+    Inputs:
+        None.
+    Outputs:
+        None. Populates module-level chunk store and BM25 index.
+    Edge cases:
+        Falls back to CHUNKS_PATH when dataset cache is unavailable.
+    Concurrency:
+        Uses _chunk_lock to avoid concurrent loads across threads.
+    """
     global _chunks_by_id, _bm25_index
     if _chunks_by_id is not None:
         return
@@ -557,6 +982,18 @@ def _ensure_chunk_store_loaded() -> None:
     with _chunk_lock:
         if _chunks_by_id is not None:
             return
+        try:
+            cache = dataset_cache.get_or_load_cache()
+            configure_chunk_store(cache.chunks_by_id)
+            return
+        except Exception as exc:
+            if (settings.DATASET_POINTER_PATH or "").strip():
+                raise RuntimeError(
+                    "Failed to load dataset cache while DATASET_POINTER_PATH is configured"
+                ) from exc
+            logger.exception(
+                "Failed to load dataset cache for chunks; falling back to CHUNKS_PATH."
+            )
         records: Dict[str, Dict[str, Any]] = {}
         for record in _iter_chunk_records():
             chunk_id = str(record.get("id") or "")
@@ -575,7 +1012,18 @@ def _ensure_chunk_store_loaded() -> None:
 
 
 def apply_filters_and_boosting(candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Hybrid scoring that blends ANN distance, BM25 lexical signal, and soft metadata boosts."""
+    """
+    Apply hybrid scoring that weights ANN distance, BM25 lexical signal, and metadata boosts.
+
+    Inputs:
+        candidates: Vector search results, each with at least id and distance.
+    Outputs:
+        A ranked list of chunk records enriched with score metadata.
+    Edge cases:
+        Returns an empty list when candidates are empty or chunk store is missing.
+    Concurrency:
+        Uses ContextVar for per-request query context.
+    """
     if not candidates:
         return []
 
@@ -585,9 +1033,13 @@ def apply_filters_and_boosting(candidates: List[Dict[str, Any]]) -> List[Dict[st
         return []
 
     question = _CURRENT_QUERY.get("")
-    bm25_scores = _bm25_index.score(_tokenize(question)) if _bm25_index and question else {}
+    bm25_scores = (
+        _bm25_index.score(_tokenize_for_bm25(question)) if _bm25_index and question else {}
+    )
     role_hint = _classify_query_role(question)
     topic_tokens = set(_tokenize(question))
+    vector_weight = float(settings.RETRIEVAL_VECTOR_WEIGHT)
+    bm25_weight = float(settings.RETRIEVAL_BM25_WEIGHT)
 
     ranked: List[Dict[str, Any]] = []
     for candidate in candidates:
@@ -601,17 +1053,19 @@ def apply_filters_and_boosting(candidates: List[Dict[str, Any]]) -> List[Dict[st
         distance = float(candidate.get("distance", 0.0))
         vector_score = _distance_to_similarity(distance)
         bm25_raw = bm25_scores.get(chunk_id, 0.0)
-        blended = 0.7 * vector_score + 0.3 * _normalize_bm25(bm25_raw)
+        weighted = vector_weight * vector_score + bm25_weight * _normalize_bm25(
+            bm25_raw
+        )
 
         metadata = cast(Dict[str, Any], chunk.get("metadata") or {})
         role = _chunk_role(metadata)
         if role_hint and role and role == role_hint:
-            blended += _ROLE_BOOST
+            weighted += _ROLE_BOOST
 
         if topic_tokens:
             matches = len(_chunk_topics(metadata) & topic_tokens)
             if matches:
-                blended += min(_TOPIC_BOOST * matches, 0.06)
+                weighted += min(_TOPIC_BOOST * matches, _MAX_TOPIC_BOOST)
 
         ranked.append(
             {
@@ -621,15 +1075,44 @@ def apply_filters_and_boosting(candidates: List[Dict[str, Any]]) -> List[Dict[st
                 "distance": distance,
                 "vector_score": vector_score,
                 "bm25_score": bm25_raw,
-                "score": blended,
+                "score": weighted,
             }
         )
 
     ranked.sort(key=lambda item: item["score"], reverse=True)
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug(
+            {
+                "event": "retrieval.bm25_debug",
+                "query": question,
+                "vector_weight": vector_weight,
+                "bm25_weight": bm25_weight,
+                "candidates": [
+                    {
+                        "chunk_id": item["id"],
+                        "bm25_score": item["bm25_score"],
+                        "vector_score": item["vector_score"],
+                        "score": item["score"],
+                    }
+                    for item in ranked[:_DEBUG_BM25_SAMPLE]
+                ],
+            }
+        )
     return ranked[:_MAX_CONTEXT_CHUNKS]
 
 
 def build_context_prompt(question: str, selected: List[Dict[str, Any]]) -> str:
+    """
+    Build a prompt string from the question and selected context chunks.
+
+    Inputs:
+        question: Raw question text.
+        selected: Ranked chunk records to include.
+    Outputs:
+        A formatted prompt string with question and chunk sections.
+    Edge cases:
+        Returns an empty string when both inputs are empty.
+    """
     question = (question or "").strip()
     sections: List[str] = []
     if question:
@@ -667,138 +1150,89 @@ def build_context_prompt(question: str, selected: List[Dict[str, Any]]) -> str:
 
     return "\n\n".join(sections)
 
-def has_signal(selected: List[Dict[str, Any]]) -> bool:
-    """Helper used by main.py mock/real path to decide if we answer at all."""
+
+def has_selected_chunks(selected: List[Dict[str, Any]]) -> bool:
+    """
+    Decide whether any context signals are present.
+
+    Inputs:
+        selected: Ranked chunk records.
+    Outputs:
+        True when any chunks are selected, otherwise False.
+    Edge cases:
+        Returns False for empty inputs.
+    """
     return bool(selected)
 
 
-class _VertexEmbeddingClient:
-    """Lazy Vertex AI Text Embedding wrapper."""
+class _GenaiEmbeddingClient:
+    """Lazy google-genai embedding wrapper (Vertex mode)."""
 
     def __init__(self, *, project: str, region: str, model_name: str) -> None:
         self._project = project
         self._region = region
         self._model_name = model_name
-        self._model: Any = None
+        self._client: Any = None
         self._lock = threading.Lock()
 
-    def _ensure_model(self) -> Any:
-        with self._lock:
-            if self._model is None:
-                from vertexai import init  # type: ignore[import-not-found]
-                from vertexai.language_models import TextEmbeddingModel  # type: ignore[import-not-found]
+    def _ensure_client(self) -> Any:
+        """
+        Initialize and cache a google-genai client.
 
-                init(project=self._project, location=self._region)
-                self._model = TextEmbeddingModel.from_pretrained(self._model_name)
-            return self._model
+        Inputs:
+            None.
+        Outputs:
+            A genai.Client instance configured for Vertex mode.
+        Edge cases:
+            Lazily initializes to avoid import-time failures.
+        Concurrency:
+            Protected by a lock to ensure single initialization.
+        """
+        with self._lock:
+            if self._client is None:
+                from google import genai  # type: ignore[import-not-found]
+                from google.genai import types  # type: ignore[import-not-found]
+
+                http_options = types.HttpOptions(timeout=settings.REQ_TIMEOUT_MS)
+                self._client = genai.Client(
+                    vertexai=True,
+                    project=self._project,
+                    location=self._region,
+                    http_options=http_options,
+                )
+            return self._client
 
     def embed(self, text: str) -> Optional[Sequence[float]]:
-        model = self._ensure_model()
-        responses = model.get_embeddings([text], auto_truncate=True)
-        if not responses:
+        """
+        Embed text using the configured model via google-genai.
+
+        Inputs:
+            text: Raw text to embed.
+        Outputs:
+            A sequence of floats, or an empty list if the backend returns no values.
+        Edge cases:
+            Raises RuntimeError if the response lacks an embedding payload.
+        """
+        normalized_text = (text or "").strip()
+        if not normalized_text:
             return cast(List[float], [])
-        embedding = responses[0]
-        for attr in ("values", "embedding", "embedding_values"):
-            values = getattr(embedding, attr, None)
-            if values is not None:
-                return [float(v) for v in cast(Iterable[Any], values)]
-        raise RuntimeError("Embedding response missing values field")
 
+        from google.genai import types  # type: ignore[import-not-found]
 
-class _MatchingEngineClient:
-    """Lazy wrapper around Vertex AI Matching Engine."""
+        client = self._ensure_client()
+        response = client.models.embed_content(
+            model=self._model_name,
+            contents=[types.Part.from_text(text=normalized_text)],
+            config=types.EmbedContentConfig(auto_truncate=True),
+        )
+        response_object = cast(object, response)
+        embeddings_attribute = getattr(response_object, "embeddings", None)
+        embeddings = cast(Optional[Sequence[Any]], embeddings_attribute)
+        if not embeddings:
+            return cast(List[float], [])
 
-    def __init__(self, *, index_endpoint_path: str, deployed_index_id: str) -> None:
-        self._index_endpoint_path = index_endpoint_path
-        self._deployed_index_id = deployed_index_id
-        self._endpoint = None
-
-    def _ensure_endpoint(self):
-        if self._endpoint is None:
-            from google.cloud.aiplatform.matching_engine.matching_engine_index_endpoint import (
-                MatchingEngineIndexEndpoint,
-            )
-
-            self._endpoint = MatchingEngineIndexEndpoint(
-                index_endpoint_name=self._index_endpoint_path
-            )
-        return self._endpoint
-
-    def query(self, embedding: Sequence[float], *, top_k: int) -> List[Dict[str, Any]]:
-        endpoint = self._ensure_endpoint()
-        try:
-            responses = endpoint.find_neighbors(
-                deployed_index_id=self._deployed_index_id,
-                queries=[list(embedding)],
-                num_neighbors=top_k,
-                timeout=settings.request_timeout_seconds,
-            )
-        except TypeError:
-            responses = endpoint.find_neighbors(
-                deployed_index_id=self._deployed_index_id,
-                queries=[list(embedding)],
-                num_neighbors=top_k,
-            )
-
-        if not responses:
-            return []
-
-        # Matching Engine returns one response per query, we send a single query.
-        response = responses[0]
-        neighbors = getattr(response, "neighbors", [])
-        if not neighbors:
-            return []
-
-        return [_neighbor_to_candidate(neighbor) for neighbor in neighbors]
-
-
-def _neighbor_proto(neighbor: Any) -> Any:
-    """Extract the underlying proto from a Matching Engine neighbor."""
-    to_proto = getattr(neighbor, "to_proto", None)
-    if callable(to_proto):
-        proto = to_proto()
-        if proto is not None:
-            return proto
-
-    for attr in ("proto", "_proto", "_pb"):
-        proto = getattr(neighbor, attr, None)
-        if proto is not None:
-            return proto
-
-    raise AttributeError("Matching Engine neighbor lacks a proto representation")
-
-
-def _neighbor_to_candidate(neighbor: Any) -> Dict[str, Any]:
-    """Convert a Matching Engine neighbor proto into our simplified dict."""
-    try:
-        from google.protobuf.json_format import MessageToDict
-    except ImportError:
-        MessageToDict = None
-
-    if MessageToDict is None:
-        raise RuntimeError("google-cloud-aiplatform dependency is required for live vector search")
-
-    # Convert proto with field names preserved to avoid snake/camel churn.
-    neighbor_dict = MessageToDict(_neighbor_proto(neighbor), preserving_proto_field_name=True)
-    datapoint = neighbor_dict.get("datapoint", {})
-
-    candidate: Dict[str, Any] = {
-        "id": datapoint.get("datapointId")
-        or neighbor_dict.get("datapointId")
-        or neighbor_dict.get("id"),
-        "distance": float(neighbor_dict.get("distance", 0.0)),
-    }
-
-    feature_vector = datapoint.get("featureVector")
-    if feature_vector is not None:
-        candidate["featureVector"] = [float(x) for x in feature_vector]
-
-    restricts = datapoint.get("restricts")
-    if restricts:
-        candidate["restricts"] = restricts
-
-    crowding_tag = datapoint.get("crowdingTag")
-    if crowding_tag:
-        candidate["crowdingTag"] = crowding_tag
-
-    return candidate
+        first_embedding_object = cast(object, embeddings[0])
+        values = cast(Optional[Iterable[Any]], getattr(first_embedding_object, "values", None))
+        if values is None:
+            raise RuntimeError("Embedding response missing values field")
+        return [float(value) for value in values]

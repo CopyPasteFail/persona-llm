@@ -4,33 +4,47 @@ PYTHON ?= python3.13
 VENV := .venv
 PY := $(VENV)/bin/python
 PIP := $(VENV)/bin/pip
+TEST_ENV ?= LLM_BACKEND=deterministic
 
 include ../make/env.mk
 
-.PHONY: help install run run-debug mock test-smoke test-core test-voice test-int test-cors-deploy test-vector-live test-build_datapoints test-auth-key-login test-create-access-key-cli test-keys-store test-llm-prompt test-security-session test-load-backend-env test-pack-and-push-processing check envs clean build_datapoints create-access-key
+DATASET_DIR ?= $(dir $(DATAPOINTS_FILE))
+DATASET_VERSION ?= $(notdir $(patsubst %/,%,$(DATASET_DIR)))
+DATASET_FOLDER := datasets
+DATASET_GCS_PREFIX ?= $(DATASET_FOLDER)/$(DATASET_VERSION)
+
+.PHONY: help install run run-debug mock eval-gating test-smoke test-core test-voice test-int test-cors-deploy test-vector-live test-build_datapoints test-auth-key-login test-create-access-key-cli test-keys-store test-llm-prompt test-thinking-gating test-llm-gating test-main-chat-logging test-security-session test-load-backend-env test-pack-and-push-processing check envs clean build_datapoints create-access-key dataset-version-check dataset-chunks dataset-datapoints dataset-upload dataset-pointer-update
 
 help:
 	@echo "Targets:"
 	@echo "  install      - create venv and install deps"
-	@echo "  run          - start real API skeleton on :8000 (requires envs)"
+	@echo "  run          - start integrated API (api.main:app) on :8080 (requires envs)"
 	@echo "  mock         - start mock API on :8080"
+	@echo "  eval-gating   - run dataset-based gating eval (pass ARGS='...')"
 	@echo "  docker-build - build local backend image"
 	@echo "  docker-run   - run local backend image with mounted secrets"
 	@echo "  test-smoke   - run pytest smoke tests against mock app"
 	@echo "  test-core    - run all mock-safe backend tests"
 	@echo "  test-voice   - run persona voice + normalization tests (mock)"
-	@echo "  test-int     - run integration tests against real backend (requires GCP + uvicorn)"
-	@echo "  test-cors-deploy - run deployed CORS integration checks (requires real backend URL)"
+	@echo "  test-int     - run integration tests against cloud backend (requires GCP + uvicorn)"
+	@echo "  test-cors-deploy - run deployed CORS integration checks (requires integrated backend URL)"
 	@echo "  test-auth-key-login - run auth key login tests"
 	@echo "  test-create-access-key-cli - run access key CLI tests"
 	@echo "  create-access-key - run access key CLI (pass ARGS='create ...')"
 	@echo "  test-keys-store - run key store tests"
 	@echo "  test-llm-prompt - run LLM prompt construction tests"
+	@echo "  test-thinking-gating - run thinking-budget gating tests"
+	@echo "  test-llm-gating - run deterministic llm-gating tests"
+	@echo "  test-main-chat-logging - run chat success structured logging tests"
 	@echo "  test-security-session - run session security tests"
 	@echo "  test-load-backend-env - run load_backend_env tests"
 	@echo "  test-pack-and-push-processing - run pack_and_push processing tests"
 	@echo "  check        - quick import check"
 	@echo "  build_datapoints - build embedding datapoints JSONL for upsert"
+	@echo "  dataset-chunks - build chunks.jsonl.gz in DATAPOINTS_FILE directory"
+	@echo "  dataset-datapoints - build datapoints.jsonl + manifest.json"
+	@echo "  dataset-upload - upload dataset folder to GCS"
+	@echo "  dataset-pointer-update - update datasets/current.json in GCS"
 	@echo "  test-build_datapoints - run datapoint helper unit tests"
 	@echo "  test-retrieval-vector - run vector adapter unit tests"
 	@echo "  envs         - print required env variables"
@@ -46,9 +60,9 @@ $(VENV)/bin/activate: requirements.txt
 install: $(VENV)/bin/activate
 
 run: $(VENV)/bin/activate
-	$(RUN_ENV) $(PY) -m uvicorn api.main:app --reload --port 8000
+	$(RUN_ENV) $(PY) -m uvicorn api.main:app --reload --port 8080
 
-run-debug: RUN_ENV=RETRIEVAL_DEBUG=1 UVICORN_LOG_LEVEL=debug
+run-debug: RUN_ENV=APP_LOG_LEVEL=debug
 run-debug: run
 
 docker-build:
@@ -73,7 +87,10 @@ docker-run-mock:
 		uvicorn api.mock:app --host 0.0.0.0 --port 8080
 
 mock: $(VENV)/bin/activate
-	$(PY) -m uvicorn api.mock:app --reload --port 8080
+	LLM_BACKEND=deterministic $(PY) -m uvicorn api.mock:app --reload --port 8080
+
+eval-gating: $(VENV)/bin/activate
+	$(PY) scripts/eval_gating.py $(ARGS)
 
 pack_and_push: $(VENV)/bin/activate
 	$(PY) jobs/pack_and_push.py
@@ -81,16 +98,35 @@ pack_and_push: $(VENV)/bin/activate
 build_datapoints: $(VENV)/bin/activate
 	$(PY) jobs/build_datapoints.py
 
+dataset-version-check:
+	@test -n "$(DATASET_VERSION)" || { echo "DATASET_VERSION is required (e.g. v13)."; exit 1; }
+	@printf "%s" "$(DATASET_VERSION)" | grep -Eq '^v[0-9A-Za-z_-]+$$' || { echo "Invalid DATASET_VERSION '$(DATASET_VERSION)'; expected v followed by [0-9A-Za-z_-]."; exit 1; }
+
+dataset-chunks: dataset-version-check $(VENV)/bin/activate
+	$(PY) jobs/pack_and_push.py --output-dir "$(DATASET_DIR)" --skip-upload
+
+dataset-datapoints: dataset-version-check $(VENV)/bin/activate
+	$(PY) jobs/build_datapoints.py
+
+dataset-upload:
+	gcloud storage cp "$(DATASET_DIR)/datapoints.jsonl" "gs://$(BUCKET_NAME)/$(DATASET_GCS_PREFIX)/datapoints.jsonl"
+	gcloud storage cp "$(DATASET_DIR)/chunks.jsonl.gz" "gs://$(BUCKET_NAME)/$(DATASET_GCS_PREFIX)/chunks.jsonl.gz"
+	gcloud storage cp "$(DATASET_DIR)/manifest.json" "gs://$(BUCKET_NAME)/$(DATASET_GCS_PREFIX)/manifest.json"
+	@echo "GCS browser: https://console.cloud.google.com/storage/browser/$(BUCKET_NAME)"
+
+dataset-pointer-update:
+	printf '{ "version": "%s" }\n' "$(DATASET_VERSION)" | gcloud storage cp - "gs://$(BUCKET_NAME)/$(DATASET_FOLDER)/current.json"
+
 test-build_datapoints: $(VENV)/bin/activate
-	$(PY) -m pytest -q tests/test_build_datapoints.py
+	$(TEST_ENV) $(PY) -m pytest -q tests/test_build_datapoints.py
 
 test-smoke: $(VENV)/bin/activate
-	$(PY) -m pytest -q tests/test_smoke.py
+	LLM_BACKEND=deterministic $(PY) -m pytest -q $(PYTEST_ARGS) tests/test_smoke.py
 
-test-core: test-smoke test-voice test-auth-key-login test-security-session test-keys-store test-llm-prompt test-create-access-key-cli test-build_datapoints test-retrieval-vector test-load-backend-env test-pack-and-push-processing
+test-core: test-smoke test-voice test-auth-key-login test-security-session test-keys-store test-llm-prompt test-create-access-key-cli test-build_datapoints test-retrieval-vector test-thinking-gating test-llm-gating test-main-chat-logging test-load-backend-env test-pack-and-push-processing
 
 test-voice: $(VENV)/bin/activate
-	$(PY) -m pytest -q tests/test_persona_voice.py tests/test_normalize_question_punct.py
+	$(TEST_ENV) $(PY) -m pytest -q tests/test_persona_voice.py tests/test_normalize_question_punct.py
 
 test-int: $(VENV)/bin/activate
 	$(PY) -m pytest -q -rs -m integration tests/test_integration_real_backend.py
@@ -104,31 +140,40 @@ test-vector-live: $(VENV)/bin/activate
 	RUN_VERTEX_SEARCH_TEST=1 VERTEX_TEST_EMBEDDING="$$embedding" $(PY) -m pytest -q tests/test_vector_search_integration.py
 
 test-retrieval-vector: $(VENV)/bin/activate
-	$(PY) -m pytest -q tests/test_retrieval_vector.py
+	$(TEST_ENV) $(PY) -m pytest -q tests/test_retrieval_vector.py
 
 test-auth-key-login: $(VENV)/bin/activate
-	$(PY) -m pytest -q tests/test_auth_key_login.py
+	$(TEST_ENV) $(PY) -m pytest -q tests/test_auth_key_login.py
 
 test-create-access-key-cli: $(VENV)/bin/activate
-	PYTHONPATH=.. $(PY) -m pytest -q tests/test_create_access_key_cli.py
+	PYTHONPATH=.. $(TEST_ENV) $(PY) -m pytest -q tests/test_create_access_key_cli.py
 
 create-access-key: $(VENV)/bin/activate
 	$(PY) scripts/create_access_key.py $(ARGS)
 
 test-keys-store: $(VENV)/bin/activate
-	$(PY) -m pytest -q tests/test_keys_store.py
+	$(TEST_ENV) $(PY) -m pytest -q tests/test_keys_store.py
 
 test-llm-prompt: $(VENV)/bin/activate
-	$(PY) -m pytest -q tests/test_llm_prompt.py
+	$(TEST_ENV) $(PY) -m pytest -q tests/test_llm_prompt.py
+
+test-thinking-gating: $(VENV)/bin/activate
+	$(TEST_ENV) $(PY) -m pytest -q tests/test_thinking_gating.py
+
+test-llm-gating: $(VENV)/bin/activate
+	$(TEST_ENV) $(PY) -m pytest -q tests/test_llm_gating.py
+
+test-main-chat-logging: $(VENV)/bin/activate
+	$(TEST_ENV) $(PY) -m pytest -q tests/test_main_chat_logging.py
 
 test-security-session: $(VENV)/bin/activate
-	$(PY) -m pytest -q tests/test_security_session.py
+	$(TEST_ENV) $(PY) -m pytest -q tests/test_security_session.py
 
 test-load-backend-env: $(VENV)/bin/activate
-	$(PY) -m pytest -q tests/test_load_backend_env.py
+	$(TEST_ENV) $(PY) -m pytest -q tests/test_load_backend_env.py
 
 test-pack-and-push-processing: $(VENV)/bin/activate
-	$(PY) -m pytest -q tests/test_pack_and_push_processing.py
+	$(TEST_ENV) $(PY) -m pytest -q tests/test_pack_and_push_processing.py
 
 check: $(VENV)/bin/activate
 	$(PY) -c "import api.main, api.mock, api.retrieval, api.llm, api.settings"

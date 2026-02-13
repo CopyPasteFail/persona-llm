@@ -6,11 +6,11 @@
   "scripts": {
     "dev": "npm run dev -w web",
 
-    "dev:mock": "npm run dev:mock -w web",
+    "dev:local": "npm run dev:local -w web",
 
     "dev:clean": "npm run dev:clean -w web",
 
-    "dev:mock:clean": "npm run dev:mock:clean -w web",
+    "dev:local:clean": "npm run dev:local:clean -w web",
 
     "build": "npm run build -w web",
 

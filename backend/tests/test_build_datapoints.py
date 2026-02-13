@@ -10,6 +10,7 @@ Checks include:
 
 import gzip
 import json
+import math
 from pathlib import Path
 from typing import Any
 
@@ -43,10 +44,39 @@ DATAPOINT_ID_FIELD = "datapointId"
 CROWDING_TAG_FIELD = "crowdingTag"
 EMBEDDINGS_FOR_SINGLE_RECORD = [[0.5, 0.5, 0.707106]]
 GZIP_EMBEDDINGS = [[0.1, 0.2]]
+VECTOR_RELATIVE_TOLERANCE = 1e-9
+VECTOR_ABSOLUTE_TOLERANCE = 1e-9
 
 MetadataValue = str | list[str]
 Metadata = dict[str, MetadataValue]
 Record = dict[str, Any]
+
+
+def _assert_float_vectors_close(
+    actual_vector: list[float], expected_vector: list[float]
+) -> None:
+    """Assert two float vectors are equal within a strict tolerance.
+
+    What it does:
+        Compares corresponding elements from two vectors using ``math.isclose``.
+    Inputs:
+        actual_vector: Float values emitted by datapoint serialization.
+        expected_vector: Float values computed by normalization helper.
+    Outputs:
+        None. Raises ``AssertionError`` when a mismatch is found.
+    Edge cases:
+        Fails fast when lengths differ to avoid silent truncation during zip.
+    Concurrency/atomicity:
+        Pure assertion helper with no shared state.
+    """
+    assert len(actual_vector) == len(expected_vector)
+    for actual_value, expected_value in zip(actual_vector, expected_vector):
+        assert math.isclose(
+            actual_value,
+            expected_value,
+            rel_tol=VECTOR_RELATIVE_TOLERANCE,
+            abs_tol=VECTOR_ABSOLUTE_TOLERANCE,
+        )
 
 
 def test_build_restricts_includes_all_supported_namespaces() -> None:
@@ -122,7 +152,10 @@ def test_write_datapoints_emits_expected_json_lines(tmp_path: Path) -> None:
     datapoint: dict[str, Any] = serialized[0]
     assert datapoint[DATAPOINT_ID_FIELD] == CHUNK_ID_ONE
     assert datapoint[ID_FIELD] == CHUNK_ID_ONE
-    assert datapoint[FEATURE_VECTOR_FIELD] == EMBEDDINGS_FOR_SINGLE_RECORD[0]
+    normalized_vector = build_datapoints._l2_normalize( # pyright: ignore[reportPrivateUsage]
+        EMBEDDINGS_FOR_SINGLE_RECORD[0]
+    )
+    _assert_float_vectors_close(datapoint[FEATURE_VECTOR_FIELD], normalized_vector)
     assert datapoint[CROWDING_TAG_FIELD] == PROFILE_SECTION
     assert datapoint[RESTRICTS_FIELD] == [
         {NAMESPACE_FIELD: ROLE_FIELD, ALLOW_TOKENS_FIELD: [ROLE_VALUE]},
@@ -168,5 +201,7 @@ def test_write_datapoints_handles_gzip_output(tmp_path: Path) -> None:
     assert datapoint == {
         DATAPOINT_ID_FIELD: CHUNK_ID_TWO,
         ID_FIELD: CHUNK_ID_TWO,
-        FEATURE_VECTOR_FIELD: GZIP_EMBEDDINGS[0],
+        FEATURE_VECTOR_FIELD: build_datapoints._l2_normalize( # pyright: ignore[reportPrivateUsage]
+            GZIP_EMBEDDINGS[0]
+        ),
     }

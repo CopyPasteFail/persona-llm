@@ -1,11 +1,11 @@
 from datetime import datetime, timedelta, timezone
-from typing import Any, AsyncGenerator, cast
+from typing import Any, AsyncGenerator, Sequence, cast
 
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
-from api import security
+from api import retrieval, security
 from api.mock import app as mock_app
 from api.settings import settings
 
@@ -20,6 +20,10 @@ TEST_BASE_URL = "http://test"
 EXPECTED_MISSING_TOKEN_ERROR = "missing_token"
 TEST_KEY_LABEL = "test"
 
+_DETERMINISTIC_CHUNKS: list[dict[str, Any]] = [
+    {"id": "mock:1", "text": "deterministic mock chunk", "metadata": {}}
+]
+
 
 class _FakeKeyRecord:
     def __init__(self, key_identifier: str):
@@ -30,12 +34,32 @@ class _FakeKeyRecord:
         self.label: str | None = TEST_KEY_LABEL
 
 
+class _DeterministicEmbeddingClient:
+    def embed(self, text: str) -> list[float]:
+        return [1.0]
+
+
+class _DeterministicVectorClient:
+    def query(
+        self, embedding: Sequence[float], *, top_k: int
+    ) -> list[dict[str, Any]]:
+        return [{"id": "mock:1", "distance": 0.0}]
+
+
 @pytest_asyncio.fixture
 async def client() -> AsyncGenerator[AsyncClient, None]:
     """Builds an async HTTP client against the mock app so tests can issue requests."""
+    retrieval.configure_embedding_client(_DeterministicEmbeddingClient())
+    retrieval.configure_vector_client(_DeterministicVectorClient())
+    retrieval.configure_chunk_store(_DETERMINISTIC_CHUNKS)
     transport = ASGITransport(app=cast(Any, mock_app))
-    async with AsyncClient(transport=transport, base_url=TEST_BASE_URL) as async_client:
-        yield async_client
+    try:
+        async with AsyncClient(transport=transport, base_url=TEST_BASE_URL) as async_client:
+            yield async_client
+    finally:
+        retrieval.configure_embedding_client(None)
+        retrieval.configure_vector_client(None)
+        retrieval.configure_chunk_store(None)
 
 
 @pytest.mark.asyncio

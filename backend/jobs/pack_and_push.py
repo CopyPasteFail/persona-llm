@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import gzip
+import shutil
 import hashlib
 import json
 import os
@@ -20,6 +21,7 @@ DEFAULT_MAX_CHARS = 2200
 READ_CHUNK_SIZE_BYTES = 1024 * 1024
 SHA1_HEX_LENGTH = 12
 OUTPUT_FILENAME_TEMPLATE = "chunks-{digest}.jsonl.gz"
+DATASET_CHUNKS_FILENAME = "chunks.jsonl.gz"
 
 
 def resolve_existing_path(path_value: str, *roots: Path) -> Path:
@@ -447,11 +449,15 @@ def main() -> None:
     env = load_backend_env(["BUCKET_NAME"], optional=["GOOGLE_APPLICATION_CREDENTIALS"])
 
     default_schema = backend_root / "schema" / "chunk.schema.json"
-    default_input = repo_root / "private" / "persona" / "data" / "chunks.jsonl"
+    private_dir = Path(os.getenv("PRIVATE_DIR", repo_root / "private")).expanduser()
+    default_input = private_dir / "persona" / "data" / "chunks.jsonl"
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--schema", default=str(default_schema))
     parser.add_argument("--input", default=str(default_input))
+    parser.add_argument("--output-dir", default=None)
+    parser.add_argument("--gcs-object", default=None)
+    parser.add_argument("--skip-upload", action="store_true")
     parsed_args = parser.parse_args()
 
     schema_path = resolve_existing_path(parsed_args.schema, backend_root)
@@ -461,16 +467,30 @@ def main() -> None:
 
     records = build_persona_records(schema_path, input_path)
     payload, filename = _serialize_records(records)
-
-    out_path = Path(filename)
+    output_dir = Path(parsed_args.output_dir).expanduser() if parsed_args.output_dir else None
+    if output_dir:
+        output_dir.mkdir(parents=True, exist_ok=True)
+        out_path = output_dir / DATASET_CHUNKS_FILENAME
+        raw_copy_path = output_dir / "chunks.jsonl"
+    else:
+        out_path = Path(filename)
+        raw_copy_path = None
     with gzip.open(out_path, "wb") as gzip_handle:
         gzip_handle.write(payload)
+    if raw_copy_path is not None:
+        shutil.copy2(input_path, raw_copy_path)
 
     bucket = env["BUCKET_NAME"]
+    if parsed_args.skip_upload:
+        print(f"Wrote persona chunks to {out_path}")
+        return
+
     storage_client = cast(_StorageClient, storage.Client())
-    uri = upload_to_bucket(out_path, bucket, filename, storage_client=storage_client)
+    object_name = parsed_args.gcs_object or out_path.name
+    uri = upload_to_bucket(out_path, bucket, object_name, storage_client=storage_client)
     print(f"Uploaded persona chunks to {uri}")
-    print(f"Artifact name: {filename} (set this as CHUNKS_PATH in your backend env)")
+    if not output_dir:
+        print(f"Artifact name: {filename} (set this as CHUNKS_PATH in your backend env)")
 
     manifest_path = _write_manifest(
         artifact_path=out_path,

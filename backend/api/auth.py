@@ -43,6 +43,8 @@ class KeyLoginResponse(BaseModel):
     access_token: str
     token_type: str = TOKEN_TYPE_BEARER
     expires_at: datetime
+    model: str
+    input_token_limit: int | None
 
 
 @router.post("/auth/key-login", response_model=KeyLoginResponse)
@@ -69,6 +71,8 @@ async def key_login(payload: KeyLoginRequest, request: Request) -> JSONResponse:
         access_token=token,
         token_type=TOKEN_TYPE_BEARER,
         expires_at=expires_at,
+        model=settings.LLM_MODEL_NAME,
+        input_token_limit=settings.MAX_INPUT_TOKENS,
     )
 
     response = JSONResponse(content=jsonable_encoder(body))

@@ -1,12 +1,13 @@
 """Tests for persona voice normalization and response contract behavior."""
 
-from typing import Any, AsyncGenerator, Protocol, cast
+from typing import Any, AsyncGenerator, Protocol, Sequence, cast
 
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient, Response
 
 from api.mock import app as mock_app
+from api import retrieval
 
 ACCESS_TOKEN_JSON_FIELD = "access_token"
 AUTH_ENDPOINT = "/auth/key-login"
@@ -24,6 +25,20 @@ class AccessKeyStore(Protocol):
     def add_plain_key(self, plain_key: str) -> str: ...
 
 
+class _DeterministicEmbeddingClient:
+    """Deterministic embedding stub for mock mode."""
+
+    def embed(self, text: str) -> list[float]:
+        return [1.0]
+
+
+class _DeterministicVectorClient:
+    """Deterministic vector search stub for mock mode."""
+
+    def query(self, embedding: Sequence[float], *, top_k: int) -> list[dict[str, Any]]:
+        return [{"id": "mock:1", "distance": 0.0}]
+
+
 @pytest_asyncio.fixture
 async def test_client(
     access_key_store: AccessKeyStore,
@@ -38,12 +53,22 @@ async def test_client(
         The fixture yields an AsyncClient ready for login and chat requests.
     """
     access_key_store.add_plain_key(TEST_KEY)
+    retrieval.configure_embedding_client(_DeterministicEmbeddingClient())
+    retrieval.configure_vector_client(_DeterministicVectorClient())
+    retrieval.configure_chunk_store(
+        [{"id": "mock:1", "text": "deterministic mock chunk", "metadata": {}}]
+    )
     transport = ASGITransport(app=cast(Any, mock_app))
-    async with AsyncClient(
-        transport=transport,
-        base_url=TEST_BASE_URL,
-    ) as http_client:
-        yield http_client
+    try:
+        async with AsyncClient(
+            transport=transport,
+            base_url=TEST_BASE_URL,
+        ) as http_client:
+            yield http_client
+    finally:
+        retrieval.configure_embedding_client(None)
+        retrieval.configure_vector_client(None)
+        retrieval.configure_chunk_store(None)
 
 
 @pytest.mark.asyncio
@@ -73,7 +98,7 @@ async def test_first_person_normalization(test_client: AsyncClient) -> None:
     response_payload: dict[str, Any] = chat_response.json()
 
     # Contract checks
-    assert set(response_payload.keys()) == EXPECTED_RESPONSE_KEYS
+    assert EXPECTED_RESPONSE_KEYS.issubset(response_payload.keys())
     assert (
         isinstance(response_payload["answer"], str) and response_payload["answer"]
     )

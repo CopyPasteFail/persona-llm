@@ -28,9 +28,9 @@ npm install -w web
 `frontend/package.json` forwards scripts to the `web` app via `"workspaces": ["web"]`.
 
 - `npm run dev`: start the Next.js dev server on port 3000.
-- `npm run dev:mock`: dev server with `NEXT_PUBLIC_API_URL` pointing at the mock backend on port 8080.
+- `npm run dev:local`: dev server with `NEXT_PUBLIC_API_URL` pointing at `http://localhost:8080`.
 - `npm run dev:clean`: clear `.next`, `out`, and `.turbo`, then launch the dev server.
-- `npm run dev:mock:clean`: clean artifacts before starting the mock-connected dev server.
+- `npm run dev:local:clean`: clean artifacts before starting the local-connected dev server.
 - `npm run build`: create the production build with `next build`.
 - `npm run preview`: serve the static export from `web/out` on port 4173 (requires a prior `npm run build`).
 - `npm run clean`: remove `.next`, `out`, and `.turbo` artifacts.
@@ -59,7 +59,7 @@ Notes:
 
 ## Dev backends
 - Mock app default port: 8080.
-- Real backend path is unverified until retrieval and LLM are wired.
+- Integrated backend is `api.main:app` and runs retrieval plus LLM generation.
 
 ---
 
@@ -77,4 +77,4 @@ Notes:
 
 ## Notes
 - `.env.local` is ignored. `.env.local.example` documents variables. `.env.production` has placeholders for static export.
-- Do not run `next export` directly — static export is enabled by `output: 'export'` in `web/next.config.mjs`.
+- Do not run `next export` directly, static export is enabled by `output: 'export'` in `web/next.config.mjs`.

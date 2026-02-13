@@ -1,21 +1,52 @@
+"""Mock API app with deterministic LLM and optional deterministic retrieval.
+
+Note: the mock app still runs the full RAG pipeline (embed, vector search,
+filtering, then LLM generation). The LLM answer is deterministic, but retrieval
+still happens. In deterministic mode, embedding/vector are stubs that return
+fixed values, and the chunk store uses _DETERMINISTIC_CHUNKS (not real data).
+"""
+
 from __future__ import annotations
 
-import time
-import uuid
 import logging
 from contextlib import asynccontextmanager
+import os
 from pathlib import Path
+from typing import Any, Dict, List, Optional, Sequence
+
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .types import ChatRequest, ChatResponse, Usage, Citation
+from .types import ChatRequest, ChatResponse
 from .settings import settings
 from .auth import router as auth_router
 from .security import Session, get_current_session
-from .retrieval import normalize_question_for_first_person
+from . import llm_backends, ops_routes, rag_chat_orchestrator, retrieval
 from .keys import JsonKeyStore, set_key_store
 
 logger = logging.getLogger("api.mock")
+
+_llm_backend: llm_backends.LlmBackend = llm_backends.get_llm_backend(
+    default_backend="deterministic"
+)
+_DETERMINISTIC_CHUNKS: List[Dict[str, Any]] = [
+    {"id": "mock:1", "text": "deterministic mock chunk", "metadata": {}}
+]
+
+
+class _DeterministicEmbeddingClient:
+    """Deterministic embedding stub for mock mode."""
+
+    def embed(self, text: str) -> Optional[Sequence[float]]:
+        return [1.0]
+
+
+class _DeterministicVectorClient:
+    """Deterministic vector search stub for mock mode."""
+
+    def query(self, embedding: Sequence[float], *, top_k: int) -> List[Dict[str, Any]]:
+        return [{"id": "mock:1", "distance": 0.0}]
+
 
 def _resolve_mock_key_store_path() -> Path | None:
     """Resolve the filesystem path for the mock access key store.
@@ -51,10 +82,29 @@ async def lifespan(_app: FastAPI):
     """
     path = _resolve_mock_key_store_path()
     if not path:
-        yield
-        return
-    set_key_store(JsonKeyStore(path))
-    logger.info("mock key store enabled: %s", path)
+        logger.info("mock key store disabled (no file found).")
+    else:
+        set_key_store(JsonKeyStore(path))
+        logger.info("mock key store enabled: %s", path)
+
+    if isinstance(_llm_backend, llm_backends.DeterministicLlmBackend):
+        retrieval.configure_embedding_client(_DeterministicEmbeddingClient())
+        retrieval.configure_vector_client(_DeterministicVectorClient())
+        retrieval.configure_chunk_store(_DETERMINISTIC_CHUNKS)
+    else:
+        model_name = (
+            os.getenv("EMBEDDING_MODEL")
+            or os.getenv("DATAPOINTS_MODEL")
+            or "text-embedding-004"
+        )
+        retrieval.configure_vertex_embedding_client(
+            project=settings.PROJECT_ID,
+            region=settings.REGION,
+            model_name=model_name,
+        )
+        retrieval.configure_vector_client(None)
+        retrieval.configure_chunk_store(None)
+
     yield
 
 
@@ -74,6 +124,7 @@ app.add_middleware(
 )
 
 app.include_router(auth_router)
+app.include_router(ops_routes.router)
 
 @app.get("/health")
 def health():
@@ -109,28 +160,21 @@ def chat(
         - This handler is pure and stateless; it is safe to call
           concurrently and performs no shared-state mutations.
     """
-    _request_id = str(uuid.uuid4())
-    _t0 = time.time()
-
-    question = (req.question or "").strip()
-    norm_q = normalize_question_for_first_person(question)
-
-    answer = (
-        f"TLDR: I am returning a deterministic mock answer for: \"{norm_q}\"\n"
-        f"- I speak in first person to mirror production behavior.\n"
-        f"- Grounded in local mock data.\n"
-        f"Wrap: This is a first-person mock; wire the real LLM to change it."
+    chat_result = rag_chat_orchestrator.run_rag_chat(
+        req.question,
+        retrieval=retrieval,
+        llm_backend=_llm_backend,
+        top_k=settings.TOP_K,
+        persona_name=settings.PERSONA_NAME,
+        max_input_tokens=settings.MAX_INPUT_TOKENS,
+        max_output_tokens=settings.MAX_OUTPUT_TOKENS,
+        enable_thinking_gating=settings.ENABLE_THINKING_GATING,
+        default_thinking_budget_tokens=settings.THINKING_BUDGET_TOKENS,
+        enable_llm_call_gating=settings.ENABLE_LLM_CALL_GATING,
+        weighted_score_threshold=settings.WEIGHTED_SCORE_THRESHOLD,
+        bm25_score_threshold=settings.BM25_SCORE_THRESHOLD,
+        weighted_consensus_count=settings.WEIGHTED_CONSENSUS_COUNT,
     )
-
-    usage = Usage(
-        input_tokens=max(1, len(norm_q) // 4),
-        output_tokens=len(answer) // 4,
-    )
-
-    citations = [Citation(id="mock:1", text="deterministic mock chunk")]
-
-    return ChatResponse(
-        answer=answer,
-        citations=citations,
-        usage=usage,
-    )
+    response = chat_result.response
+    response.model = settings.LLM_MODEL_NAME
+    return response

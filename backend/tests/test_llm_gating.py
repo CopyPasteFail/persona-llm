@@ -1,0 +1,295 @@
+"""Tests for deterministic llm gating in the RAG chat orchestrator."""
+
+from __future__ import annotations
+
+from typing import Any, Dict, List, Optional, Sequence
+
+from api import rag_chat_orchestrator
+from api import llm
+
+WEAK_WEIGHTED_SCORE = 0.56
+WEAK_BM25_SCORE = 1.4
+STRONG_WEIGHTED_SCORE = 0.66
+STRONG_BM25_SCORE = 7.5
+TEST_WEIGHTED_SCORE_THRESHOLD = 0.62
+TEST_BM25_SCORE_THRESHOLD = 3.0
+DEFAULT_TOP_K = 4
+MAX_INPUT_TOKENS = 1000
+MAX_OUTPUT_TOKENS = 128
+PERSONA_NAME = "Test Persona"
+
+
+class _StaticRetrieval:
+    """Retrieval test double that returns static ranked chunks."""
+
+    def __init__(self, selected_chunks: List[Dict[str, Any]]) -> None:
+        self._selected_chunks = selected_chunks
+
+    def normalize_question_for_first_person(self, question: str) -> str:
+        return question
+
+    def embed_query(self, question: str) -> Optional[List[float]]:
+        return [1.0]
+
+    def search_vector_store(
+        self, embedding: Optional[Sequence[float]], top_k: int
+    ) -> List[Dict[str, Any]]:
+        return [{"id": "chunk-1", "distance": 0.1}]
+
+    def apply_filters_and_boosting(
+        self, candidates: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        return list(self._selected_chunks)
+
+    def has_selected_chunks(self, selected: List[Dict[str, Any]]) -> bool:
+        return bool(selected)
+
+
+class _SpyLlmBackend:
+    """LLM backend test double that tracks call count."""
+
+    def __init__(self) -> None:
+        self.call_count = 0
+
+    def generate(
+        self,
+        prompt_payload: llm.PromptPayload,
+        max_output_tokens: int,
+        thinking_budget_tokens: int | None = None,
+    ) -> tuple[str, llm.UsageMetadata]:
+        self.call_count += 1
+        usage_metadata: llm.UsageMetadata = {
+            "input_tokens": 10,
+            "output_tokens": 20,
+        }
+        return "TLDR: stub answer\nWrap: stub wrap", usage_metadata
+
+
+def _build_chunk(
+    *,
+    score: float,
+    bm25_score: float,
+    vector_score: float = 0.5,
+    chunk_id: str = "chunk-1",
+) -> Dict[str, Any]:
+    """Build a minimal ranked chunk payload for llm-gating tests."""
+    return {
+        "id": chunk_id,
+        "text": "sample context",
+        "metadata": {},
+        "score": score,
+        "bm25_score": bm25_score,
+        "vector_score": vector_score,
+    }
+
+
+def test_compute_llm_gate_decision_returns_no_candidates_for_empty_selection() -> None:
+    """Shadow decision should not call LLM and report no_candidates when no chunks exist."""
+    decision = rag_chat_orchestrator._compute_llm_gate_decision(  # pyright: ignore[reportPrivateUsage]
+        [],
+        weighted_score_threshold=TEST_WEIGHTED_SCORE_THRESHOLD,
+        bm25_score_threshold=TEST_BM25_SCORE_THRESHOLD,
+    )
+
+    assert decision.would_call_llm is False
+    assert decision.reason == rag_chat_orchestrator.llm_gate_reason_NO_CANDIDATES
+    assert decision.top1_weighted_score is None
+    assert decision.top1_bm25_score is None
+    assert decision.top1_vector_score is None
+    assert decision.best_weighted_score is None
+    assert decision.best_bm25_score is None
+    assert decision.weighted_consensus_count  == 0
+
+
+def test_compute_llm_gate_decision_returns_pass_for_strong_weighted_support() -> None:
+    """Shadow decision should pass when at least two chunks pass weighted threshold."""
+    strong_chunks = [
+        _build_chunk(
+            score=STRONG_WEIGHTED_SCORE,
+            bm25_score=WEAK_BM25_SCORE,
+            chunk_id="chunk-1",
+        ),
+        _build_chunk(
+            score=STRONG_WEIGHTED_SCORE + 0.01,
+            bm25_score=WEAK_BM25_SCORE,
+            chunk_id="chunk-2",
+        ),
+    ]
+    decision = rag_chat_orchestrator._compute_llm_gate_decision(  # pyright: ignore[reportPrivateUsage]
+        strong_chunks,
+        weighted_score_threshold=TEST_WEIGHTED_SCORE_THRESHOLD,
+        bm25_score_threshold=TEST_BM25_SCORE_THRESHOLD,
+    )
+
+    assert decision.would_call_llm is True
+    assert decision.reason == rag_chat_orchestrator.llm_gate_reason_PASS
+    assert decision.top1_weighted_score == STRONG_WEIGHTED_SCORE
+    assert decision.top1_bm25_score == WEAK_BM25_SCORE
+    assert decision.best_weighted_score == STRONG_WEIGHTED_SCORE + 0.01
+    assert decision.best_bm25_score == WEAK_BM25_SCORE
+    assert decision.weighted_consensus_count == 2
+
+
+def test_compute_llm_gate_decision_returns_score_below_for_single_strong_weighted_chunk() -> None:
+    """One strong weighted chunk should fail when support count is below two."""
+    single_strong_chunk = _build_chunk(
+        score=STRONG_WEIGHTED_SCORE,
+        bm25_score=WEAK_BM25_SCORE,
+    )
+    decision = rag_chat_orchestrator._compute_llm_gate_decision(  # pyright: ignore[reportPrivateUsage]
+        [single_strong_chunk],
+        weighted_score_threshold=TEST_WEIGHTED_SCORE_THRESHOLD,
+        bm25_score_threshold=TEST_BM25_SCORE_THRESHOLD,
+    )
+
+    assert decision.would_call_llm is False
+    assert (
+        decision.reason == rag_chat_orchestrator.llm_gate_reason_SCORE_BELOW_THRESHOLD
+    )
+    assert decision.weighted_consensus_count  == 1
+
+
+def test_compute_llm_gate_decision_returns_score_below_for_weak_signal() -> None:
+    """Shadow decision should not call LLM when both top-1 score and BM25 are weak."""
+    weak_chunk = _build_chunk(score=WEAK_WEIGHTED_SCORE, bm25_score=WEAK_BM25_SCORE)
+    decision = rag_chat_orchestrator._compute_llm_gate_decision(  # pyright: ignore[reportPrivateUsage]
+        [weak_chunk],
+        weighted_score_threshold=TEST_WEIGHTED_SCORE_THRESHOLD,
+        bm25_score_threshold=TEST_BM25_SCORE_THRESHOLD,
+    )
+
+    assert decision.would_call_llm is False
+    assert (
+        decision.reason == rag_chat_orchestrator.llm_gate_reason_SCORE_BELOW_THRESHOLD
+    )
+    assert decision.weighted_consensus_count  == 0
+
+
+def test_compute_llm_gate_decision_requires_in_domain_for_bm25_fallback() -> None:
+    """BM25-only fallback should not pass when question is out of domain."""
+    bm25_strong_chunk = _build_chunk(
+        score=WEAK_WEIGHTED_SCORE,
+        bm25_score=STRONG_BM25_SCORE,
+    )
+    decision = rag_chat_orchestrator._compute_llm_gate_decision(  # pyright: ignore[reportPrivateUsage]
+        [bm25_strong_chunk],
+        weighted_score_threshold=TEST_WEIGHTED_SCORE_THRESHOLD,
+        bm25_score_threshold=TEST_BM25_SCORE_THRESHOLD,
+        question_is_in_domain=False,
+    )
+
+    assert decision.would_call_llm is False
+    assert (
+        decision.reason == rag_chat_orchestrator.llm_gate_reason_SCORE_BELOW_THRESHOLD
+    )
+    assert decision.best_bm25_score == STRONG_BM25_SCORE
+
+
+def _run_chat(
+    *,
+    question: str,
+    selected_chunks: List[Dict[str, Any]],
+    enable_llm_call_gating: bool,
+) -> tuple[rag_chat_orchestrator.ChatResult, _SpyLlmBackend]:
+    """Run orchestrator chat with deterministic retrieval and spy LLM backend."""
+    retrieval = _StaticRetrieval(selected_chunks=selected_chunks)
+    llm_backend = _SpyLlmBackend()
+    chat_result = rag_chat_orchestrator.run_rag_chat(
+        question,
+        retrieval=retrieval,
+        llm_backend=llm_backend,
+        top_k=DEFAULT_TOP_K,
+        persona_name=PERSONA_NAME,
+        max_input_tokens=MAX_INPUT_TOKENS,
+        max_output_tokens=MAX_OUTPUT_TOKENS,
+        enable_thinking_gating=False,
+        default_thinking_budget_tokens=None,
+        enable_llm_call_gating=enable_llm_call_gating,
+        weighted_score_threshold=TEST_WEIGHTED_SCORE_THRESHOLD,
+        bm25_score_threshold=TEST_BM25_SCORE_THRESHOLD,
+    )
+    return chat_result, llm_backend
+
+
+def test_llm_gating_returns_no_signal_for_weak_top1_weighted_scores() -> None:
+    """Weak top-1 scores should skip LLM and return deterministic no-signal fallback."""
+    weak_chunk = _build_chunk(score=WEAK_WEIGHTED_SCORE, bm25_score=WEAK_BM25_SCORE)
+    chat_result, llm_backend = _run_chat(
+        question="Explain this for a kindergarten class.",
+        selected_chunks=[weak_chunk],
+        enable_llm_call_gating=True,
+    )
+
+    assert llm_backend.call_count == 0
+    assert chat_result.response.answer == rag_chat_orchestrator.NO_SIGNAL_ANSWER
+    assert chat_result.response.citations == []
+    assert (
+        chat_result.llm_gate_reason
+        == rag_chat_orchestrator.llm_gate_reason_SCORE_BELOW_THRESHOLD
+    )
+    assert chat_result.top1_weighted_score == WEAK_WEIGHTED_SCORE
+    assert chat_result.top1_bm25_score == WEAK_BM25_SCORE
+    assert chat_result.best_weighted_score == WEAK_WEIGHTED_SCORE
+    assert chat_result.best_bm25_score == WEAK_BM25_SCORE
+    assert chat_result.weighted_consensus_count  == 0
+    assert chat_result.usage_detail == {"total_tokens": None, "finish_reason": None}
+
+
+def test_llm_gating_allows_signal_when_weighted_support_or_bm25_fallback_is_strong() -> None:
+    """Signal should pass for weighted support>=2 or BM25 fallback with in-domain question."""
+    score_strong_chunks = [
+        _build_chunk(
+            score=STRONG_WEIGHTED_SCORE,
+            bm25_score=WEAK_BM25_SCORE,
+            chunk_id="chunk-1",
+        ),
+        _build_chunk(
+            score=STRONG_WEIGHTED_SCORE + 0.01,
+            bm25_score=WEAK_BM25_SCORE,
+            chunk_id="chunk-2",
+        ),
+    ]
+    score_result, score_backend = _run_chat(
+        question="What did you do in marketing?",
+        selected_chunks=score_strong_chunks,
+        enable_llm_call_gating=True,
+    )
+
+    bm25_strong_chunk = _build_chunk(
+        score=WEAK_WEIGHTED_SCORE,
+        bm25_score=STRONG_BM25_SCORE,
+    )
+    bm25_result, bm25_backend = _run_chat(
+        question="What did you do in marketing?",
+        selected_chunks=[bm25_strong_chunk],
+        enable_llm_call_gating=True,
+    )
+
+    assert score_backend.call_count == 1
+    assert bm25_backend.call_count == 1
+    assert score_result.response.answer != rag_chat_orchestrator.NO_SIGNAL_ANSWER
+    assert bm25_result.response.answer != rag_chat_orchestrator.NO_SIGNAL_ANSWER
+    assert score_result.llm_gate_reason == rag_chat_orchestrator.llm_gate_reason_PASS
+    assert bm25_result.llm_gate_reason == rag_chat_orchestrator.llm_gate_reason_PASS
+
+
+def test_llm_gating_flag_controls_whether_weak_signal_skips_llm() -> None:
+    """Weak signal should skip LLM only when llm gating is enabled."""
+    weak_chunk = _build_chunk(score=WEAK_WEIGHTED_SCORE, bm25_score=WEAK_BM25_SCORE)
+    gated_result, gated_backend = _run_chat(
+        question="Tell me about your particle-physics Nobel Prize.",
+        selected_chunks=[weak_chunk],
+        enable_llm_call_gating=True,
+    )
+    ungated_result, ungated_backend = _run_chat(
+        question="Tell me about your particle-physics Nobel Prize.",
+        selected_chunks=[weak_chunk],
+        enable_llm_call_gating=False,
+    )
+
+    assert gated_backend.call_count == 0
+    assert gated_result.response.answer == rag_chat_orchestrator.NO_SIGNAL_ANSWER
+    assert ungated_backend.call_count == 1
+    assert ungated_result.response.answer != rag_chat_orchestrator.NO_SIGNAL_ANSWER
+    assert gated_result.would_call_llm_if_gated is False
+    assert ungated_result.would_call_llm_if_gated is False

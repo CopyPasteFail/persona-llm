@@ -1,55 +1,88 @@
 from __future__ import annotations
 
 import logging
+import os
 import time
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Any, Dict
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 
-from .types import ChatRequest, ChatResponse, Citation, Usage
+from .types import ChatRequest, ChatResponse, Usage
 from .security import Session, check_rate_limit_dependency, get_current_session
 from .settings import settings
 from .auth import router as auth_router
-from . import retrieval, llm
+from . import retrieval
+from . import llm_backends, ops_routes, rag_chat_orchestrator, runtime_wiring
+from .llm import GeminiEmptyResponseError
 
 API_TITLE = "Persona LLM API"
 API_VERSION = "1.0.0"
-APPROX_CHARS_PER_TOKEN = 4
 ALLOWED_HEADERS = ["*"]
 ALLOWED_METHODS = ["GET", "POST"]
 EVENT_CHAT_FAILED = "chat_failed"
-EVENT_CHAT_NO_SIGNAL = "chat.no_signal"
+EVENT_CHAT_LLM_SKIPPED = "chat.llm_skipped"
+EVENT_CHAT_ANSWER_PREVIEW = "chat.answer_preview"
 EVENT_CHAT_SUCCESS = "chat.success"
 CHAT_UNAVAILABLE_DETAIL = "chat_unavailable"
 HEALTH_STATUS_OK = "ok"
 LOCALHOST_ORIGIN = "http://localhost:3000"
 NOT_READY_DETAIL = "not ready"
-NO_SIGNAL_ANSWER = (
-    "TLDR: I do not have that in my indexed experience right now.\n"
-    "- I only summarize what is in my available context.\n"
-    "- Ask again with a more specific query.\n"
-    "- Or tell me to expand the data source.\n"
-    "Wrap: Ask me something that appears in my experience or projects."
-)
 PLACEHOLDER_ORIGIN = "https://placeholder.web.app"
-SEARCH_TOP_K = 8
 SERVICE_UNAVAILABLE_STATUS = 503
-UNABLE_TO_GENERATE_ANSWER = "TLDR: Unable to generate an answer.\nWrap: Try again shortly."
+ANSWER_PREVIEW_HEAD_CHARS = 200
+ANSWER_PREVIEW_TAIL_CHARS = 200
+EMPTY_ANSWER_CLASS_TOKEN_STARVATION = "token_starvation"
+EMPTY_ANSWER_CLASS_NO_RELEVANT_CONTEXT = "no_relevant_context"
+EMPTY_ANSWER_CLASS_UNKNOWN = "empty_text_unknown"
+TOKEN_STARVATION_MESSAGE = (
+    "I couldn\u2019t finish the reply. Try again, or ask for a shorter answer."
+)
 
 is_ready = False
 is_init_done = False
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO)
+_log_level_name = os.getenv("APP_LOG_LEVEL", "INFO").strip().upper()
+_log_level = getattr(logging, _log_level_name, logging.INFO)
+logging.basicConfig(level=_log_level)
 
-_SNIPPET_CHAR_LIMIT = 320
+_llm_backend = llm_backends.get_llm_backend(default_backend="vertex")
+
+
+def _log_chat_answer_preview(answer_text: str, request_id: str, *, context: str) -> None:
+    """Log answer length and a bounded preview before returning a ChatResponse.
+
+    Inputs: answer text, request id, and a context label for the caller.
+    Outputs: None; emits a debug log when enabled.
+    Edge cases: empty answers emit zero-length previews.
+    Concurrency: stateless; safe for concurrent calls.
+    """
+    if not logger.isEnabledFor(logging.DEBUG):
+        return
+    answer_length = len(answer_text)
+    head_preview = answer_text[:ANSWER_PREVIEW_HEAD_CHARS]
+    should_skip_tail = (
+        answer_length <= ANSWER_PREVIEW_HEAD_CHARS + ANSWER_PREVIEW_TAIL_CHARS
+    )
+    tail_preview = ""
+    if answer_text and not should_skip_tail:
+        tail_preview = answer_text[-ANSWER_PREVIEW_TAIL_CHARS:]
+    logger.debug(
+        {
+            "event": EVENT_CHAT_ANSWER_PREVIEW,
+            "request_id": request_id,
+            "context": context,
+            "answer_length": answer_length,
+            "answer_head": head_preview,
+            "answer_tail": tail_preview,
+        }
+    )
 
 @asynccontextmanager
 async def lifespan(_app_instance: FastAPI) -> AsyncIterator[None]:
-    """Initialize the API's chunk store and readiness flags.
+    """Initialize the API's dataset cache and readiness flags.
 
     Inputs:
         _app_instance: The FastAPI application instance.
@@ -62,7 +95,12 @@ async def lifespan(_app_instance: FastAPI) -> AsyncIterator[None]:
     """
     global is_ready, is_init_done
     try:
-        is_ready = retrieval.warm_chunk_store()
+        cache = runtime_wiring.configure_integrated_retrieval_runtime(
+            retrieval_module=retrieval,
+            project_id=settings.PROJECT_ID,
+            region=settings.REGION,
+        )
+        is_ready = bool(cache.chunks_by_id)
         if not is_ready:
             logger.warning("Chunk store loaded but empty; API remains unready.")
     except Exception:
@@ -91,6 +129,7 @@ app.add_middleware(
 )
 
 app.include_router(auth_router)
+app.include_router(ops_routes.router)
 
 @app.get("/health")
 def health():
@@ -151,58 +190,55 @@ async def chat(
     request_start_time = time.time()
 
     try:
-        # Normalize to speak as "I" even if the question mentions "Omer"
-        question = (chat_request.question or "").strip()
-        normalized_question = retrieval.normalize_question_for_first_person(question)
-
-        query_embedding = retrieval.embed_query(normalized_question)
-        candidate_chunks = retrieval.search_vector_store(
-            query_embedding,
-            top_k=SEARCH_TOP_K,
+        question = chat_request.question
+        chat_result = rag_chat_orchestrator.run_rag_chat(
+            question,
+            retrieval=retrieval,
+            llm_backend=_llm_backend,
+            top_k=settings.TOP_K,
+            persona_name=settings.PERSONA_NAME,
+            max_input_tokens=settings.MAX_INPUT_TOKENS,
+            max_output_tokens=settings.MAX_OUTPUT_TOKENS,
+            enable_thinking_gating=settings.ENABLE_THINKING_GATING,
+            default_thinking_budget_tokens=settings.THINKING_BUDGET_TOKENS,
+            enable_llm_call_gating=settings.ENABLE_LLM_CALL_GATING,
+            weighted_score_threshold=settings.WEIGHTED_SCORE_THRESHOLD,
+            bm25_score_threshold=settings.BM25_SCORE_THRESHOLD,
+            weighted_consensus_count=settings.WEIGHTED_CONSENSUS_COUNT,
         )
-        selected_chunks = retrieval.apply_filters_and_boosting(candidate_chunks)
+        response = chat_result.response
+        response.model = settings.LLM_MODEL_NAME
 
-        # Out-of-scope honesty: if no usable chunks, do not hallucinate
-        if not retrieval.has_signal(selected_chunks):
-            answer = NO_SIGNAL_ANSWER
-            usage = Usage(
-                input_tokens=max(1, len(normalized_question) // APPROX_CHARS_PER_TOKEN),
-                output_tokens=max(1, len(answer) // APPROX_CHARS_PER_TOKEN),
+        if not chat_result.selected_chunks:
+            _log_chat_answer_preview(
+                response.answer,
+                request_id,
+                context=EVENT_CHAT_LLM_SKIPPED,
             )
             logger.debug(
                 {
-                    "event": EVENT_CHAT_NO_SIGNAL,
+                    "event": EVENT_CHAT_LLM_SKIPPED,
                     "request_id": request_id,
                     "elapsed_ms": int((time.time() - request_start_time) * 1000),
                     "ip": getattr(request.client, "host", None),
                     "key_id": getattr(session, "key_id", None),
+                    "thinking_budget_tokens_effective": chat_result.thinking_budget_tokens_effective,
+                    "thinking_gating_enabled": settings.ENABLE_THINKING_GATING,
+                    "llm_gate_enabled": settings.ENABLE_LLM_CALL_GATING,
+                    "would_call_llm_if_gated": chat_result.would_call_llm_if_gated,
+                    "llm_gate_reason": chat_result.llm_gate_reason,
+                    # Canonical top-1 retrieval metrics; signal_top1_* aliases removed.
+                    "top1_weighted_score": chat_result.top1_weighted_score,
+                    "top1_bm25_score": chat_result.top1_bm25_score,
+                    "top1_vector_score": chat_result.top1_vector_score,
+                    "best_weighted_score": chat_result.best_weighted_score,
+                    "best_bm25_score": chat_result.best_bm25_score,
+                    "evidence_count": chat_result.weighted_consensus_count ,
+                    "weighted_score_threshold": chat_result.weighted_score_threshold,
+                    "bm25_score_threshold": chat_result.bm25_score_threshold,
                 }
             )
-            return ChatResponse(
-                answer=answer,
-                citations=[],
-                usage=usage,
-                input_token_limit=settings.MAX_INPUT_TOKENS,
-            )
-
-        prompt_payload = llm.build_llm_prompt(
-            normalized_question,
-            selected_chunks,
-            persona_name=settings.PERSONA_NAME,
-            max_input_tokens=settings.MAX_INPUT_TOKENS,
-        )
-        answer_text, usage_meta = llm.call_gemini_flash(
-            prompt_payload,
-            max_output_tokens=settings.MAX_OUTPUT_TOKENS,
-        )
-        answer_final = answer_text.strip() or UNABLE_TO_GENERATE_ANSWER
-
-        citations = [_chunk_to_citation(chunk) for chunk in selected_chunks]
-        usage = _usage_from_llm_meta(
-            usage_meta,
-            question=normalized_question,
-            answer=answer_final,
-        )
+            return response
 
         logger.info(
             {
@@ -210,21 +246,89 @@ async def chat(
                 "request_id": request_id,
                 "elapsed_ms": int((time.time() - request_start_time) * 1000),
                 "ip": getattr(request.client, "host", None),
-                "chunks": [citation.id for citation in citations],
-                "usage": usage.model_dump(),
+                "chunks": [citation.id for citation in response.citations],
+                "usage": response.usage.model_dump(),
+                "usage_detail": chat_result.usage_detail,
+                "llm_limits": {
+                    "max_output_tokens": settings.MAX_OUTPUT_TOKENS,
+                    "thinking_budget_tokens": settings.THINKING_BUDGET_TOKENS,
+                },
+                "thinking_budget_tokens_effective": chat_result.thinking_budget_tokens_effective,
+                "thinking_gating_enabled": settings.ENABLE_THINKING_GATING,
+                "llm_gate_enabled": settings.ENABLE_LLM_CALL_GATING,
+                "would_call_llm_if_gated": chat_result.would_call_llm_if_gated,
+                "llm_gate_reason": chat_result.llm_gate_reason,
+                # Canonical top-1 retrieval metrics; signal_top1_* aliases removed.
+                "top1_weighted_score": chat_result.top1_weighted_score,
+                "top1_bm25_score": chat_result.top1_bm25_score,
+                "top1_vector_score": chat_result.top1_vector_score,
+                "best_weighted_score": chat_result.best_weighted_score,
+                "best_bm25_score": chat_result.best_bm25_score,
+                "weighted_consensus_count ": chat_result.weighted_consensus_count ,
+                "weighted_score_threshold": chat_result.weighted_score_threshold,
+                "bm25_score_threshold": chat_result.bm25_score_threshold,
                 "key_id": session.key_id,
             }
         )
 
-        return ChatResponse(
-            answer=answer_final,
-            citations=citations,
-            usage=usage,
-            input_token_limit=settings.MAX_INPUT_TOKENS,
+        _log_chat_answer_preview(
+            response.answer,
+            request_id,
+            context=EVENT_CHAT_SUCCESS,
         )
+        return response
 
     except HTTPException:
         raise
+    except GeminiEmptyResponseError as exc:
+        empty_answer_classification = (
+            EMPTY_ANSWER_CLASS_TOKEN_STARVATION
+            if exc.is_token_starvation
+            else EMPTY_ANSWER_CLASS_UNKNOWN
+        )
+        # TODO: Detect EMPTY_ANSWER_CLASS_NO_RELEVANT_CONTEXT when RAG yields no usable context.
+        if exc.is_token_starvation:
+            message = (
+                "Gemini returned no text, likely token starvation "
+                "(thinking consumed output budget)"
+            )
+        else:
+            message = "Gemini returned no text, cause unknown"
+        logger.warning(
+            message,
+            extra={
+                "request_id": request_id,
+                "elapsed_ms": int((time.time() - request_start_time) * 1000),
+                "ip": getattr(request.client, "host", None),
+                "finish_reason": exc.finish_reason,
+                "prompt_token_count": exc.prompt_token_count,
+                "total_token_count": exc.total_token_count,
+                "thoughts_token_count": exc.thoughts_token_count,
+                "is_token_starvation": exc.is_token_starvation,
+                "key_id": getattr(session, "key_id", None),
+            },
+        )
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
+                {
+                    "event": "chat.empty_text_usage",
+                    "request_id": request_id,
+                    "finish_reason": exc.finish_reason,
+                    "prompt_token_count": exc.prompt_token_count,
+                    "total_token_count": exc.total_token_count,
+                    "thoughts_token_count": exc.thoughts_token_count,
+                    "max_output_tokens": settings.MAX_OUTPUT_TOKENS,
+                }
+            )
+        return ChatResponse(
+            answer=TOKEN_STARVATION_MESSAGE
+            if empty_answer_classification == EMPTY_ANSWER_CLASS_TOKEN_STARVATION
+            else "",
+            citations=[],
+            usage=Usage(input_tokens=0, output_tokens=0, thoughts_tokens=None),
+            input_token_limit=settings.MAX_INPUT_TOKENS,
+            model=settings.LLM_MODEL_NAME,
+        )
     except Exception as exc:
         logger.exception(
             EVENT_CHAT_FAILED,
@@ -239,50 +343,3 @@ async def chat(
             status_code=SERVICE_UNAVAILABLE_STATUS,
             detail=CHAT_UNAVAILABLE_DETAIL,
         ) from exc
-
-
-def _usage_from_llm_meta(meta: Dict[str, int], *, question: str, answer: str) -> Usage:
-    """Build usage metrics from LLM metadata or fallback estimation.
-
-    Inputs:
-        meta: LLM metadata containing optional token counts.
-        question: Normalized question string.
-        answer: Final answer string.
-
-    Outputs:
-        Usage with input and output token counts.
-
-    Edge cases:
-        Falls back to approximate character-based estimation when counts are
-        missing or non-positive.
-    """
-    fallback_input = max(1, len(question) // APPROX_CHARS_PER_TOKEN)
-    fallback_output = max(1, len(answer) // APPROX_CHARS_PER_TOKEN)
-    input_tokens = int(meta.get("input_tokens", fallback_input))
-    output_tokens = int(meta.get("output_tokens", fallback_output))
-    if input_tokens <= 0:
-        input_tokens = fallback_input
-    if output_tokens <= 0:
-        output_tokens = fallback_output
-    return Usage(input_tokens=input_tokens, output_tokens=output_tokens)
-
-
-def _chunk_to_citation(chunk: Dict[str, Any]) -> Citation:
-    """Convert a retrieval chunk into a response citation.
-
-    Inputs:
-        chunk: Raw chunk with optional id and text fields.
-
-    Outputs:
-        Citation with an id and a normalized snippet.
-
-    Edge cases:
-        Snippets are whitespace-normalized and truncated to the configured
-        character limit.
-    """
-    chunk_id = str(chunk.get("id") or "")
-    text = str(chunk.get("text") or "").strip()
-    snippet = " ".join(text.split())
-    if snippet and len(snippet) > _SNIPPET_CHAR_LIMIT:
-        snippet = snippet[: _SNIPPET_CHAR_LIMIT - 3].rstrip() + "..."
-    return Citation(id=chunk_id, text=snippet or None)

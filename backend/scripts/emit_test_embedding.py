@@ -1,3 +1,5 @@
+"""Emit a test embedding vector derived from datapoints data for live tests."""
+
 from __future__ import annotations
 
 import gzip

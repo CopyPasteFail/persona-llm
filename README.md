@@ -3,6 +3,12 @@
 Monorepo for the persona demo. Frontend in `frontend`, backend in `backend`.
 Persona data and secrets point the backend at a local/private folder using `PRIVATE_DIR`.
 
+Key docs:
+- [ARCHITECTURE_OVERVIEW](docs/ARCHITECTURE_OVERVIEW.md)
+- [IMPLEMENTATION_SPEC](docs/IMPLEMENTATION_SPEC.md)
+- [VECTOR_SEARCH](docs/VECTOR_SEARCH.md)
+- [GLOSSARY](docs/GLOSSARY.md)
+
 ## Why not a submodule?
 - Submodules expose the private repo URL in `.gitmodules`.
 - Workarounds like locally setting the Submodule private-url are clunky, for example VS Code revert/undo won't work.
@@ -30,7 +36,7 @@ echo "/abs/path/to/your-private-overlay" > .privatedir
 
 #### Option C: ad-hoc override
 ```bash
-PRIVATE_DIR=/abs/path/to/your-private-overlay make run
+PRIVATE_DIR=/abs/path/to/your-private-overlay make local-mock
 ```
 
 > **After this step:**  
@@ -69,14 +75,16 @@ Inside your private overlay pointed to by `PRIVATE_DIR`, you must include these 
 - This app uses a single `PROJECT_ID` for both Firebase and GCP so everything stays in sync.
 
 - `secrets/common.env`  
-  - `PROJECT_ID` — shared project identifier for both Firebase and GCP resources. It must follow Google’s naming conventions *(lowercase letters, digits, and hyphens, 6–30 characters, starting with a letter, and not ending with a hyphen)*.
+  - `PROJECT_ID`: shared project identifier for both Firebase and GCP resources. It must follow Google’s naming conventions *(lowercase letters, digits, and hyphens, 6–30 characters, starting with a letter, and not ending with a hyphen)*.
 
 - `secrets/frontend.env`  
   - Frontend-only overrides such as `NEXT_PUBLIC_API_URL`.
 
 - `secrets/backend.env`  
-  - `REGION` — the GCP region where resources (like Cloud Run and buckets) will be created, for example `europe-west1`.
-  - `BUCKET_NAME` — the name of the GCS bucket used for storage, for example `my-project-persona`. Do not prefix with `gs://`.
+  - `REGION`: the GCP region where resources (like Cloud Run and buckets) will be created, for example `europe-west1`.
+  - `BUCKET_NAME`: the name of the GCS bucket used for storage, for example `my-project-persona`. Do not prefix with `gs://`.
+  - `VECTOR_BACKEND`: `local` (default) or `matching_engine`.
+  - `OPS_SECRET`: required for `/ops/*` endpoints when `OPS_AUTH=enabled`.
 
 ### Phase 1. Install CLI tools
 
@@ -192,24 +200,50 @@ make gcp-firestore-init
 
 ### Phase 6. Choose your deployment identity
 
-Most teams can deploy using their personal Google account. Make sure your user has enough IAM permissions (Project Owner or the specific Vertex AI / Cloud Run / Storage / Firebase roles) and then authenticate as follows:
+Deployment can be performed using a Google account with sufficient IAM permissions (Project Owner or the required Vertex AI, Cloud Run, Storage, and Firebase roles). Authenticate as follows:
 
-- `gcloud auth login` — signs the Cloud SDK in as you, so `gcloud`, `gsutil`, and similar CLI commands run with your user credentials.
-- `gcloud auth application-default login` — writes Application Default Credentials (ADC) so local scripts and libraries (like `google-cloud-storage`) run with the same user identity.
+- `gcloud auth login`: signs the Cloud SDK in as you, so `gcloud`, `gsutil`, and similar CLI commands run with your user credentials.
+- `gcloud auth application-default login`: writes Application Default Credentials (ADC) so local scripts and libraries (like `google-cloud-storage`) run with the same user identity.
 
 Run both commands if you deploy via the CLI and run helper scripts locally. If you instead use a dedicated service account, skip these and authenticate with that identity.
 
-With those credentials in place you can run `make be-pack_and_push`, `gcloud run deploy`, and `npm run firebase:deploy` without introducing any new secrets.
+With those credentials in place you can run `gcloud run deploy` and `npm run firebase:deploy` without introducing any new secrets. (`make be-pack_and_push` is legacy for `CHUNKS_PATH` flows only.)
 
-### Phase 7. Package persona chunks (side-store artifact)
+### Phase 7. Build a versioned dataset (chunks + datapoints + manifest)
 
-Generate the `CHUNKS_PATH` side-store artifact before embedding or deploying so the backend has a verified data bundle to load.
+The runtime loads `datasets/current.json` and expects a coupled dataset folder:
+`datasets/<version>/{datapoints.jsonl, chunks.jsonl.gz, manifest.json}`.
 
+
+Local build (example `v13`). Default input: `$PRIVATE_DIR/persona/data/chunks.jsonl`.
 ```bash
-make be-pack_and_push
+# choose a version and point DATAPOINTS_FILE at the versioned folder
+export DATASET_VERSION=v13
+
+# 1) build chunks.jsonl.gz
+make be-dataset-chunks
+
+# 2) build datapoints.jsonl + manifest.json (writes normalized vectors)
+make be-dataset-datapoints
+
+# 3) upload dataset folder to GCS
+make be-dataset-upload
+
+# 4) atomically update pointer
+make be-dataset-pointer-update
 ```
 
-This job reads `private/persona/data/chunks.jsonl`, validates and splits the records, then writes `chunks-<sha>.jsonl.gz` plus `chunks-<sha>.jsonl.gz.manifest.json`. Both files are uploaded to `gs://$BUCKET_NAME/`, and the manifest captures the artifact URI, record count, byte size, and SHA-256 checksum. Record the printed artifact name in `private/secrets/backend.env` as `CHUNKS_PATH`; the manifest travels with the artifact so you (or automation) can verify integrity later.
+Atomic update order (locked):
+1) Upload `datasets/vNN/datapoints.jsonl`, `datasets/vNN/chunks.jsonl.gz`, `datasets/vNN/manifest.json`
+2) Update `datasets/current.json` to `{ "version": "vNN" }`
+3) Call `POST /ops/vector/reload` (or restart service)
+
+If you plan to use `VECTOR_BACKEND=matching_engine`, keep this dataset flow and then continue to Phase 9 to provision/upgrade the index and run `make gcp-index-upsert` using the same `DATAPOINTS_FILE`.
+
+Ops auth notes:
+- In production, keep `OPS_AUTH=enabled` and send `x-ops-secret: <OPS_SECRET>` on `/ops/*`.
+- You can set `OPS_SECRET` outside the repo via `gcloud run services update ... --set-env-vars OPS_SECRET=...` or by wiring Secret Manager to Cloud Run.
+- For local dev, set `OPS_AUTH=disabled` to bypass ops auth.
 
 ### Phase 8. Service account (optional)
 
@@ -252,11 +286,12 @@ For automation that needs Application Default Credentials:
   gcloud auth application-default set-quota-project "$PROJECT_ID"
   ```
 
-### Phase 9. Provision Vertex AI Vector Search (one-time)
+### Phase 9. Provision Vertex AI Vector Search (optional, matching_engine only)
 
-Set up a Matching Engine index before you embed and upsert persona chunks.
+Set up a Matching Engine index only if you plan to run with `VECTOR_BACKEND=matching_engine`.
+If you already completed Phase 7, reuse the same `DATAPOINTS_FILE` (from the versioned dataset folder) and skip any legacy chunk packaging.
 
-1. Create the index (Tree-AH, dot product, dimensions derived from `DATAPOINTS_DIMENSIONS`—3,072 for `gemini-embedding-001`, 768 for the `text-embedding-00x` family):
+1. Create the index (Tree-AH, dot product, dimensions derived from `DATAPOINTS_DIMENSIONS`: 3,072 for `gemini-embedding-001`, 768 for the `text-embedding-00x` family):
    ```bash
    make gcp-index-create
    ```
@@ -287,12 +322,13 @@ Set up a Matching Engine index before you embed and upsert persona chunks.
    ```bash
    make be-build_datapoints
    ```
-   - Produces the path configured in `DATAPOINTS_FILE` (set in `private/secrets/backend.env`) with `datapointId` + `featureVector` rows ready for Matching Engine.
-   - Optional overrides live in the same env file, e.g. set `DATAPOINTS_MODEL=gemini-embedding-001` (3,072‑dim) or `text-embedding-005` (768‑dim), align `DATAPOINTS_DIMENSIONS` with the chosen model (≤3,072 for Gemini, ≤768 for the text-embedding family), bump `DATAPOINTS_BATCH_SIZE=32`, set `DATAPOINTS_MAX_CHARS=1800`, or enable `DATAPOINTS_GZIP=1` to adjust behavior without command-line flags.
+   - Produces the path configured in `DATAPOINTS_FILE` (set in `private/secrets/backend.env`) with `datapointId` + **unit-normalized** `featureVector` rows.
+   - Writes `manifest.json` alongside `datapoints.jsonl` when building a dataset version folder.
+   - Optional overrides live in the same env file, e.g. set `DATAPOINTS_MODEL=gemini-embedding-001` (3,072‑dim) or `text-embedding-005` (768‑dim), align `DATAPOINTS_DIMENSIONS` with the chosen model (≤3,072 for Gemini, ≤768 for the text-embedding family), bump `DATAPOINTS_BATCH_SIZE=32`, or set `DATAPOINTS_MAX_CHARS=1800`.
    - Each datapoint emits both `id` and `datapointId`; Vertex’s batch rebuild requires `id`, while our runtime retrieval still reads `datapointId`, so the job keeps them identical.
    - To sanity-check the datapoint writer helpers after any changes, run the focused unit tests:
      ```bash
-     make be-test_build_datapoints
+     make be-test-build_datapoints
      ```
 
 5. Batch-update the index (rebuild from the new datapoints file):
@@ -316,7 +352,7 @@ Set up a Matching Engine index before you embed and upsert persona chunks.
      make gcp-index-update-time
      ```
 
-Record `INDEX_ENDPOINT_ID` (bare endpoint ID), `INDEX_ID`, and `DEPLOYED_INDEX_ID` in `private/secrets/backend.env`. Re-run the upsert target whenever persona data changes.
+Record `INDEX_ENDPOINT_ID` (bare endpoint ID), `INDEX_ID`, and `DEPLOYED_INDEX_ID` in `private/secrets/backend.env` only if you run `VECTOR_BACKEND=matching_engine`. Re-run the upsert target whenever persona data changes.
 
 #### Vector Search Roles and Flows
 
@@ -324,58 +360,27 @@ See [docs/VECTOR_SEARCH.md](docs/VECTOR_SEARCH.md) for roles, workflows, and a d
 
 ## Repo layout
 
-- [`frontend/`](./frontend/README.md) — Next.js app, scripts and env vars
-- [`backend/`](./backend/README.md) — FastAPI app, env vars, API docs
-- `private/` — points to your private overlay for local dev
-
-## CI without submodule (GitHub Actions example)
-
-```yaml
-- uses: actions/checkout@v4
-
-# Fetch the private overlay into ./private using a PAT/Deploy Key stored in secrets
-- name: Fetch private overlay
-  run: |
-    git clone "https://x-access-token:${{ secrets.PRIVATE_REPO_TOKEN }}@github.com/<your-user>/<your-private-repo>.git" private
-
-# Build backend image, copying persona files during build (optional) or mounting at runtime
-- name: Build backend
-  run: |
-    docker build -t persona-backend:ci           --build-arg PRIVATE_DIR=private/persona           -f backend/Dockerfile .
-```
-
-Alternative: do not copy persona into the image. Deploy the image and mount `$PRIVATE_DIR` or read from object storage.
-
-## Develop
-
-```bash
-make install
-make dev
-```
-
-> Tip: confirm your shell auto-loads Node 20 (see the setup note above) so these commands use the supported runtime.
-
-Mock mode if available:
-```bash
-make dev:mock
-```
+- [`frontend/`](./frontend/README.md): Next.js app, scripts and env vars
+- [`backend/`](./backend/README.md): FastAPI app, env vars, API docs
+- `private/`: points to your private overlay for local dev
 
 ## Run Modes
 
 The root `package.json` forwards scripts to the `web` app via `"workspaces": ["web"]`.
 
-### Mode A: Mock frontend + mock backend (local)
+### Mode A: local-mock (mock frontend + mock backend)
 Develop the UI against the mock API.
 
 Run the mock backend and frontend pointing to the mock. Choose one:
-- Fast start (uses cached build):
-  ```bash
-  make mock
-  ```
-- Clean start (force rebuild):
+
+- Clean start (if needed):
   ```bash
   make clean-all
-  make mock
+  ```
+
+- Fast start (uses cached build):
+  ```bash
+  make local-mock
   ```
 
 Terminate with Ctrl+C in the terminal.  
@@ -389,53 +394,31 @@ If port 8080 is stuck:
 PID=$(lsof -ti :8080) && [ -n "$PID" ] && kill -9 $PID
 ```
 
-Open the UI at `http://localhost:8080`
+Open the UI at `http://localhost:3000`
 Information about the hardcoded (or customization of) access keys can be found [here](backend/README.md#mock-auth).
 
 ---
 
-### Mode B: Local frontend + Cloud Run backend
-Run Next.js locally but call the real Cloud Run API.
+### Mode B: local-integrated (local frontend + local integrated backend)
+Run Next.js locally against the integrated backend (`api.main:app`) with live LLM + retrieval.
 
-1) Ensure secrets/backend.env are set in your private repository
+Run the integrated backend and frontend together:
+```bash
+make local-integrated
+```
 
-2) Deploy backend to Cloud Run (pick one):
-- Real backend:
-  ```bash
-  make gcp-cloud-run-deploy
-  ```
-- Mock backend:
-  ```bash
-  make gcp-cloud-run-deploy-mock
-  ```
-
-Access keys for the real backend live in Firestore. You can view them in the console [here](https://console.cloud.google.com/firestore/databases/-default-/data/panel).
-
-For managing the keys, see [admin CLI access key management](backend/README.md#admin-cli--access-keys).
-
-3) Verify the deployed API (point at the Cloud Run URL from deploy):
-  ```bash
-  PYTEST_ADDOPTS="-s" make be-test-int
-  ```
-
-4) Start the dev server. Choose one:
-- Fast start (uses cached build):
-  ```bash
-  make fe-dev
-  ```
-- Clean start (force rebuild):
-  ```bash
-  make fe-clean:all
-  make fe-dev
-  ```
+Or separately the frontend and backend with debug:
+```bash
+source .venv/bin/activate
+APP_LOG_LEVEL=debug RETRIEVAL_DEBUG=1 make be-run
+make fe-dev:local
+```
 
 App: http://localhost:3000
 
-> To target your Cloud Run service, set `NEXT_PUBLIC_API_URL` in `private/secrets/frontend.env` (or export it in the shell) to the HTTPS URL returned by `gcloud run deploy` before running the dev command.
-
 ---
 
-### Mode C: Production (Firebase Hosting + Cloud Run)
+### Mode C: production (Firebase Hosting + Cloud Run)
 Static export on Firebase Hosting. API served by Cloud Run.
 
 > Note: ensure `secrets/backend.env` and `secrets/frontend.env` are set in your private repo.
@@ -446,11 +429,11 @@ Static export on Firebase Hosting. API served by Cloud Run.
    ```
 
 2) Build and push the backend image (pick one path only):
-   - Option A — Cloud Build (no local Docker):
+   - Option A: Cloud Build (no local Docker):
      ```bash
      make gcp-cloud-build
      ```
-   - Option B — Local Docker + push (Docker needed):
+   - Option B: Local Docker + push (Docker needed):
      - One-time per machine: auth to Artifact Registry
        ```bash
        make gcp-auth-registry
@@ -483,7 +466,15 @@ Static export on Firebase Hosting. API served by Cloud Run.
    ```
 
 7) Manage Access keys
-  For managing the keys, see [admin CLI](backend/README.md#admin-cli).
+  Access keys for the integrated backend live in Firestore. You can view them in the console [here](https://console.cloud.google.com/firestore/databases/-default-/data/panel).
+
+  For managing the keys, see [admin CLI access key management](backend/README.md#admin-cli--access-keys).
+
+3) Verify the deployed API (point at the Cloud Run URL from deploy):
+  ```bash
+  PYTEST_ADDOPTS="-s" make be-test-int
+  ```
+
 
 ## Undeploy / Teardown
 

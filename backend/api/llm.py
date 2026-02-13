@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+import os
 import threading
 from collections.abc import Mapping, Sequence
 from typing import Any, Optional, Protocol, TypedDict, cast, runtime_checkable
@@ -15,19 +17,60 @@ from .settings import settings
 
 APPROX_CHARS_PER_TOKEN = 4
 MIN_ESTIMATED_TOKENS = 1
-DEFAULT_MODEL_NAME = "gemini-2.0-flash"
+DEFAULT_MODEL_NAME = "gemini-2.5-flash"
+FALLBACK_MODEL_NAME = "gemini-1.5-flash"
 DEFAULT_GENERATION_TEMPERATURE = 0.2
 DEFAULT_GENERATION_TOP_P = 0.9
+THINKING_BUDGET_DISABLED = 0
 ROLE_SYSTEM = "system"
 ROLE_USER = "user"
 PROMPT_MESSAGES_KEY = "messages"
 PROMPT_ROLE_KEY = "role"
 PROMPT_CONTENT_KEY = "content"
 USAGE_PROMPT_TOKEN_KEYS = ("prompt_token_count", "prompt_tokens")
-USAGE_CANDIDATE_TOKEN_KEYS = ("candidates_token_count", "candidates_tokens")
+USAGE_CANDIDATE_TOKEN_KEYS = (
+    "candidates_token_count",
+    "candidates_tokens",
+    "response_token_count",
+    "response_tokens",
+)
+USAGE_TOTAL_TOKEN_KEYS = ("total_token_count", "total_tokens")
+USAGE_THOUGHTS_TOKEN_KEYS = ("thoughts_token_count", "thoughts_tokens")
+FINISH_REASON_MAX_TOKENS = "MAX_TOKENS"
+TOKEN_STARVATION_THRESHOLD_FRACTION = 0.85
 
 Chunk = dict[str, Any]
-UsageMetadata = dict[str, int]
+UsageMetadata = dict[str, int | str]
+
+logger = logging.getLogger(__name__)
+
+
+class GeminiEmptyResponseError(RuntimeError):
+    """
+    Error raised when Gemini returns a response without extractable text.
+
+    Inputs: message and optional metadata extracted from the response.
+    Output: an exception carrying finish reason, token counts, and a token-starvation flag.
+    Edge cases: metadata fields are None when usage or finish info is unavailable.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        finish_reason: str | None,
+        prompt_token_count: int | None,
+        total_token_count: int | None,
+        thoughts_token_count: int | None,
+        is_token_starvation: bool,
+    ) -> None:
+        super().__init__(message)
+        self.finish_reason = finish_reason
+        self.prompt_token_count = prompt_token_count
+        self.total_token_count = total_token_count
+        self.thoughts_token_count = thoughts_token_count
+        self.is_token_starvation = is_token_starvation
+
 
 class PromptMessage(TypedDict):
     role: str
@@ -54,6 +97,11 @@ def _estimate_tokens(text: str) -> int:
     if not text:
         return 0
     return max(MIN_ESTIMATED_TOKENS, len(text) // APPROX_CHARS_PER_TOKEN)
+
+
+def _llm_debug_enabled() -> bool:
+    value = os.getenv("LLM_DEBUG", "").strip().lower()
+    return value in {"1", "true", "yes", "on"}
 
 
 def _build_user_prompt(question: str, context_block: str) -> str:
@@ -190,6 +238,7 @@ class _GeminiClient(Protocol):
         system_prompt: str,
         user_messages: Sequence[str],
         max_output_tokens: int,
+        thinking_budget_tokens: int | None = None,
     ) -> tuple[str, UsageMetadata]:
         ...
 
@@ -214,25 +263,32 @@ def _get_llm_client() -> _GeminiClient:
     Return a cached LLM client, creating one if needed.
 
     Output: a Gemini client ready for generate calls.
-    Edge cases: if no client is configured, a default Gemini Flash client is created.
+    Edge cases: if no client is configured, a default google-genai Gemini client is created.
     Concurrency: this cache is not protected by a lock, so concurrent first access may create
     more than one client, but the module variable is updated once set.
     """
     global _llm_client
     if _llm_client is None:
-        _llm_client = _GeminiFlashClient(
+        model_name = (settings.LLM_MODEL_NAME or DEFAULT_MODEL_NAME).strip()
+        _llm_client = _GeminiGenaiClient(
             project=settings.PROJECT_ID,
             region=settings.REGION,
-            model_name=DEFAULT_MODEL_NAME,
+            model_name=model_name,
+            thinking_budget_tokens=settings.THINKING_BUDGET_TOKENS,
         )
     return _llm_client
 
 
-def call_gemini_flash(payload: PromptPayload, max_output_tokens: int) -> tuple[str, UsageMetadata]:
+def call_gemini_flash(
+    payload: PromptPayload,
+    max_output_tokens: int,
+    *,
+    thinking_budget_tokens: int | None = None,
+) -> tuple[str, UsageMetadata]:
     """
-    Call Gemini Flash via the Vertex AI Python SDK.
+    Call Gemini via the google-genai SDK (Vertex mode).
 
-    Inputs: prompt payload and max output tokens.
+    Inputs: prompt payload, max output tokens, and an optional thinking budget override.
     Output: answer text plus usage
     metadata if provided by the API. Edge cases: missing user content raises a
     runtime error; empty system content is allowed and omitted.
@@ -260,48 +316,70 @@ def call_gemini_flash(payload: PromptPayload, max_output_tokens: int) -> tuple[s
         system_prompt=system_prompt,
         user_messages=user_messages,
         max_output_tokens=max_output_tokens,
+        thinking_budget_tokens=thinking_budget_tokens,
     )
 
 
-class _GeminiFlashClient:
+class _GeminiGenaiClient:
     """
-    Lazy Vertex Gemini Flash wrapper with basic safety + usage extraction.
+    Gemini client using the `google-genai` SDK (Vertex mode) for generation.
 
-    This wrapper defers SDK initialization until the first request and keeps
-    minimal configuration state for reuse.
+    This client replaces the deprecated `vertexai.generative_models` Gemini API.
+    It supports optional thinking-budget tuning for Gemini 2.5 models.
     """
 
-    def __init__(self, *, project: str, region: str, model_name: str) -> None:
+    def __init__(
+        self,
+        *,
+        project: str,
+        region: str,
+        model_name: str,
+        thinking_budget_tokens: int | None,
+    ) -> None:
         """
-        Initialize a lazy Gemini Flash client.
+        Initialize a google-genai Gemini client.
 
-        Inputs: GCP project, region, and model name.
-        Output: none.
-        Edge case: initialization is deferred until the first call to generate.
+        Inputs:
+            project: GCP project id.
+            region: Vertex region (location).
+            model_name: Model name (e.g. gemini-2.5-flash).
+            thinking_budget_tokens: Optional token budget for the model's thinking.
+
+        Output: None. Client construction is lazy and synchronized.
+        Edge cases: a zero budget is allowed and can mean "no thinking" when supported.
         """
         self._project = project
         self._region = region
         self._model_name = model_name
-        self._vertex_ready = False
+        self._thinking_budget_tokens = (
+            int(thinking_budget_tokens) if thinking_budget_tokens is not None else None
+        )
+        self._client: Any | None = None
         self._lock = threading.Lock()
 
-    def _ensure_vertex_init(self) -> None:
+    def _ensure_client(self) -> Any:
         """
-        Initialize the Vertex AI SDK exactly once.
+        Create the google-genai client exactly once.
 
-        Output: none.
-        Edge cases: concurrent callers synchronize via a lock; a
-        second caller returns after the first completes.
+        Output: initialized genai.Client instance.
+        Edge cases: concurrent callers synchronize via a lock.
         """
-        if self._vertex_ready:
-            return
+        if self._client is not None:
+            return self._client
         with self._lock:
-            if self._vertex_ready:
-                return
-            from vertexai import init as vertexai_init  # type: ignore[import-not-found]
+            if self._client is not None:
+                return self._client
+            from google import genai  # type: ignore[import-not-found]
+            from google.genai import types  # type: ignore[import-not-found]
 
-            vertexai_init(project=self._project, location=self._region)
-            self._vertex_ready = True
+            http_options = types.HttpOptions(timeout=settings.REQ_TIMEOUT_MS)
+            self._client = genai.Client(
+                vertexai=True,
+                project=self._project,
+                location=self._region,
+                http_options=http_options,
+            )
+            return self._client
 
     def generate(
         self,
@@ -309,101 +387,165 @@ class _GeminiFlashClient:
         system_prompt: str,
         user_messages: Sequence[str],
         max_output_tokens: int,
+        thinking_budget_tokens: int | None = None,
     ) -> tuple[str, UsageMetadata]:
         """
-        Generate a response from Gemini Flash.
+        Generate a response using google-genai in Vertex mode.
 
-        Inputs: system prompt, user message list, and output token limit.
-        Output: the response text and usage metadata.
-        Edge cases: empty user messages or
-        only empty content results in a runtime error.
-        Concurrency: safe to call
-        across threads due to lazy SDK init lock.
+        Inputs: system prompt, user message list, output token limit, and optional
+        per-request thinking budget override.
+        Output: extracted response text and usage metadata.
+        Edge cases: empty user messages raise; empty extracted text raises
+        GeminiEmptyResponseError with finish/usage metadata when available.
         """
-        self._ensure_vertex_init()
         if not user_messages:
-            raise RuntimeError("Gemini client requires at least one user message")
-
-        from vertexai.preview.generative_models import (  # type: ignore[import-not-found]
-            Content,
-            GenerativeModel,
-            GenerationConfig,
-            HarmBlockThreshold,
-            HarmCategory,
-            Part,
-            SafetySetting,
-        )
-
-        model = GenerativeModel(
-            self._model_name,
-            system_instruction=system_prompt or None,
-        )
-        model_any = cast(Any, model)
-
-        contents = [
-            Content(role="user", parts=[Part.from_text(text.strip())])
-            for text in user_messages
-            if text and text.strip()
-        ]
-        if not contents:
+            raise RuntimeError("Gemini client received no user messages")
+        joined_user_text_pieces: list[str] = []
+        for message_text in user_messages:
+            cleaned = message_text.strip() if message_text else ""
+            if cleaned:
+                joined_user_text_pieces.append(cleaned)
+        joined_user_text = "\n\n".join(joined_user_text_pieces)
+        if not joined_user_text:
             raise RuntimeError("Gemini client received only empty user messages")
 
-        config = GenerationConfig(
+        from google.genai import types  # type: ignore[import-not-found]
+        from google.api_core import exceptions as google_exceptions
+
+        config, effective_thinking_budget_tokens, include_thoughts_effective = (
+            self._build_generate_config(
+                system_prompt=system_prompt,
+                max_output_tokens=max_output_tokens,
+                thinking_budget_tokens=thinking_budget_tokens,
+            )
+        )
+
+        if _llm_debug_enabled():
+            logger.debug(
+                {
+                    "event": "llm_prompt_debug",
+                    "sdk": "google-genai",
+                    "model": self._model_name,
+                    "system_prompt": system_prompt,
+                    "user_messages": list(user_messages),
+                    "max_output_tokens": max_output_tokens,
+                    "thinking_budget_tokens": effective_thinking_budget_tokens,
+                    "thinking_config_attached": True,
+                    "include_thoughts_effective": include_thoughts_effective,
+                }
+            )
+
+        client = self._ensure_client()
+        try:
+            response = client.models.generate_content(
+                model=self._model_name,
+                contents=[
+                    types.Content(
+                        role=ROLE_USER,
+                        parts=[types.Part.from_text(text=joined_user_text)],
+                    )
+                ],
+                config=config,
+            )
+        except google_exceptions.NotFound:
+            if self._model_name == FALLBACK_MODEL_NAME:
+                raise
+            response = client.models.generate_content(
+                model=FALLBACK_MODEL_NAME,
+                contents=[
+                    types.Content(
+                        role=ROLE_USER,
+                        parts=[types.Part.from_text(text=joined_user_text)],
+                    )
+                ],
+                config=config,
+            )
+
+        extracted_text = _extract_response_text(response, max_output_tokens)
+        usage_metadata = _extract_usage(response)
+        return extracted_text, usage_metadata
+
+    def _build_generate_config(
+        self,
+        *,
+        system_prompt: str,
+        max_output_tokens: int,
+        thinking_budget_tokens: int | None,
+        types_module: Any | None = None,
+    ) -> tuple[Any, int, bool]:
+        """
+        Build a GenerateContentConfig with explicit thinking configuration.
+
+        Inputs:
+            system_prompt: The system instruction string.
+            max_output_tokens: Upper bound for response tokens.
+            thinking_budget_tokens: Optional per-request override.
+
+        Outputs:
+            Tuple containing:
+            - config: GenerateContentConfig with thinking_config always attached.
+            - effective_thinking_budget_tokens: Resolved thinking budget as an int.
+            - include_thoughts_effective: Final include_thoughts setting.
+
+        Edge cases:
+            - When both the override and client default are None, the budget is
+              forced to THINKING_BUDGET_DISABLED to explicitly disable thinking.
+            - When the effective budget is 0, include_thoughts is forced False.
+        """
+        if types_module is None:
+            from google.genai import types as types_module  # type: ignore[import-not-found]
+
+        config = types_module.GenerateContentConfig(
+            system_instruction=system_prompt or None,
             max_output_tokens=max_output_tokens,
             temperature=DEFAULT_GENERATION_TEMPERATURE,
             top_p=DEFAULT_GENERATION_TOP_P,
         )
-
-        harm_category = cast(Any, HarmCategory)
-        harm_block_threshold = cast(Any, HarmBlockThreshold)
-        safety_settings = [
-            SafetySetting(
-                category=harm_category.HARM_CATEGORY_HATE_SPEECH,
-                threshold=harm_block_threshold.BLOCK_MEDIUM_AND_ABOVE,
-            ),
-            SafetySetting(
-                category=harm_category.HARM_CATEGORY_HARASSMENT,
-                threshold=harm_block_threshold.BLOCK_MEDIUM_AND_ABOVE,
-            ),
-            SafetySetting(
-                category=harm_category.HARM_CATEGORY_DANGEROUS_CONTENT,
-                threshold=harm_block_threshold.BLOCK_MEDIUM_AND_ABOVE,
-            ),
-            SafetySetting(
-                category=harm_category.HARM_CATEGORY_SEXUAL_CONTENT,
-                threshold=harm_block_threshold.BLOCK_MEDIUM_AND_ABOVE,
-            ),
-        ]
-
-        request_options = {"timeout": settings.request_timeout_seconds}
-        response: Any
-        try:
-            response = model_any.generate_content(
-                contents,
-                generation_config=config,
-                safety_settings=safety_settings,
-                request_options=request_options,
-            )
-        except TypeError:
-            response = model_any.generate_content(
-                contents,
-                generation_config=config,
-                safety_settings=safety_settings,
-            )
-
-        return _extract_response_text(response), _extract_usage(response)
+        raw_budget = (
+            self._thinking_budget_tokens
+            if thinking_budget_tokens is None
+            else int(thinking_budget_tokens)
+        )
+        effective_thinking_budget_tokens = (
+            THINKING_BUDGET_DISABLED if raw_budget is None else int(raw_budget)
+        )
+        include_thoughts_effective = (
+            settings.INCLUDE_THOUGHTS
+            if effective_thinking_budget_tokens > 0
+            else False
+        )
+        config.thinking_config = types_module.ThinkingConfig(
+            include_thoughts=include_thoughts_effective,
+            thinking_budget=effective_thinking_budget_tokens,
+        )
+        return (
+            config,
+            effective_thinking_budget_tokens,
+            include_thoughts_effective,
+        )
 
 
-def _extract_response_text(response: Any) -> str:
+def _extract_response_text(response: Any, max_output_tokens: int | None = None) -> str:
     """
     Extract response text from a Gemini API response.
 
     Input: raw SDK response object or dict.
     Output: aggregated response text.
-    Edge cases: if no text is found, raises a runtime error; trims whitespace
+    Edge cases: if no text is found, raises GeminiEmptyResponseError; trims whitespace
     and joins candidate parts with newlines.
     """
-    text = getattr(response, "text", None)
+    try:
+        text = response.text
+    except (AttributeError, ValueError, TypeError) as exc:
+        safety_info = _format_safety_info(response, max_output_tokens=max_output_tokens)
+        message = "Gemini response contained no text"
+        if safety_info:
+            message = f"{message} ({safety_info})"
+        raise _build_empty_response_error(
+            response,
+            max_output_tokens=max_output_tokens,
+            message=message,
+        ) from exc
     if isinstance(text, str) and text.strip():
         return text.strip()
 
@@ -423,10 +565,203 @@ def _extract_response_text(response: Any) -> str:
 
     if parts:
         return "\n".join(parts).strip()
-    raise RuntimeError("Gemini response did not contain text")
+    safety_info = _format_safety_info(response, max_output_tokens=max_output_tokens)
+    message = "Gemini response did not contain text"
+    if safety_info:
+        message = f"{message} ({safety_info})"
+    raise _build_empty_response_error(
+        response,
+        max_output_tokens=max_output_tokens,
+        message=message,
+    )
 
 
-def _extract_usage(response: Any) -> dict[str, int]:
+def _format_safety_info(response: Any, *, max_output_tokens: int | None = None) -> str:
+    """
+    Best-effort summary of safety/finish metadata for error messages.
+    """
+    pieces: list[str] = []
+    candidates: Sequence[Any] = cast(
+        Sequence[Any],
+        getattr(response, "candidates", None) or [],
+    )
+    candidate = candidates[0] if candidates else None
+    if candidate is not None:
+        finish_reason = _format_finish_reason(getattr(candidate, "finish_reason", None))
+        if finish_reason:
+            pieces.append(f"finish_reason={finish_reason}")
+        ratings_summary = _summarize_safety_ratings(
+            getattr(candidate, "safety_ratings", None)
+        )
+        if ratings_summary:
+            pieces.append(f"safety_ratings={ratings_summary}")
+
+    usage_metadata = getattr(response, "usage_metadata", None)
+    if usage_metadata is not None:
+        pieces.append(f"usage={_summarize_usage_metadata(usage_metadata)}")
+    if max_output_tokens is not None:
+        pieces.append(f"max_output_tokens={max_output_tokens}")
+
+    prompt_feedback = getattr(response, "prompt_feedback", None)
+    if prompt_feedback is None:
+        prompt_feedback = getattr(response, "safety_feedback", None)
+    if prompt_feedback is not None:
+        pieces.append(f"prompt_feedback={prompt_feedback}")
+
+    return "; ".join(pieces)
+
+
+def _format_finish_reason(value: Any) -> str:
+    """Normalize finish_reason values from SDK enums or raw primitives."""
+    if value is None:
+        return ""
+    name = getattr(value, "name", None)
+    if isinstance(name, str) and name:
+        return name
+    return str(value)
+
+
+def _extract_finish_reason(response: Any) -> Optional[str]:
+    """
+    Extract the finish_reason from the first candidate when available.
+
+    Input: raw SDK response object or dict.
+    Output: normalized finish_reason string or None.
+    Edge cases: returns None when the response has no candidates or reason.
+    """
+    candidates: Sequence[Any] = cast(
+        Sequence[Any],
+        getattr(response, "candidates", None) or [],
+    )
+    candidate = candidates[0] if candidates else None
+    if candidate is None:
+        return None
+    finish_reason = _format_finish_reason(getattr(candidate, "finish_reason", None))
+    return finish_reason or None
+
+
+def _extract_usage_metadata_counts(
+    usage_metadata: Any,
+) -> tuple[Optional[int], Optional[int], Optional[int]]:
+    """
+    Extract prompt, total, and thoughts token counts from usage metadata.
+
+    Input: usage metadata object or mapping.
+    Output: prompt, total, and thoughts token counts, each optional.
+    Edge cases: missing or invalid values yield None.
+    """
+    if usage_metadata is None:
+        return None, None, None
+    prompt_token_count = _usage_value(usage_metadata, USAGE_PROMPT_TOKEN_KEYS)
+    total_token_count = _usage_value(usage_metadata, USAGE_TOTAL_TOKEN_KEYS)
+    thoughts_token_count = _usage_value(usage_metadata, USAGE_THOUGHTS_TOKEN_KEYS)
+    return prompt_token_count, total_token_count, thoughts_token_count
+
+
+def _is_token_starvation(
+    *,
+    finish_reason: str | None,
+    thoughts_token_count: int | None,
+    max_output_tokens: int | None,
+) -> bool:
+    """
+    Determine whether an empty response was likely caused by token starvation.
+
+    Inputs: finish_reason, thoughts token count, and max output tokens.
+    Output: True when the finish reason is MAX_TOKENS and thoughts consumed the budget.
+    Edge cases: missing values return False.
+    """
+    if finish_reason != FINISH_REASON_MAX_TOKENS:
+        return False
+    if thoughts_token_count is None or max_output_tokens is None:
+        return False
+    return thoughts_token_count >= max_output_tokens * TOKEN_STARVATION_THRESHOLD_FRACTION
+
+
+def _build_empty_response_error(
+    response: Any,
+    *,
+    max_output_tokens: int | None,
+    message: str,
+) -> GeminiEmptyResponseError:
+    """
+    Build a GeminiEmptyResponseError from a response and derived metadata.
+
+    Inputs: response object, output token cap, and error message.
+    Output: GeminiEmptyResponseError populated with finish and usage metadata.
+    Edge cases: missing usage or finish metadata yields None values.
+    """
+    finish_reason = _extract_finish_reason(response)
+    usage_metadata = getattr(response, "usage_metadata", None)
+    prompt_token_count, total_token_count, thoughts_token_count = (
+        _extract_usage_metadata_counts(usage_metadata)
+    )
+    is_token_starvation = _is_token_starvation(
+        finish_reason=finish_reason,
+        thoughts_token_count=thoughts_token_count,
+        max_output_tokens=max_output_tokens,
+    )
+    return GeminiEmptyResponseError(
+        message,
+        finish_reason=finish_reason,
+        prompt_token_count=prompt_token_count,
+        total_token_count=total_token_count,
+        thoughts_token_count=thoughts_token_count,
+        is_token_starvation=is_token_starvation,
+    )
+
+
+def _summarize_safety_ratings(ratings: Any) -> str:
+    """
+    Build a compact, human-readable summary of safety ratings when present.
+    """
+    if not ratings:
+        return ""
+    summaries: list[str] = []
+    for rating in ratings:
+        category = getattr(rating, "category", None)
+        probability = getattr(rating, "probability", None)
+        blocked = getattr(rating, "blocked", None)
+        parts: list[str] = []
+        if category is not None:
+            parts.append(str(category))
+        if probability is not None:
+            parts.append(f"prob={probability}")
+        if blocked is not None:
+            parts.append(f"blocked={blocked}")
+        if parts:
+            summaries.append("/".join(parts))
+    return ", ".join(summaries)
+
+
+def _summarize_usage_metadata(usage_metadata: Any) -> str:
+    """Summarize usage metadata for debugging failures."""
+    summary_parts: list[str] = []
+    usage_mapping: Optional[Mapping[str, Any]] = None
+    if isinstance(usage_metadata, Mapping):
+        usage_mapping = cast(Mapping[str, Any], usage_metadata)
+    usage_object = cast(object, usage_metadata)
+
+    prompt_tokens = getattr(usage_object, "prompt_token_count", None)
+    if prompt_tokens is None and usage_mapping is not None:
+        prompt_tokens = usage_mapping.get("prompt_token_count")
+    total_tokens = getattr(usage_object, "total_token_count", None)
+    if total_tokens is None and usage_mapping is not None:
+        total_tokens = usage_mapping.get("total_token_count")
+    thoughts_tokens = getattr(usage_object, "thoughts_token_count", None)
+    if thoughts_tokens is None and usage_mapping is not None:
+        thoughts_tokens = usage_mapping.get("thoughts_token_count")
+
+    if prompt_tokens is not None:
+        summary_parts.append(f"prompt={prompt_tokens}")
+    if total_tokens is not None:
+        summary_parts.append(f"total={total_tokens}")
+    if thoughts_tokens is not None:
+        summary_parts.append(f"thoughts={thoughts_tokens}")
+    return ",".join(summary_parts)
+
+
+def _extract_usage(response: Any) -> dict[str, int | str]:
     """
     Extract usage metadata from a Gemini API response.
 
@@ -435,28 +770,31 @@ def _extract_usage(response: Any) -> dict[str, int]:
     usage metadata is unavailable or malformed.
     Edge cases: handles dict- and attribute-style responses.
     """
-    usage_meta: Optional[Mapping[str, Any]] = None
-    usage: dict[str, int] = {}
+    usage: dict[str, int | str] = {}
 
-    response_mapping: Optional[Mapping[str, Any]] = None
+    usage_metadata: Any | None = None
     if isinstance(response, Mapping):
         response_mapping = cast(Mapping[str, Any], response)
-
-    if response_mapping is not None:
-        usage_meta = cast(Optional[Mapping[str, Any]], response_mapping.get("usage_metadata"))
+        usage_metadata = response_mapping.get("usage_metadata")
     else:
-        response_object = cast(object, response)
-        response_usage = getattr(response_object, "usage_metadata", None)
-        if isinstance(response_usage, Mapping):
-            usage_meta = cast(Mapping[str, Any], response_usage)
+        usage_metadata = getattr(cast(object, response), "usage_metadata", None)
 
-    if usage_meta:
-        prompt_tokens = _usage_value(usage_meta, USAGE_PROMPT_TOKEN_KEYS)
-        candidate_tokens = _usage_value(usage_meta, USAGE_CANDIDATE_TOKEN_KEYS)
+    if usage_metadata is not None:
+        prompt_tokens = _usage_value(usage_metadata, USAGE_PROMPT_TOKEN_KEYS)
+        candidate_tokens = _usage_value(usage_metadata, USAGE_CANDIDATE_TOKEN_KEYS)
+        thoughts_tokens = _usage_value(usage_metadata, USAGE_THOUGHTS_TOKEN_KEYS)
+        total_tokens = _usage_value(usage_metadata, USAGE_TOTAL_TOKEN_KEYS)
         if prompt_tokens is not None:
             usage["input_tokens"] = prompt_tokens
         if candidate_tokens is not None:
             usage["output_tokens"] = candidate_tokens
+        if thoughts_tokens is not None:
+            usage["thoughts_tokens"] = thoughts_tokens
+        if total_tokens is not None:
+            usage["total_tokens"] = total_tokens
+    finish_reason = _extract_finish_reason(response)
+    if finish_reason:
+        usage["finish_reason"] = finish_reason
 
     return usage
 
