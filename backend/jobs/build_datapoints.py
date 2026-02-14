@@ -20,8 +20,31 @@ from typing import (
     cast,
 )
 
-from google import genai  # type: ignore[import-not-found]
-from google.genai import types  # type: ignore[import-not-found]
+try:
+    from google import genai  # type: ignore[import-not-found]
+    from google.genai import types  # type: ignore[import-not-found]
+except ImportError:  # pragma: no cover - exercised in environments without SDK
+    genai = None  # type: ignore[assignment]
+
+    class _EmbedContentConfigFallback:
+        """Fallback EmbedContentConfig used when google-genai is unavailable."""
+
+        def __init__(self, **kwargs: object) -> None:
+            self.kwargs = kwargs
+
+    class _HttpOptionsFallback:
+        """Fallback HttpOptions used when google-genai is unavailable."""
+
+        def __init__(self, **kwargs: object) -> None:
+            self.kwargs = kwargs
+
+    class _TypesFallback:
+        """Fallback namespace matching the small subset of SDK types used here."""
+
+        EmbedContentConfig = _EmbedContentConfigFallback
+        HttpOptions = _HttpOptionsFallback
+
+    types = _TypesFallback()  # type: ignore[assignment]
 
 CURRENT_DIR = Path(__file__).resolve().parent
 PARENT_DIR = CURRENT_DIR.parent
@@ -75,7 +98,7 @@ _DEFAULT_GCP_PROJECT_ENV_KEYS = (
 )
 _TRUTHY_ENV_VALUES = {"1", "true", "yes", "on"}
 
-_METADATA_ROLE_KEY = "role"
+_METADATA_PROFILE_KEY = "profile"
 _METADATA_DOC_ID_KEY = "doc_id"
 _METADATA_TOPICS_KEY = "topics"
 _METADATA_TAGS_KEY = "tags"
@@ -196,9 +219,14 @@ def _build_restricts(metadata: Mapping[str, object]) -> list[dict[str, object]]:
     """
     restricts: list[dict[str, object]] = []
 
-    role = metadata.get(_METADATA_ROLE_KEY)
-    if isinstance(role, str) and role:
-        restricts.append({"namespace": _RESTRICT_NAMESPACE_ROLE, "allowTokens": [role]})
+    profile_value = _resolve_profile_for_restricts(metadata)
+    if profile_value is not None:
+        restricts.append(
+            {
+                "namespace": _RESTRICT_NAMESPACE_ROLE,
+                "allowTokens": [profile_value],
+            }
+        )
 
     doc_id = metadata.get(_METADATA_DOC_ID_KEY)
     if isinstance(doc_id, str) and doc_id:
@@ -217,6 +245,24 @@ def _build_restricts(metadata: Mapping[str, object]) -> list[dict[str, object]]:
         restricts.append({"namespace": _RESTRICT_NAMESPACE_TAG, "allowTokens": tags})
 
     return restricts
+
+
+def _resolve_profile_for_restricts(metadata: Mapping[str, object]) -> str | None:
+    """Resolve canonical profile value for datapoint restrict metadata.
+
+    Inputs:
+    - metadata: Chunk metadata mapping.
+
+    Output:
+    - Lowercase profile string used in the `role` restrict namespace, or None.
+
+    Edge cases:
+    - Returns None when `profile` is missing or blank.
+    """
+    profile_value = metadata.get(_METADATA_PROFILE_KEY)
+    if isinstance(profile_value, str) and profile_value.strip():
+        return profile_value.strip().lower()
+    return None
 
 
 def _embedding_values(embedding: object) -> List[float]:
@@ -460,6 +506,11 @@ def main() -> None:
             f"{_ENV_DATAPOINTS_DIMENSIONS} must be a positive integer"
         )
     print(f"Embedding model '{model_name}' @ {dimensions} dims")
+    if genai is None:
+        raise RuntimeError(
+            "google-genai is required to build datapoints. Install backend dependencies "
+            "or run this job in an environment with the SDK available."
+        )
     http_options = types.HttpOptions(
         timeout=_env_int(_ENV_REQ_TIMEOUT_MS, _DEFAULT_REQ_TIMEOUT_MS)
     )

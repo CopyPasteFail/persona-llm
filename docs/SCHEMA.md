@@ -11,7 +11,7 @@ This guide explains each field: what it signifies, how the app uses it, the bene
 - **Use**: Lets the backend to handle logic/migrations safely.
 - **Benefit**: Future evolution without breaking old data.
 - **Example**: `2`
-- **If dropped**: Harder to migrate or validate mixed versions.
+- **If dropped**: Harder to migrate or validate across schema versions.
 
 ### `doc_id` (string)
 - **Meaning**: Stable ID for the source document.
@@ -49,13 +49,13 @@ This guide explains each field: what it signifies, how the app uses it, the bene
 
 ---
 
-## Role & Topics
+## Profile & Topics
 
-### `role` (enum: `infra` | `product`)
-- **Meaning**: Collapsed persona mode for this chunk.
-- **Use**: Retrieval biasing (infra vs product) at query-time.
+### `profile` (string)
+- **Meaning**: Canonical persona profile for this chunk.
+- **Use**: Retrieval biasing via the `role` restrict namespace and query-time metadata boosts.
 - **Benefit**: One persona voice, precise evidence selection.
-- **Example**: `"infra"`
+- **Example**: `"infra"` (also valid: `"marketing"`, `"sales"`, `"product"`)
 - **If dropped**: Harder to steer retrieval; more cross-contamination.
 
 ### `topics` (array<string>)
@@ -133,12 +133,24 @@ This guide explains each field: what it signifies, how the app uses it, the bene
 - **Example**: `"Acme Inc."`
 - **If dropped**: Less specific provenance in answers.
 
+### `extras.title` (string)
+- **Meaning**: Job title for the stint represented by the chunk.
+- **Use**: Better stint dedupe and clearer deterministic duration summaries.
+- **Benefit**: Reduces over-counting when multiple chunks mirror one role.
+- **Example**: `"Senior SRE"`
+
 ### `extras.tech` (array<string>)
 - **Meaning**: Raw, human-friendly tech names as written in the CV.
 - **Use**: UI display (“Tech: Kubernetes (K8s), Terraform, Argo CD”).
 - **Benefit**: Polished presentation separate from normalized `topics`.
 - **Example**: `["Kubernetes (K8s)","Terraform","Argo CD"]`
 - **If dropped**: You can still rely on `text` for raw wording, but you lose the easy, pretty, de-duplicated tech list.
+
+### `extras.stint_domains` (array<string>)
+- **Meaning**: Fine-grained stint labels used by deterministic duration routing.
+- **Use**: Duration answers with family mapping from `backend/config/experience_domain_config.json`.
+- **Benefit**: Deterministic years-of-experience responses without LLM calls.
+- **Example**: `["devops"]` or `["sre","platform"]`
 
 ### `extras.type` (enum: `achievement` | `experience`) — *Experience-only*
 - **Meaning**: Semantic kind of Experience bullet (either a responsibility or a highlight).
@@ -160,7 +172,7 @@ This guide explains each field: what it signifies, how the app uses it, the bene
   "chunk_id": "infra-001",
   "position": 1,
   "text": "DevOps/SRE engineer experienced in automating infrastructure, running Kubernetes in production, and improving observability.",
-  "role": "infra",
+  "profile": "infra",
   "topics": ["devops","sre","automation","kubernetes","observability"],
   "tags": ["role:infra","topic:devops","topic:sre","topic:automation","topic:kubernetes","topic:observability"],
   "section": "Summary",
@@ -185,7 +197,7 @@ This guide explains each field: what it signifies, how the app uses it, the bene
   "chunk_id": "infra-010",
   "position": 10,
   "text": "Skills: Kubernetes, Terraform, Argo CD, Prometheus, Grafana, AWS, GCP.",
-  "role": "infra",
+  "profile": "infra",
   "topics": ["kubernetes","terraform","argocd","prometheus","grafana","aws","gcp"],
   "tags": ["role:infra","topic:kubernetes","topic:terraform","topic:argocd","topic:prometheus","topic:grafana","topic:aws","topic:gcp"],
   "section": "Skills",
@@ -210,7 +222,7 @@ This guide explains each field: what it signifies, how the app uses it, the bene
   "chunk_id": "infra-020",
   "position": 20,
   "text": "At Acme Inc., managed production EKS clusters with Terraform and Argo CD, improved monitoring with Prometheus and Grafana, and defined SLOs to improve reliability.",
-  "role": "infra",
+  "profile": "infra",
   "topics": ["eks","terraform","argocd","prometheus","grafana","slo","reliability"],
   "tags": ["role:infra","topic:eks","topic:terraform","topic:argocd","topic:prometheus","topic:grafana","topic:slo","topic:reliability"],
   "section": "Experience",
@@ -222,6 +234,8 @@ This guide explains each field: what it signifies, how the app uses it, the bene
   "permissions": ["public"],
   "extras": {
     "employer": "Acme Inc.",
+    "title": "Senior SRE",
+    "stint_domains": ["platform","sre"],
     "tech": ["EKS","Terraform","Argo CD","Prometheus","Grafana"],
     "type": "experience"
   }

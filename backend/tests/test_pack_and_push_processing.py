@@ -25,7 +25,7 @@ MAX_CHARS_LIMIT = 32
 EXPECTED_ID_LENGTH = 12
 EXPECTED_FRAGMENT_COUNT = 2
 SCHEMA_VERSION = 2
-ROLE_INFRA = "infra"
+PROFILE_INFRA = "infra"
 TOPIC_LABEL = "infra"
 TAG_LABEL = "role:infra"
 PERMISSION_LABEL = "internal"
@@ -63,20 +63,14 @@ def write_schema_file(schema_path: Path) -> None:
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "title": "PersonaChunkTest",
         "type": "object",
-        "required": [
-            "doc_id",
-            "chunk_id",
-            "position",
-            "text",
-            "role",
-        ],
+        "required": ["doc_id", "chunk_id", "position", "text", "profile"],
         "properties": {
             "schema_version": {"type": "integer", "const": SCHEMA_VERSION},
             "doc_id": {"type": "string", "minLength": 1},
             "chunk_id": {"type": "string", "minLength": 1},
             "position": {"type": "integer", "minimum": 1},
             "text": {"type": "string", "minLength": 1},
-            "role": {"type": "string", "enum": [ROLE_INFRA]},
+            "profile": {"type": "string", "minLength": 1},
             "topics": {"type": "array", "items": {"type": "string"}},
             "tags": {"type": "array", "items": {"type": "string"}},
             "section": {"type": "string", "minLength": 1},
@@ -187,7 +181,7 @@ def test_build_metadata_includes_expected_fields_and_copies_collections() -> Non
         "chunk_id": CHUNK_ID_VALUE,
         "position": 1,
         "text": TEXT_SHORT,
-        "role": ROLE_INFRA,
+        "profile": PROFILE_INFRA,
         "section": SECTION_LABEL,
         "start_year": START_YEAR_VALUE,
         "end_year": END_YEAR_VALUE,
@@ -211,7 +205,7 @@ def test_build_metadata_includes_expected_fields_and_copies_collections() -> Non
     assert metadata["doc_id"] == DOC_ID_VALUE
     assert metadata["chunk_id"] == CHUNK_ID_VALUE
     assert metadata["position"] == 1
-    assert metadata["role"] == ROLE_INFRA
+    assert metadata["profile"] == PROFILE_INFRA
     assert metadata["section"] == SECTION_LABEL
     assert metadata["start_year"] == START_YEAR_VALUE
     assert metadata["end_year"] == END_YEAR_VALUE
@@ -227,6 +221,25 @@ def test_build_metadata_includes_expected_fields_and_copies_collections() -> Non
     assert metadata["topics"] is not chunk["topics"]
     assert metadata["tags"] is not chunk["tags"]
     assert metadata["permissions"] is not chunk["permissions"]
+
+
+def test_build_metadata_sets_profile_when_source_chunk_has_profile_only() -> None:
+    """Verify profile-only chunks populate canonical metadata profile."""
+    chunk: dict[str, Any] = {
+        "doc_id": DOC_ID_VALUE,
+        "chunk_id": CHUNK_ID_VALUE,
+        "position": 1,
+        "text": TEXT_SHORT,
+        "profile": PROFILE_INFRA,
+    }
+
+    metadata = pack_and_push._build_metadata(  # pyright: ignore[reportPrivateUsage]
+        chunk,
+        index=0,
+        total=1,
+    )
+
+    assert metadata["profile"] == PROFILE_INFRA
 
 
 def test_load_chunks_raises_on_schema_violation(tmp_path: Path) -> None:
@@ -248,13 +261,13 @@ def test_load_chunks_raises_on_schema_violation(tmp_path: Path) -> None:
         "chunk_id": CHUNK_ID_VALUE,
         "position": 1,
         "text": TEXT_SHORT,
-        "role": ROLE_INFRA,
+        "profile": PROFILE_INFRA,
     }
     invalid_chunk: dict[str, Any] = {
         "doc_id": DOC_ID_VALUE,
         "chunk_id": CHUNK_ID_VALUE,
         "position": 1,
-        "role": ROLE_INFRA,
+        "profile": PROFILE_INFRA,
     }
     chunks_path = tmp_path / JSONL_FILENAME
     write_chunks_file(chunks_path, [valid_chunk, invalid_chunk])
@@ -294,7 +307,7 @@ def test_build_persona_records_splits_text_and_sets_fragment_metadata(
         "chunk_id": CHUNK_ID_VALUE,
         "position": 1,
         "text": TEXT_WITH_TWO_SENTENCES,
-        "role": ROLE_INFRA,
+        "profile": PROFILE_INFRA,
     }
     write_chunks_file(chunks_path, [chunk])
 
@@ -310,6 +323,131 @@ def test_build_persona_records_splits_text_and_sets_fragment_metadata(
     assert records[0]["id"].startswith(CHUNK_ID_VALUE)
     assert records[0]["metadata"]["fragment_count"] == EXPECTED_FRAGMENT_COUNT
     assert records[1]["metadata"]["fragment_index"] == 1
+
+
+def test_load_chunks_canonicalizes_profile_and_stint_domains(tmp_path: Path) -> None:
+    """Verify ingestion canonicalizes profile and extras.stint_domains values."""
+    schema_path = tmp_path / SCHEMA_FILENAME
+    write_schema_file(schema_path)
+    chunks_path = tmp_path / JSONL_FILENAME
+    chunk: dict[str, Any] = {
+        "doc_id": DOC_ID_VALUE,
+        "chunk_id": CHUNK_ID_VALUE,
+        "position": 1,
+        "text": TEXT_SHORT,
+        "profile": "InFra",
+        "section": "Experience",
+        "extras": {
+            "employer": "Acme",
+            "title": "SRE",
+            "stint_domains": ["SRE", "devops", "sre"],
+        },
+    }
+    write_chunks_file(chunks_path, [chunk])
+    schema: dict[str, Any] = json.loads(schema_path.read_text(encoding="utf-8"))
+
+    loaded_chunks = list(
+        pack_and_push._load_chunks(chunks_path, schema)  # pyright: ignore[reportPrivateUsage]
+    )
+
+    assert loaded_chunks[0]["profile"] == "infra"
+    assert loaded_chunks[0]["extras"]["stint_domains"] == ["devops", "sre"]
+
+
+def test_load_chunks_rejects_unknown_stint_domains_with_context(tmp_path: Path) -> None:
+    """Unknown extras.stint_domains values should fail with doc/chunk context."""
+    schema_path = tmp_path / SCHEMA_FILENAME
+    write_schema_file(schema_path)
+    chunks_path = tmp_path / JSONL_FILENAME
+    chunk: dict[str, Any] = {
+        "doc_id": DOC_ID_VALUE,
+        "chunk_id": CHUNK_ID_VALUE,
+        "position": 1,
+        "text": TEXT_SHORT,
+        "profile": PROFILE_INFRA,
+        "section": "Experience",
+        "extras": {
+            "employer": "Acme",
+            "title": "Engineer",
+            "stint_domains": ["unknown_label"],
+        },
+    }
+    write_chunks_file(chunks_path, [chunk])
+    schema: dict[str, Any] = json.loads(schema_path.read_text(encoding="utf-8"))
+
+    with pytest.raises(ValueError) as error_info:
+        list(
+            pack_and_push._load_chunks(  # pyright: ignore[reportPrivateUsage]
+                chunks_path,
+                schema,
+            )
+        )
+
+    assert DOC_ID_VALUE in str(error_info.value)
+    assert CHUNK_ID_VALUE in str(error_info.value)
+
+
+def test_load_chunks_rejects_experience_missing_title_with_context(tmp_path: Path) -> None:
+    """Experience chunks without extras.title should fail with clear context."""
+    schema_path = tmp_path / SCHEMA_FILENAME
+    write_schema_file(schema_path)
+    chunks_path = tmp_path / JSONL_FILENAME
+    chunk: dict[str, Any] = {
+        "doc_id": DOC_ID_VALUE,
+        "chunk_id": CHUNK_ID_VALUE,
+        "position": 1,
+        "text": TEXT_SHORT,
+        "profile": PROFILE_INFRA,
+        "section": "Experience",
+        "extras": {
+            "employer": "Acme",
+            "stint_domains": ["devops"],
+        },
+    }
+    write_chunks_file(chunks_path, [chunk])
+    schema: dict[str, Any] = json.loads(schema_path.read_text(encoding="utf-8"))
+
+    with pytest.raises(ValueError) as error_info:
+        list(
+            pack_and_push._load_chunks(  # pyright: ignore[reportPrivateUsage]
+                chunks_path,
+                schema,
+            )
+        )
+
+    assert "extras.title" in str(error_info.value)
+    assert DOC_ID_VALUE in str(error_info.value)
+    assert CHUNK_ID_VALUE in str(error_info.value)
+
+
+def test_load_chunks_allows_non_experience_chunks_without_stint_requirements(
+    tmp_path: Path,
+) -> None:
+    """Non-Experience chunks should not enforce employer/title/stint_domains validation."""
+    schema_path = tmp_path / SCHEMA_FILENAME
+    write_schema_file(schema_path)
+    chunks_path = tmp_path / JSONL_FILENAME
+    chunk: dict[str, Any] = {
+        "doc_id": DOC_ID_VALUE,
+        "chunk_id": CHUNK_ID_VALUE,
+        "position": 1,
+        "text": TEXT_SHORT,
+        "profile": PROFILE_INFRA,
+        "section": "Summary",
+        "extras": {
+            "stint_domains": ["unknown_label"],
+        },
+    }
+    write_chunks_file(chunks_path, [chunk])
+    schema: dict[str, Any] = json.loads(schema_path.read_text(encoding="utf-8"))
+
+    loaded_chunks = list(
+        pack_and_push._load_chunks(chunks_path, schema)  # pyright: ignore[reportPrivateUsage]
+    )
+
+    assert len(loaded_chunks) == 1
+    assert loaded_chunks[0]["section"] == "Summary"
+    assert loaded_chunks[0]["extras"]["stint_domains"] == ["unknown_label"]
 
 
 def test_serialize_records_returns_expected_payload_and_filename() -> None:

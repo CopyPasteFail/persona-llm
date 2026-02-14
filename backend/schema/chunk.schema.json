@@ -4,7 +4,7 @@
   "title": "PersonaChunkV2",
   "type": "object",
 
-  "required": ["doc_id", "chunk_id", "position", "text", "role"],
+  "required": ["doc_id", "chunk_id", "position", "text", "profile"],
 
   "properties": {
     "schema_version": { "type": "integer", "const": 2 },
@@ -14,10 +14,7 @@
     "position": { "type": "integer", "minimum": 1 },
     "text":     { "type": "string", "minLength": 1 },
 
-    "role": {
-      "type": "string",
-      "enum": ["infra", "product"]
-    },
+    "profile": { "type": "string", "minLength": 1 },
 
     "topics": {
       "type": "array",
@@ -29,7 +26,7 @@
       "type": "array",
       "items": {
         "type": "string",
-        "pattern": "^(role:(infra|product)|topic:[a-z0-9._-]+)$"
+        "pattern": "^(role:[a-z0-9._-]+|topic:[a-z0-9._-]+)$"
       },
       "uniqueItems": true
     },
@@ -53,6 +50,13 @@
       "type": "object",
       "properties": {
         "employer": { "type": "string" },
+        "title": { "type": "string" },
+        "stint_domains": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "minItems": 1,
+          "uniqueItems": true
+        },
         "tech": {
           "type": "array",
           "items": { "type": "string", "minLength": 1 },
@@ -71,7 +75,21 @@
         "properties": {
           "tags": {
             "type": "array",
-            "contains": { "type": "string", "enum": ["role:infra", "role:product"] }
+            "contains": { "type": "string", "pattern": "^role:[a-z0-9._-]+$" }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "section": { "const": "Experience" } },
+        "required": ["section"]
+      },
+      "then": {
+        "required": ["extras"],
+        "properties": {
+          "extras": {
+            "required": ["employer", "title", "stint_domains"]
           }
         }
       }

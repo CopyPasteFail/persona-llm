@@ -187,6 +187,20 @@ make be-test-smoke
 make be-test-core
 ```
 
+### Years-of-experience deterministic duration tests
+- `backend/tests/test_duration_domain_config.py` (duration family config validation)
+- `backend/tests/test_duration_interval_merge.py` (interval merge + formatting edge cases)
+- `backend/tests/test_duration_routing.py` (family resolution, union totals, breakdown coverage)
+- `backend/tests/test_rag_duration_deterministic_flow.py` (orchestrator bypass, generic fallback, zero-match guard)
+
+Commands:
+```bash
+LLM_BACKEND=deterministic pytest -q backend/tests/test_duration_domain_config.py backend/tests/test_duration_interval_merge.py backend/tests/test_duration_routing.py backend/tests/test_rag_duration_deterministic_flow.py
+```
+```bash
+make be-test-core
+```
+
 ### Integration tests
 
 > To skip integration tests in a broader run, use `-m "not integration"`

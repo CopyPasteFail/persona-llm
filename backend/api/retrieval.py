@@ -23,6 +23,7 @@ import threading
 from collections import defaultdict
 from contextvars import ContextVar
 from pathlib import Path
+from types import MappingProxyType
 from typing import (
     Any,
     Dict,
@@ -610,27 +611,33 @@ def _normalize_bm25(score: float) -> float:
     return score / (score + 1.0)
 
 
-def _chunk_role(metadata: Mapping[str, Any]) -> Optional[str]:
+def _chunk_profile(metadata: Mapping[str, Any]) -> Optional[str]:
     """
-    Extract a role label from chunk metadata.
+    Extract the profile label from chunk metadata.
 
     Inputs:
         metadata: Metadata mapping for a chunk.
     Outputs:
-        A lowercase role string, or None if not present.
+        A lowercase profile string, or None if not present.
     Edge cases:
-        Supports both "role" field and "role:" tag prefixes.
+        Returns None when `profile` is missing or blank.
     """
-    role = metadata.get("role")
-    if isinstance(role, str) and role:
-        return role.lower()
-
-    tags = metadata.get("tags")
-    if isinstance(tags, Iterable):
-        for tag in cast(Iterable[Any], tags):
-            if isinstance(tag, str) and tag.startswith("role:"):
-                return tag.split(":", 1)[1].lower()
+    profile = metadata.get("profile")
+    if isinstance(profile, str) and profile:
+        return profile.lower()
     return None
+
+
+def _chunk_role(metadata: Mapping[str, Any]) -> Optional[str]:
+    """
+    Return the profile value used by role-based retrieval boosts.
+
+    Inputs:
+        metadata: Metadata mapping for a chunk.
+    Outputs:
+        Profile label as lowercase string, or None if not available.
+    """
+    return _chunk_profile(metadata)
 
 
 def _chunk_topics(metadata: Mapping[str, Any]) -> Set[str]:
@@ -668,6 +675,7 @@ def _classify_query_role(question: str) -> Optional[str]:
         "infra", "product", or None if ambiguous.
     Edge cases:
         Returns None when tokens overlap or are empty.
+        Non-{"infra","product"} chunk profiles are treated as neutral.
     """
     tokens = set(_tokenize(question))
     if not tokens:
@@ -869,6 +877,53 @@ def warm_chunk_store() -> bool:
     return bool(size)
 
 
+def _freeze_snapshot_value(value: Any) -> Any:
+    """
+    Recursively freeze a Python value into immutable containers.
+
+    Inputs:
+        value: Arbitrary JSON-like object.
+    Outputs:
+        Immutable clone: mapping -> MappingProxyType, list/tuple -> tuple, set -> frozenset.
+    Edge cases:
+        Scalars are returned unchanged.
+    """
+    if isinstance(value, Mapping):
+        frozen_mapping = {
+            key: _freeze_snapshot_value(inner_value) for key, inner_value in value.items()
+        }
+        return MappingProxyType(frozen_mapping)
+    if isinstance(value, list | tuple):
+        return tuple(_freeze_snapshot_value(item) for item in value)
+    if isinstance(value, set):
+        return frozenset(_freeze_snapshot_value(item) for item in value)
+    return value
+
+
+def get_chunk_store_snapshot() -> Mapping[str, Mapping[str, Any]]:
+    """
+    Return an immutable snapshot of the currently loaded chunk store.
+
+    Inputs:
+        None.
+    Outputs:
+        Mapping from chunk id to immutable chunk records.
+    Edge cases:
+        Returns an empty mapping when no chunks are loaded.
+    Concurrency:
+        Snapshot creation is protected by _chunk_lock.
+    """
+    _ensure_chunk_store_loaded()
+    with _chunk_lock:
+        chunks = _chunks_by_id or {}
+        frozen_chunks: Dict[str, Mapping[str, Any]] = {}
+        for chunk_id, chunk_record in chunks.items():
+            frozen_chunk = _freeze_snapshot_value(chunk_record)
+            if isinstance(frozen_chunk, Mapping):
+                frozen_chunks[chunk_id] = frozen_chunk
+        return MappingProxyType(frozen_chunks)
+
+
 def _resolve_local_chunks_path(name: str) -> Optional[Path]:
     """
     Resolve a chunk file path using configured search roots.
@@ -1058,7 +1113,7 @@ def apply_filters_and_boosting(candidates: List[Dict[str, Any]]) -> List[Dict[st
         )
 
         metadata = cast(Dict[str, Any], chunk.get("metadata") or {})
-        role = _chunk_role(metadata)
+        role = _chunk_profile(metadata)
         if role_hint and role and role == role_hint:
             weighted += _ROLE_BOOST
 
@@ -1125,7 +1180,7 @@ def build_context_prompt(question: str, selected: List[Dict[str, Any]]) -> str:
 
         metadata = cast(Dict[str, Any], chunk.get("metadata") or {})
         label_parts: List[str] = []
-        role = _chunk_role(metadata)
+        role = _chunk_profile(metadata)
         if role:
             label_parts.append(role)
         section = metadata.get("section")

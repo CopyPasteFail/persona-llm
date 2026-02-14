@@ -31,6 +31,8 @@ PROD_TAG = "prod"
 RESTRICTS_FIELD = "restricts"
 ROLE_FIELD = "role"
 ROLE_VALUE = "infra"
+PROFILE_FIELD = "profile"
+PROFILE_MARKETING_VALUE = "marketing"
 SECTION_FIELD = "section"
 TAG_NAMESPACE = "tag"
 TAG_FIELD = "tags"
@@ -90,7 +92,7 @@ def test_build_restricts_includes_all_supported_namespaces() -> None:
         The restricts list matches the expected namespace/token mapping order.
     """
     metadata: Metadata = {
-        ROLE_FIELD: ROLE_VALUE,
+        PROFILE_FIELD: ROLE_VALUE,
         DOC_ID_FIELD: DOC_ID_VALUE,
         TOPICS_FIELD: [KUBERNETES_TOPIC, GKE_TOPIC],
         TAG_FIELD: [PROD_TAG, HIGHLIGHTS_TAG],
@@ -112,6 +114,19 @@ def test_build_restricts_includes_all_supported_namespaces() -> None:
     ]
 
 
+def test_build_restricts_uses_profile_for_role_namespace() -> None:
+    """Verify profile is the only source for the role restrict namespace."""
+    metadata: Metadata = {
+        PROFILE_FIELD: PROFILE_MARKETING_VALUE,
+    }
+
+    restricts = build_datapoints._build_restricts(metadata) # pyright: ignore[reportPrivateUsage]
+
+    assert restricts == [
+        {NAMESPACE_FIELD: ROLE_FIELD, ALLOW_TOKENS_FIELD: [PROFILE_MARKETING_VALUE]}
+    ]
+
+
 def test_write_datapoints_emits_expected_json_lines(tmp_path: Path) -> None:
     """Verify JSONL datapoints include IDs, restricts, and embeddings.
 
@@ -129,7 +144,7 @@ def test_write_datapoints_emits_expected_json_lines(tmp_path: Path) -> None:
             ID_FIELD: CHUNK_ID_ONE,
             METADATA_FIELD: {
                 SECTION_FIELD: PROFILE_SECTION,
-                ROLE_FIELD: ROLE_VALUE,
+                PROFILE_FIELD: ROLE_VALUE,
                 DOC_ID_FIELD: DOC_ID_VALUE,
                 TOPICS_FIELD: [KUBERNETES_TOPIC],
                 TAG_FIELD: [PROD_TAG],

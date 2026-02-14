@@ -169,3 +169,42 @@ def test_apply_filters_and_boosting_avoids_dentistry_false_positive(
     infra_results = retrieval.apply_filters_and_boosting(candidates)
     infra_result_by_id = {item["id"]: item for item in infra_results}
     assert infra_result_by_id["infra-001"]["bm25_score"] > 0.0
+
+
+def test_apply_filters_and_boosting_uses_profile_and_treats_unknown_as_neutral(
+    reset_chunk_store: None,
+) -> None:
+    """Profile metadata should drive boosts and unknown profiles stay neutral."""
+
+    del reset_chunk_store
+    chunk_corpus: dict[str, dict[str, Any]] = {
+        "infra-profile": {
+            "id": "infra-profile",
+            "text": "I built resilient platform automation.",
+            "metadata": {"profile": "infra"},
+        },
+        "product-profile": {
+            "id": "product-profile",
+            "text": "I built resilient platform automation.",
+            "metadata": {"profile": "product"},
+        },
+        "marketing-profile": {
+            "id": "marketing-profile",
+            "text": "I built resilient platform automation.",
+            "metadata": {"profile": "marketing"},
+        },
+    }
+    retrieval.configure_chunk_store(chunk_corpus)
+
+    candidates = [
+        {"id": "infra-profile", "distance": 0.2},
+        {"id": "product-profile", "distance": 0.2},
+        {"id": "marketing-profile", "distance": 0.2},
+    ]
+    retrieval._CURRENT_QUERY.set("Tell me about your devops platform work")  # pyright: ignore[reportPrivateUsage]
+    results = retrieval.apply_filters_and_boosting(candidates)
+    result_by_id = {item["id"]: item for item in results}
+
+    assert results[0]["id"] == "infra-profile"
+    assert result_by_id["infra-profile"]["score"] > result_by_id["product-profile"]["score"]
+    assert result_by_id["infra-profile"]["score"] > result_by_id["marketing-profile"]["score"]

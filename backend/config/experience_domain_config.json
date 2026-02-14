@@ -1,0 +1,52 @@
+{
+  "canonical_labels": [
+    "devops",
+    "sre",
+    "platform",
+    "software_engineering",
+    "backend",
+    "frontend",
+    "marketing",
+    "sales",
+    "product",
+    "data"
+  ],
+  "families": {
+    "infra_ops": {
+      "members": ["devops", "sre", "platform"],
+      "query_aliases": [
+        "devops",
+        "dev ops",
+        "sre",
+        "site reliability",
+        "platform",
+        "platform engineering",
+        "infrastructure",
+        "infra",
+        "on-call",
+        "oncall"
+      ]
+    },
+    "marketing": {
+      "members": ["marketing"],
+      "query_aliases": [
+        "marketing",
+        "demand gen",
+        "demand generation",
+        "seo",
+        "content",
+        "lifecycle"
+      ]
+    },
+    "software_engineering": {
+      "members": ["software_engineering", "backend", "frontend"],
+      "query_aliases": [
+        "software engineer",
+        "developer",
+        "backend",
+        "frontend",
+        "embedded"
+      ]
+    }
+  }
+}

@@ -1,39 +1,25 @@
 {
   "name": "persona-llm-frontend-root",
   "private": true,
-  "workspaces": ["web"],
-
+  "workspaces": [
+    "web"
+  ],
   "scripts": {
     "dev": "npm run dev -w web",
-
     "dev:local": "npm run dev:local -w web",
-
     "dev:clean": "npm run dev:clean -w web",
-
     "dev:local:clean": "npm run dev:local:clean -w web",
-
     "build": "npm run build -w web",
-
     "preview": "npm run preview -w web",
-
     "clean": "npm run clean -w web",
-
     "clean:all": "npm run clean -w web && rm -rf node_modules .firebase",
-
     "kill-port": "npm run kill-port -w web",
-
     "firebase": "npm exec -w web firebase --",
-
     "firebase:version": "npm exec -w web firebase -- --version",
-
     "firebase:login": "npm exec -w web firebase -- login",
-
     "firebase:use": "bash -lc 'set -a; : ${PRIVATE_DIR:?PRIVATE_DIR must be set}; COMMON_ENV=\"$PRIVATE_DIR/secrets/common.env\"; FRONTEND_ENV=\"$PRIVATE_DIR/secrets/frontend.env\"; [ -f \"$COMMON_ENV\" ] && . \"$COMMON_ENV\" || true; [ -f \"$FRONTEND_ENV\" ] && . \"$FRONTEND_ENV\" || true; [ -z \"${NEXT_PUBLIC_USE_COOKIE_SESSION:-}\" ] && [ -n \"${SESSION_COOKIE_ENABLED:-}\" ] && export NEXT_PUBLIC_USE_COOKIE_SESSION=\"$SESSION_COOKIE_ENABLED\"; set +a; : ${PROJECT_ID:?PROJECT_ID must be set}; npm exec -w web firebase -- use \"$PROJECT_ID\"'",
-
     "firebase:create": "bash -lc 'set -a; : ${PRIVATE_DIR:?PRIVATE_DIR must be set}; COMMON_ENV=\"$PRIVATE_DIR/secrets/common.env\"; FRONTEND_ENV=\"$PRIVATE_DIR/secrets/frontend.env\"; [ -f \"$COMMON_ENV\" ] && . \"$COMMON_ENV\" || true; [ -f \"$FRONTEND_ENV\" ] && . \"$FRONTEND_ENV\" || true; [ -z \"${NEXT_PUBLIC_USE_COOKIE_SESSION:-}\" ] && [ -n \"${SESSION_COOKIE_ENABLED:-}\" ] && export NEXT_PUBLIC_USE_COOKIE_SESSION=\"$SESSION_COOKIE_ENABLED\"; set +a; : ${PROJECT_ID:?PROJECT_ID must be set}; npm exec -w web firebase -- projects:create \"$PROJECT_ID\" --display-name \"$PROJECT_ID\"'",
-
     "firebase:deploy": "bash -lc 'set -a; : ${PRIVATE_DIR:?PRIVATE_DIR must be set}; COMMON_ENV=\"$PRIVATE_DIR/secrets/common.env\"; FRONTEND_ENV=\"$PRIVATE_DIR/secrets/frontend.env\"; [ -f \"$COMMON_ENV\" ] && . \"$COMMON_ENV\" || true; [ -f \"$FRONTEND_ENV\" ] && . \"$FRONTEND_ENV\" || true; [ -z \"${NEXT_PUBLIC_USE_COOKIE_SESSION:-}\" ] && [ -n \"${SESSION_COOKIE_ENABLED:-}\" ] && export NEXT_PUBLIC_USE_COOKIE_SESSION=\"$SESSION_COOKIE_ENABLED\"; set +a; : ${PROJECT_ID:?PROJECT_ID must be set}; npm run build -w web && npm exec -w web firebase -- deploy --project \"$PROJECT_ID\"'",
-
     "firebase:hosting:disable": "bash -lc 'set -a; : ${PRIVATE_DIR:?PRIVATE_DIR must be set}; COMMON_ENV=\"$PRIVATE_DIR/secrets/common.env\"; FRONTEND_ENV=\"$PRIVATE_DIR/secrets/frontend.env\"; [ -f \"$COMMON_ENV\" ] && . \"$COMMON_ENV\" || true; [ -f \"$FRONTEND_ENV\" ] && . \"$FRONTEND_ENV\" || true; [ -z \"${NEXT_PUBLIC_USE_COOKIE_SESSION:-}\" ] && [ -n \"${SESSION_COOKIE_ENABLED:-}\" ] && export NEXT_PUBLIC_USE_COOKIE_SESSION=\"$SESSION_COOKIE_ENABLED\"; set +a; : ${PROJECT_ID:?PROJECT_ID must be set}; npm exec -w web firebase -- hosting:disable --project \"$PROJECT_ID\"'"
   }
 }

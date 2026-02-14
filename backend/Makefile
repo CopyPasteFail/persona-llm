@@ -154,7 +154,7 @@ test-build_datapoints: $(VENV)/bin/activate
 test-smoke: $(VENV)/bin/activate
 	LLM_BACKEND=deterministic $(PY) -m pytest -q $(PYTEST_ARGS) tests/test_smoke.py
 
-test-core: test-smoke test-voice test-auth-key-login test-security-session test-keys-store test-llm-prompt test-create-access-key-cli test-build_datapoints test-retrieval-vector test-thinking-gating test-llm-gating test-main-chat-logging test-load-backend-env test-pack-and-push-processing test-answer-deduplication test-retrieval-bm25 test-greeting-intent
+test-core: test-smoke test-voice test-auth-key-login test-security-session test-keys-store test-llm-prompt test-create-access-key-cli test-build_datapoints test-retrieval-vector test-thinking-gating test-llm-gating test-main-chat-logging test-load-backend-env test-pack-and-push-processing test-answer-deduplication test-retrieval-bm25 test-greeting-intent test-duration-domain-config test-duration-routing test-duration-interval-merge test-rag-duration-deterministic-flow
 
 test-voice: $(VENV)/bin/activate
 	$(TEST_ENV) $(PY) -m pytest -q tests/test_persona_voice.py tests/test_normalize_question_punct.py
@@ -214,6 +214,18 @@ test-retrieval-bm25: $(VENV)/bin/activate
 
 test-greeting-intent: $(VENV)/bin/activate
 	$(TEST_ENV) $(PY) -m pytest -q tests/test_greeting_intent.py
+
+test-duration-domain-config: $(VENV)/bin/activate
+	$(TEST_ENV) $(PY) -m pytest -q tests/test_duration_domain_config.py
+
+test-duration-routing: $(VENV)/bin/activate
+	$(TEST_ENV) $(PY) -m pytest -q tests/test_duration_routing.py
+
+test-duration-interval-merge: $(VENV)/bin/activate
+	$(TEST_ENV) $(PY) -m pytest -q tests/test_duration_interval_merge.py
+
+test-rag-duration-deterministic-flow: $(VENV)/bin/activate
+	$(TEST_ENV) $(PY) -m pytest -q tests/test_rag_duration_deterministic_flow.py
 
 check: $(VENV)/bin/activate
 	$(PY) -c "import api.main, api.mock, api.retrieval, api.llm, api.settings"
