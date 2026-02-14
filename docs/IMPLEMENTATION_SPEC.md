@@ -225,7 +225,7 @@ For a human-readable guide explaining the meaning, use cases, benefits, and trad
 ### Ingestion stage (one-time or occasional)
 
 1. **Chunking**
-   - Split CV docs into ~450-token chunks (often generated via ChatGPT for the initial corpus; keep source material private).
+   - Split CV docs into ~450-token chunks (could be generated via an LLM for the initial corpus; keep source material private).
    - Attach `role` + optional `topic` tags.
    - Validate against `chunk.schema.json`.
 2. **Packaging**

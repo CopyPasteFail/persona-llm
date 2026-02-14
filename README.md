@@ -232,7 +232,17 @@ Run both commands if you deploy via the CLI and run helper scripts locally. If y
 
 With those credentials in place you can run `gcloud run deploy` and `npm run firebase:deploy` without introducing any new secrets. (`make be-pack_and_push` is legacy for `CHUNKS_PATH` flows only.)
 
-### Phase 7. Build a versioned dataset (chunks + datapoints + manifest)
+### Phase 7. CV-to-JSONL conversion (chunking + schema mapping)
+
+If you prefer not to convert CVs manually, you can optionally use an LLM with this [CVs to JSONL prompt](./prompts/CVs_to_JSONL.md).
+> Note: This prompt was tested with ChatGPT (keep source material private).
+
+Expected output:
+- `chunks.jsonl` (one valid JSON object per line, matching `backend/schema/chunk.schema.json`)
+
+Place `chunks.jsonl` in your private overlay (default: `$PRIVATE_DIR/persona/data/chunks.jsonl`) before continuing.
+
+### Phase 8. Build a versioned dataset (chunks + datapoints + manifest)
 
 The runtime loads `datasets/current.json` and expects a coupled dataset folder:
 `datasets/<version>/{datapoints.jsonl, chunks.jsonl.gz, manifest.json}`.
@@ -268,14 +278,14 @@ Atomic update order (locked):
 
 For `local-integrated` with a local dataset root (`DATASET_URI=file:/...`), also update the local pointer file used by that root (for example `$PRIVATE_DIR/persona/data/datasets/current.json`) to the same version.
 
-If you plan to use `VECTOR_BACKEND=matching_engine`, keep this dataset flow and then continue to Phase 9 to provision/upgrade the index and run `make gcp-index-upsert` using the same `DATAPOINTS_FILE`.
+If you plan to use `VECTOR_BACKEND=matching_engine`, keep this dataset flow and then continue to Phase 10 to provision/upgrade the index and run `make gcp-index-upsert` using the same `DATAPOINTS_FILE`.
 
 Ops auth notes:
 - In production, keep `OPS_AUTH=enabled` and send `x-ops-secret: <OPS_SECRET>` on `/ops/*`.
 - You can set `OPS_SECRET` outside the repo via `gcloud run services update ... --set-env-vars OPS_SECRET=...` or by wiring Secret Manager to Cloud Run.
 - For local dev, set `OPS_AUTH=disabled` to bypass ops auth.
 
-### Phase 8. Service account (optional)
+### Phase 9. Service account (optional)
 
 If you prefer a non-human identity (for CI pipelines or shared deploy scripts), create a service account and grant it temporary builder roles:
 
@@ -316,10 +326,10 @@ For automation that needs Application Default Credentials:
   gcloud auth application-default set-quota-project "$PROJECT_ID"
   ```
 
-### Phase 9. Provision Vertex AI Vector Search (optional, matching_engine only)
+### Phase 10. Provision Vertex AI Vector Search (optional, matching_engine only)
 
 Set up a Matching Engine index only if you plan to run with `VECTOR_BACKEND=matching_engine`.
-If you already completed Phase 7, reuse the same `DATAPOINTS_FILE` (from the versioned dataset folder) and skip any legacy chunk packaging.
+If you already completed Phase 8, reuse the same `DATAPOINTS_FILE` (from the versioned dataset folder) and skip any legacy chunk packaging.
 
 1. Create the index (Tree-AH, dot product, dimensions derived from `DATAPOINTS_DIMENSIONS`: 3,072 for `gemini-embedding-001`, 768 for the `text-embedding-00x` family):
    ```bash
