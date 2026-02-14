@@ -21,6 +21,12 @@ NO_SIGNAL_ANSWER = (
     "- Or tell me to expand the data source.\n"
     "Wrap: Ask me something that appears in my experience or projects."
 )
+GREETING_ONLY_ANSWER = (
+    "Hi, happy to chat.\n"
+    "- Ask me about my experience, projects, or technical skills.\n"
+    "- I will answer using only my indexed context.\n"
+    "Wrap: Try a specific question such as \"Do you know Kubernetes?\"."
+)
 UNABLE_TO_GENERATE_ANSWER = "TLDR: Unable to generate an answer.\nWrap: Try again shortly."
 
 ELLIPSIS_SUFFIX = "..."
@@ -48,9 +54,41 @@ SIMPLE_QUESTION_PREFIXES = (
     "list",
     "summarize",
 )
+GREETING_SINGLE_TOKENS = {
+    "hi",
+    "hello",
+    "hey",
+    "yo",
+    "hiya",
+    "howdy",
+    "sup",
+    "wassup",
+    "wassap",
+}
+GREETING_PHRASE_TOKENS = {
+    ("good", "morning"),
+    ("good", "afternoon"),
+    ("good", "evening"),
+    ("what", "s", "up"),
+    ("how", "are", "you"),
+    ("how", "you", "doing"),
+    ("how", "you", "doin"),
+    ("how", "do", "you", "feel"),
+}
+GREETING_FILLER_TOKENS = {
+    "there",
+    "team",
+    "all",
+    "everyone",
+    "folks",
+    "friend",
+    "friends",
+    "mate",
+}
 llm_gate_reason_SCORE_BELOW_THRESHOLD = "score_below"
 llm_gate_reason_BM25_BELOW_THRESHOLD = "bm25_below"
 llm_gate_reason_NO_CANDIDATES = "no_candidates"
+llm_gate_reason_GREETING_BYPASS = "greeting_bypass"
 # Gating status label, not sensitive data.
 llm_gate_reason_PASS = "pass"  # noqa: S105  # nosec B105
 MIN_WEIGHTED_CONSENSUS_COUNT = DEFAULT_WEIGHTED_CONSENSUS_COUNT
@@ -198,6 +236,39 @@ def run_rag_chat(
     normalized_question = retrieval.normalize_question_for_first_person(
         (question or "").strip()
     )
+    if _is_greeting_only_question(normalized_question):
+        greeting_usage = Usage(
+            input_tokens=max(1, len(normalized_question) // APPROX_CHARS_PER_TOKEN),
+            output_tokens=max(1, len(GREETING_ONLY_ANSWER) // APPROX_CHARS_PER_TOKEN),
+        )
+        return ChatResult(
+            response=ChatResponse(
+                answer=GREETING_ONLY_ANSWER,
+                citations=[],
+                usage=greeting_usage,
+                input_token_limit=max_input_tokens,
+            ),
+            selected_chunks=[],
+            normalized_question=normalized_question,
+            usage_detail=_empty_usage_detail(),
+            thinking_budget_tokens_effective=_resolve_thinking_budget_tokens(
+                normalized_question,
+                selected_chunks_count=0,
+                enable_thinking_gating=enable_thinking_gating,
+                default_thinking_budget_tokens=default_thinking_budget_tokens,
+            ),
+            llm_gate_enabled=enable_llm_call_gating,
+            would_call_llm_if_gated=False,
+            llm_gate_reason=llm_gate_reason_GREETING_BYPASS,
+            top1_weighted_score=None,
+            top1_bm25_score=None,
+            top1_vector_score=None,
+            best_weighted_score=None,
+            best_bm25_score=None,
+            weighted_consensus_count =0,
+            weighted_score_threshold=float(weighted_score_threshold),
+            bm25_score_threshold=float(bm25_score_threshold),
+        )
 
     query_embedding = retrieval.embed_query(normalized_question)
     candidate_chunks = retrieval.search_vector_store(query_embedding, top_k=top_k)
@@ -529,6 +600,71 @@ def _is_simple_question(question: str) -> bool:
         return True
 
     return not any(keyword in lowered for keyword in SIMPLE_QUESTION_KEYWORDS)
+
+
+def _is_greeting_only_question(question: str) -> bool:
+    """Determine whether the input is greeting-only with no substantive ask.
+
+    Inputs:
+    - question: Raw user input text.
+
+    Output:
+    - True when the text contains one or more greeting tokens and any remaining
+      tokens are greeting fillers only.
+
+    Edge cases:
+    - Empty or punctuation-only inputs return False.
+    - Multiword greetings such as "good morning" are recognized.
+    - Inputs that append a real request after a greeting return False.
+
+    Concurrency/atomicity:
+    - Pure text classification with no shared state mutation.
+    """
+    normalized_question = _normalize_answer_text_for_dedupe(question)
+    if not normalized_question:
+        return False
+
+    tokens = normalized_question.split()
+    if not tokens:
+        return False
+
+    greeting_phrases_by_length: dict[int, set[tuple[str, ...]]] = {}
+    for phrase_tokens in GREETING_PHRASE_TOKENS:
+        phrase_length = len(phrase_tokens)
+        if phrase_length not in greeting_phrases_by_length:
+            greeting_phrases_by_length[phrase_length] = set()
+        greeting_phrases_by_length[phrase_length].add(phrase_tokens)
+    supported_phrase_lengths = sorted(greeting_phrases_by_length.keys(), reverse=True)
+
+    consumed_greeting_tokens = 0
+    token_index = 0
+    while token_index < len(tokens):
+        matched_phrase_length = 0
+        for phrase_length in supported_phrase_lengths:
+            phrase_end_index = token_index + phrase_length
+            if phrase_end_index > len(tokens):
+                continue
+            candidate_phrase = tuple(tokens[token_index:phrase_end_index])
+            if candidate_phrase in greeting_phrases_by_length[phrase_length]:
+                matched_phrase_length = phrase_length
+                break
+        if matched_phrase_length > 0:
+            consumed_greeting_tokens += matched_phrase_length
+            token_index += matched_phrase_length
+            continue
+        if tokens[token_index] in GREETING_SINGLE_TOKENS:
+            consumed_greeting_tokens += 1
+            token_index += 1
+            continue
+        break
+
+    if consumed_greeting_tokens == 0:
+        return False
+
+    remaining_tokens = tokens[token_index:]
+    if not remaining_tokens:
+        return True
+    return all(token in GREETING_FILLER_TOKENS for token in remaining_tokens)
 
 
 def _resolve_thinking_budget_tokens(
