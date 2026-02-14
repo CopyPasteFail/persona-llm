@@ -23,8 +23,7 @@ NO_SIGNAL_ANSWER = (
 GREETING_ONLY_ANSWER = (
     "Hi, happy to chat.\n"
     "- Ask me about my experience, projects, or technical skills.\n"
-    "- I will answer using only my indexed context.\n"
-    "Wrap: Try a specific question such as \"Do you know Kubernetes?\"."
+    "- I will answer using only my indexed context."
 )
 UNABLE_TO_GENERATE_ANSWER = "TLDR: Unable to generate an answer.\nWrap: Try again shortly."
 ENGLISH_INPUT_ONLY_ANSWER = (
