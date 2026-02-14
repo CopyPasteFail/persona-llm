@@ -49,6 +49,11 @@ os.environ.setdefault("MAX_INPUT_TOKENS", MAX_INPUT_TOKENS_DEFAULT)
 os.environ.setdefault("MAX_OUTPUT_TOKENS", MAX_OUTPUT_TOKENS_DEFAULT)
 os.environ.setdefault("REQ_TIMEOUT_MS", REQUEST_TIMEOUT_MS_DEFAULT)
 
+# Keep core tests deterministic and independent of developer shell env.
+# Some test suites assert citations exist in the deterministic mock flow; that
+# expectation assumes LLM-call gating is disabled.
+os.environ["ENABLE_LLM_CALL_GATING"] = "0"
+
 from api import keys
 
 

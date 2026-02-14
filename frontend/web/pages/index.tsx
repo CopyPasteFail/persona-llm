@@ -4,6 +4,7 @@ import {
   ApiError,
   clearStoredSessionToken,
   getSessionToken,
+  getRuntimeStatus,
   isCookieMode,
   keyLogin,
   logout,
@@ -22,6 +23,8 @@ const CONNECTIVITY_BANNER_MESSAGE =
 const COOKIES_BLOCKED_MESSAGE =
   "Your browser blocked the sign-in cookie. Enable cookies for this site and sign in again.";
 const SESSION_EXPIRED_MESSAGE = "Session expired. Enter a new access key.";
+const SCHEMA_HARD_FAIL_FALLBACK_MESSAGE =
+  "Unsupported chunk schema. Rebuild or republish the dataset with a supported chunk schema version.";
 
 export default function IndexPage() {
   const [ready, setReady] = useState(true);
@@ -36,6 +39,10 @@ export default function IndexPage() {
   const [cookieSessionActive, setCookieSessionActive] = useState(false);
   const [sessionModelName, setSessionModelName] = useState<string | null>(null);
   const [sessionInputTokenLimit, setSessionInputTokenLimit] = useState<number | null>(null);
+  const [loadedDatasetVersion, setLoadedDatasetVersion] = useState<string | null>(null);
+  const [supportedChunkSchemaVersion, setSupportedChunkSchemaVersion] = useState<number | null>(null);
+  const [loadedChunkSchemaVersion, setLoadedChunkSchemaVersion] = useState<number | null>(null);
+  const [startupStatusMessage, setStartupStatusMessage] = useState<string | null>(null);
   const [messages, setMessages] = useState<
     Array<{ role: "user" | "assistant"; content: string; usage?: Usage }>
   >([]);
@@ -47,9 +54,10 @@ export default function IndexPage() {
   const shouldShowWarmupBanner =
     !error && !ready && !loading && !authLoading && !hasSession && messages.length === 0;
   const shouldShowConnectivityBanner =
-    !error && !ready && !loading && !authLoading && hasSession;
+    !error && !startupStatusMessage && !ready && !loading && !authLoading && hasSession;
   const bannerMessage =
     error ??
+    startupStatusMessage ??
     (shouldShowWarmupBanner
       ? WARMUP_BANNER_MESSAGE
       : shouldShowConnectivityBanner
@@ -75,13 +83,29 @@ export default function IndexPage() {
     let stop = false;
     async function probe() {
       try {
-        const ctl = new AbortController();
-        const t = setTimeout(() => ctl.abort(), 800);
-        const r = await fetch(`${API}/health`, { signal: ctl.signal });
-        clearTimeout(t);
-        if (!stop) setReady(r.ok);
+        const runtimeStatus = await getRuntimeStatus(800);
+        if (stop) {
+          return;
+        }
+        setReady(runtimeStatus.ready);
+        setLoadedDatasetVersion(runtimeStatus.loaded_dataset_version);
+        setLoadedChunkSchemaVersion(runtimeStatus.loaded_chunk_schema_version);
+        setSupportedChunkSchemaVersion(runtimeStatus.supported_chunk_schema_version);
+        if (runtimeStatus.startup_error_code === "chunk_schema_unsupported") {
+          const supportedVersionLabel = runtimeStatus.supported_chunk_schema_version;
+          const supportedVersionMessage =
+            typeof supportedVersionLabel === "number"
+              ? ` Supported chunk schema version: v${supportedVersionLabel}.`
+              : "";
+          const startupMessage = runtimeStatus.startup_error_message || SCHEMA_HARD_FAIL_FALLBACK_MESSAGE;
+          setStartupStatusMessage(`${startupMessage}${supportedVersionMessage}`);
+          return;
+        }
+        setStartupStatusMessage(null);
       } catch {
-        if (!stop) setReady(false);
+        if (!stop) {
+          setReady(false);
+        }
       }
     }
     probe();
@@ -203,6 +227,22 @@ export default function IndexPage() {
           {isLocal && (
             <span className="rounded-full border border-zinc-700 px-2 py-1 text-[11px] text-zinc-400 leading-none">
               Local backend
+            </span>
+          )}
+          <span className="rounded-full border border-zinc-700 px-2 py-1 text-[11px] text-zinc-400 leading-none">
+            Dataset: {loadedDatasetVersion ?? "—"}
+          </span>
+          <span className="rounded-full border border-zinc-700 px-2 py-1 text-[11px] text-zinc-400 leading-none">
+            Chunk schema: v
+            {typeof loadedChunkSchemaVersion === "number"
+              ? loadedChunkSchemaVersion
+              : typeof supportedChunkSchemaVersion === "number"
+                ? supportedChunkSchemaVersion
+                : "—"}
+          </span>
+          {typeof supportedChunkSchemaVersion === "number" && (
+            <span className="rounded-full border border-zinc-700 px-2 py-1 text-[11px] text-zinc-400 leading-none">
+              Chunk schema support: v{supportedChunkSchemaVersion}
             </span>
           )}
           {hasSession && (

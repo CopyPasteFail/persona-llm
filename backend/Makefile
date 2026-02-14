@@ -146,7 +146,7 @@ dataset-upload:
 	@echo "GCS browser: https://console.cloud.google.com/storage/browser/$(BUCKET_NAME)"
 
 dataset-pointer-update:
-	printf '{ "version": "%s" }\n' "$(DATASET_VERSION)" | gcloud storage cp - "gs://$(BUCKET_NAME)/$(DATASET_FOLDER)/current.json"
+	printf '{ "dataset_version": "%s" }\n' "$(DATASET_VERSION)" | gcloud storage cp - "gs://$(BUCKET_NAME)/$(DATASET_FOLDER)/current.json"
 
 test-build_datapoints: $(VENV)/bin/activate
 	$(TEST_ENV) $(PY) -m pytest -q tests/test_build_datapoints.py

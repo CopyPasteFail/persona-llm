@@ -7,6 +7,7 @@ import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+from typing import Literal, TypedDict, cast
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -23,7 +24,7 @@ from .security import (
 )
 from .settings import settings
 from .auth import router as auth_router
-from . import retrieval
+from . import dataset_cache, retrieval
 from . import llm_backends, ops_routes, rag_chat_orchestrator, runtime_wiring
 from .llm import GeminiEmptyResponseError
 
@@ -58,9 +59,33 @@ EXPOSED_RESPONSE_HEADERS = [
     CHAT_REFRESHED_EXPIRES_AT_HEADER,
 ]
 MIN_COOKIE_MAX_AGE_SECONDS = 1
+CookieSameSite = Literal["lax", "strict", "none"]
+
+
+class ReadyErrorDetail(TypedDict):
+    """Structured error payload for /ready 503 responses."""
+
+    code: str
+    message: str
+    loaded_dataset_version: str | None
+    supported_chunk_schema_version: int
+    loaded_chunk_schema_version: int | None
+
+
+class ReadyResponse(TypedDict):
+    """Success payload contract for /ready responses."""
+
+    ready: Literal[True]
+    loaded_dataset_version: str | None
+    supported_chunk_schema_version: int
+    loaded_chunk_schema_version: int | None
 
 is_ready = False
 is_init_done = False
+startup_error_code: str | None = None
+startup_error_message: str | None = None
+loaded_dataset_version: str | None = None
+loaded_chunk_schema_version: int | None = None
 logger = logging.getLogger(__name__)
 _log_level_name = os.getenv("APP_LOG_LEVEL", "INFO").strip().upper()
 _log_level = getattr(logging, _log_level_name, logging.INFO)
@@ -128,7 +153,7 @@ def _apply_refreshed_session_if_needed(http_response: Response, session: Session
             value=refreshed_token,
             httponly=True,
             secure=settings.session_cookie_secure,
-            samesite=settings.session_cookie_samesite,
+            samesite=cast(CookieSameSite, settings.session_cookie_samesite),
             path=settings.session_cookie_path,
             max_age=max_age_seconds,
             expires=refreshed_expires_at,
@@ -152,18 +177,32 @@ async def lifespan(_app_instance: FastAPI) -> AsyncIterator[None]:
     Edge cases:
         Startup failures leave the API unready; errors are logged.
     """
-    global is_ready, is_init_done
+    global is_ready, is_init_done, startup_error_code, startup_error_message, loaded_dataset_version, loaded_chunk_schema_version
+    startup_error_code = None
+    startup_error_message = None
+    loaded_dataset_version = None
+    loaded_chunk_schema_version = None
     try:
         cache = runtime_wiring.configure_integrated_retrieval_runtime(
             retrieval_module=retrieval,
             project_id=settings.PROJECT_ID,
             region=settings.REGION,
         )
+        loaded_dataset_version = cache.dataset_version
+        loaded_chunk_schema_version = cache.chunk_schema_version
         is_ready = bool(cache.chunks_by_id)
         if not is_ready:
+            startup_error_code = "empty_chunk_store"
+            startup_error_message = "Chunk store loaded but empty."
             logger.warning("Chunk store loaded but empty; API remains unready.")
-    except Exception:
+    except Exception as exc:
         is_ready = False
+        if isinstance(exc, dataset_cache.ChunkSchemaVersionError):
+            startup_error_code = "chunk_schema_unsupported"
+            startup_error_message = str(exc)
+        else:
+            startup_error_code = "startup_failed"
+            startup_error_message = "Failed to initialize retrieval runtime."
         logger.exception("Failed to warm chunk store during startup.")
     finally:
         is_init_done = True
@@ -199,7 +238,7 @@ def health():
 
 
 @app.get("/ready")
-def ready():
+def ready() -> ReadyResponse:
     """Return readiness state for dependent services.
 
     Inputs:
@@ -212,11 +251,36 @@ def ready():
         Returns HTTP 503 until startup initialization completes.
     """
     if not is_init_done:
+        startup_in_progress_detail: ReadyErrorDetail = {
+            "code": "startup_in_progress",
+            "message": NOT_READY_DETAIL,
+            "loaded_dataset_version": loaded_dataset_version,
+            "supported_chunk_schema_version": dataset_cache.get_supported_chunk_schema_version(),
+            "loaded_chunk_schema_version": loaded_chunk_schema_version,
+        }
         raise HTTPException(
             status_code=SERVICE_UNAVAILABLE_STATUS,
-            detail=NOT_READY_DETAIL,
+            detail=startup_in_progress_detail,
         )
-    return {"ready": True}
+    if not is_ready:
+        not_ready_detail: ReadyErrorDetail = {
+            "code": startup_error_code or "not_ready",
+            "message": startup_error_message or NOT_READY_DETAIL,
+            "loaded_dataset_version": loaded_dataset_version,
+            "supported_chunk_schema_version": dataset_cache.get_supported_chunk_schema_version(),
+            "loaded_chunk_schema_version": loaded_chunk_schema_version,
+        }
+        raise HTTPException(
+            status_code=SERVICE_UNAVAILABLE_STATUS,
+            detail=not_ready_detail,
+        )
+    ready_response: ReadyResponse = {
+        "ready": True,
+        "loaded_dataset_version": loaded_dataset_version,
+        "supported_chunk_schema_version": dataset_cache.get_supported_chunk_schema_version(),
+        "loaded_chunk_schema_version": loaded_chunk_schema_version,
+    }
+    return ready_response
 
 
 @app.post("/chat")

@@ -136,7 +136,7 @@ curl -s -X POST http://localhost:8080/chat \
 ## Dataset switching (ops)
 Atomic update order:
 1) Upload `datasets/vNN/datapoints.jsonl`, `datasets/vNN/chunks.jsonl.gz`, `datasets/vNN/manifest.json`
-2) Update `datasets/current.json` to `{ "version": "vNN" }`
+2) Update `datasets/current.json` to `{ "dataset_version": "vNN" }`
 3) Call `POST /ops/vector/reload` with `x-ops-secret: $OPS_SECRET` (or restart the service)
 
 For `local-integrated` with `DATASET_URI=file:/...`, update the matching local pointer file (for example `$PRIVATE_DIR/persona/data/datasets/current.json`) to the same version.

@@ -57,6 +57,7 @@ from jobs.pack_and_push import (
     maybe_set_service_account,
     resolve_existing_path,
 )
+from api.dataset_schema import SUPPORTED_CHUNK_SCHEMA_VERSION
 
 _DEFAULT_EMBEDDING_MODEL = "text-embedding-004"
 _MODEL_DEFAULT_DIMENSIONS: dict[str, int] = {
@@ -386,14 +387,15 @@ def _write_datapoints(
 def _write_dataset_manifest(
     *,
     output_dir: Path,
-    version: str,
+    dataset_version: str,
     embedding_model: str,
     dimensions: int,
     num_datapoints: int,
 ) -> Path:
     """Write the dataset manifest required by the runtime loader."""
     manifest: dict[str, object] = {
-        "version": version,
+        "dataset_version": dataset_version,
+        "chunk_schema_version": SUPPORTED_CHUNK_SCHEMA_VERSION,
         "created_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         "datapoints_file": _DATASET_DATAPOINTS_FILENAME,
         "chunks_file": _DATASET_CHUNKS_FILENAME,
@@ -592,7 +594,7 @@ def main() -> None:
         )
     manifest_path = _write_dataset_manifest(
         output_dir=dataset_dir,
-        version=dataset_version,
+        dataset_version=dataset_version,
         embedding_model=model_name,
         dimensions=observed_dimension_count,
         num_datapoints=total,

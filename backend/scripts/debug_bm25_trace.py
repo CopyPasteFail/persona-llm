@@ -319,7 +319,7 @@ def _initialize_integrated_runtime(args: argparse.Namespace) -> RuntimeContext:
         bm25_index=bm25_index,
         chunks_by_id=dict(cache.chunks_by_id),
         doc_index_by_id=_build_doc_index_map(bm25_index),
-        corpus_name=f"integrated:{cache.version}",
+        corpus_name=f"integrated:{cache.dataset_version}",
     )
 
 
