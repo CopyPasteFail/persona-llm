@@ -7,6 +7,9 @@ type Usage = NonNullable<ChatResponse["usage"]>;
 const API = process.env.NEXT_PUBLIC_API_URL as string | undefined;
 const NO_ANSWER_MESSAGE =
   "I couldn\u2019t answer that this time. Try rephrasing or narrowing the question.";
+const WARMUP_BANNER_MESSAGE = "Warming up the API... usually a few seconds.";
+const CONNECTIVITY_BANNER_MESSAGE =
+  "Temporary connection issue while checking API health. Retrying...";
 
 export default function IndexPage() {
   const [ready, setReady] = useState(true);
@@ -29,7 +32,17 @@ export default function IndexPage() {
   const isLocal = useMemo(() => API?.startsWith("http://localhost"), []);
   const streamRef = useRef<HTMLDivElement>(null);
   const hasSession = isCookieSession ? cookieSessionActive : Boolean(sessionToken);
-  const bannerMessage = error ?? (!ready ? "Warming up the API… usually a few seconds." : null);
+  const shouldShowWarmupBanner =
+    !error && !ready && !loading && !authLoading && !hasSession && messages.length === 0;
+  const shouldShowConnectivityBanner =
+    !error && !ready && !loading && !authLoading && hasSession;
+  const bannerMessage =
+    error ??
+    (shouldShowWarmupBanner
+      ? WARMUP_BANNER_MESSAGE
+      : shouldShowConnectivityBanner
+        ? CONNECTIVITY_BANNER_MESSAGE
+        : null);
 
   useEffect(() => {
     if (isCookieSession) return;
@@ -287,6 +300,18 @@ export default function IndexPage() {
                 <textarea
                   value={question}
                   onChange={(e) => setQuestion(e.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key !== "Enter" || event.shiftKey) {
+                      return;
+                    }
+                    if (event.nativeEvent.isComposing) {
+                      return;
+                    }
+                    event.preventDefault();
+                    if (!loading && ready && question.trim()) {
+                      ask();
+                    }
+                  }}
                   placeholder="Ask me anything…"
                   className="flex-1 rounded-xl bg-zinc-950/60 border border-zinc-800 px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-zinc-600"
                   rows={3}
