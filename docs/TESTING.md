@@ -284,6 +284,13 @@ make be-test-voice
   make be-test-llm-prompt
   ```
 
+- `backend/tests/test_answer_deduplication.py`  
+  Verifies deterministic answer post-processing in the RAG orchestrator. It checks bullet deduplication against related-experience text and canonical transition-line insertion before bullet lists.
+  Command:
+  ```bash
+  make be-test-answer-deduplication
+  ```
+
 - `backend/tests/test_keys_store.py`  
   Covers access-key hashing, fingerprinting, and lookup behavior. It asserts correct handling of expired/revoked keys, missing keys, and duplicate fingerprint detection.
   Command:
@@ -326,6 +333,13 @@ make be-test-voice
   make be-test-retrieval-vector
   ```
 
+- `backend/tests/test_retrieval_bm25.py`  
+  Exercises BM25 token filtering and chunk field indexing behavior. It verifies stopword/template-token filtering, exclusion of toxic metadata fields, and protection against dentistry false positives.
+  Command:
+  ```bash
+  make be-test-retrieval-bm25
+  ```
+
 - `backend/tests/test_thinking_gating.py`  
   Verifies deterministic thinking-budget gating, including the heuristic for simple questions and the per-request override plumbing into the LLM backend.
   Command:
@@ -338,6 +352,13 @@ make be-test-voice
   Command:
   ```bash
   make be-test-llm-gating
+  ```
+
+- `backend/tests/test_greeting_intent.py`  
+  Covers greeting-only intent detection and short-circuit behavior. It verifies greeting/non-greeting classification and confirms greeting-only or non-Latin inputs bypass retrieval and LLM calls.
+  Command:
+  ```bash
+  make be-test-greeting-intent
   ```
 
 ### Integration tests (live services)

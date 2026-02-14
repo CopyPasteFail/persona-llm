@@ -13,7 +13,7 @@ DATASET_VERSION ?= $(notdir $(patsubst %/,%,$(DATASET_DIR)))
 DATASET_FOLDER := datasets
 DATASET_GCS_PREFIX ?= $(DATASET_FOLDER)/$(DATASET_VERSION)
 
-.PHONY: help install security-install security security-static security-bandit security-deps security-semgrep run run-debug mock eval-gating test-smoke test-core test-voice test-int test-cors-deploy test-vector-live test-build_datapoints test-auth-key-login test-create-access-key-cli test-keys-store test-llm-prompt test-thinking-gating test-llm-gating test-main-chat-logging test-security-session test-load-backend-env test-pack-and-push-processing check envs clean build_datapoints create-access-key dataset-version-check dataset-chunks dataset-datapoints dataset-upload dataset-pointer-update
+.PHONY: help install security-install security security-static security-bandit security-deps security-semgrep run run-debug mock eval-gating test-smoke test-core test-voice test-int test-cors-deploy test-vector-live test-build_datapoints test-auth-key-login test-create-access-key-cli test-keys-store test-llm-prompt test-thinking-gating test-llm-gating test-main-chat-logging test-security-session test-load-backend-env test-pack-and-push-processing test-answer-deduplication test-retrieval-bm25 test-greeting-intent check envs clean build_datapoints create-access-key dataset-version-check dataset-chunks dataset-datapoints dataset-upload dataset-pointer-update
 
 help:
 	@echo "Targets:"
@@ -45,6 +45,9 @@ help:
 	@echo "  test-security-session - run session security tests"
 	@echo "  test-load-backend-env - run load_backend_env tests"
 	@echo "  test-pack-and-push-processing - run pack_and_push processing tests"
+	@echo "  test-answer-deduplication - run answer deduplication/formatting tests"
+	@echo "  test-retrieval-bm25 - run BM25 token filtering and indexing tests"
+	@echo "  test-greeting-intent - run greeting-only intent and bypass tests"
 	@echo "  check        - quick import check"
 	@echo "  build_datapoints - build embedding datapoints JSONL for upsert"
 	@echo "  dataset-chunks - build chunks.jsonl.gz in DATAPOINTS_FILE directory"
@@ -151,7 +154,7 @@ test-build_datapoints: $(VENV)/bin/activate
 test-smoke: $(VENV)/bin/activate
 	LLM_BACKEND=deterministic $(PY) -m pytest -q $(PYTEST_ARGS) tests/test_smoke.py
 
-test-core: test-smoke test-voice test-auth-key-login test-security-session test-keys-store test-llm-prompt test-create-access-key-cli test-build_datapoints test-retrieval-vector test-thinking-gating test-llm-gating test-main-chat-logging test-load-backend-env test-pack-and-push-processing
+test-core: test-smoke test-voice test-auth-key-login test-security-session test-keys-store test-llm-prompt test-create-access-key-cli test-build_datapoints test-retrieval-vector test-thinking-gating test-llm-gating test-main-chat-logging test-load-backend-env test-pack-and-push-processing test-answer-deduplication test-retrieval-bm25 test-greeting-intent
 
 test-voice: $(VENV)/bin/activate
 	$(TEST_ENV) $(PY) -m pytest -q tests/test_persona_voice.py tests/test_normalize_question_punct.py
@@ -202,6 +205,15 @@ test-load-backend-env: $(VENV)/bin/activate
 
 test-pack-and-push-processing: $(VENV)/bin/activate
 	$(TEST_ENV) $(PY) -m pytest -q tests/test_pack_and_push_processing.py
+
+test-answer-deduplication: $(VENV)/bin/activate
+	$(TEST_ENV) $(PY) -m pytest -q tests/test_answer_deduplication.py
+
+test-retrieval-bm25: $(VENV)/bin/activate
+	$(TEST_ENV) $(PY) -m pytest -q tests/test_retrieval_bm25.py
+
+test-greeting-intent: $(VENV)/bin/activate
+	$(TEST_ENV) $(PY) -m pytest -q tests/test_greeting_intent.py
 
 check: $(VENV)/bin/activate
 	$(PY) -c "import api.main, api.mock, api.retrieval, api.llm, api.settings"
