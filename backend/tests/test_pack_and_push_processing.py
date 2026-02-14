@@ -24,7 +24,7 @@ from jobs import pack_and_push
 MAX_CHARS_LIMIT = 32
 EXPECTED_ID_LENGTH = 12
 EXPECTED_FRAGMENT_COUNT = 2
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 PROFILE_INFRA = "infra"
 TOPIC_LABEL = "infra"
 TAG_LABEL = "profile:infra"

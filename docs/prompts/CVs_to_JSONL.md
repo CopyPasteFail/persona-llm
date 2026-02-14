@@ -9,6 +9,15 @@ You are converting ONE OR MORE ATTACHED CV FILES into JSONL lines that conform t
 * Infer the professional domain `profile` from the filename and CV content. Examples: "infra", "product", "marketing", "sales", "finance", "legal", "dentistry".
 * Use a single `profile` value per CV. If the CV spans multiple domains, pick the primary profile and reflect the rest via `topics`.
 
+## Required attachment gate
+
+You must verify that an attachment named exactly `chunk.schema.json` is present and readable.
+
+If `chunk.schema.json` is not attached, or cannot be opened, STOP and output exactly this single line (and nothing else):
+ERROR: Missing required attachment chunk.schema.json
+
+If it is attached, use it as the source of truth for required fields, types, and allowed enum values. If anything in this prompt conflicts with the JSON schema, the JSON schema wins.
+
 ## Output
 
 * Output a plain JSONL file named `chunks.jsonl` (one JSON object per line).
@@ -17,7 +26,7 @@ You are converting ONE OR MORE ATTACHED CV FILES into JSONL lines that conform t
 
 ## Schema
 
-* `schema_version`: 2
+* `schema_version`: 3
 * `doc_id`: stable ID per CV, derived from profile and year when available, e.g. `"cv-infra-2025"`. Human-readable, not hashed.
 * `chunk_id`: `<profile>-NNN` (sequential per doc, starting at 001).
 * `position`: integer ≥1.
@@ -55,6 +64,21 @@ You are converting ONE OR MORE ATTACHED CV FILES into JSONL lines that conform t
 * **Never overlap across titles, employers, or across sections.**
 * Convert to first person. Remove PII. Do not invent dates.
 
+## Experience Coverage Rules
+
+- Every bullet and every sentence under each dated Experience stint must appear in at least one chunk in the Experience section for that same stint.
+- Do not move Experience bullets into Summary or Skills instead of representing them in Experience.
+- Before outputting JSONL, internally verify that no Experience bullet was omitted. If any bullet is missing, create an additional Experience chunk for it.
+- Do not print the verification.
+
+### Coverage Audit
+
+Before writing the final JSONL, do an internal audit:
+- For each CV, for each Experience stint, confirm you emitted at least one chunk representing every bullet/sentence in that stint.
+- If anything is missing, add a chunk for it.
+- Only then output chunks.jsonl.
+Do not print the audit.
+
 ## Tags
 
 * Always include `profile:<profile>`.
@@ -72,7 +96,7 @@ You are converting ONE OR MORE ATTACHED CV FILES into JSONL lines that conform t
 
 ```json
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "doc_id": "cv-infra-2025",
   "chunk_id": "infra-001",
   "position": 1,
@@ -103,7 +127,7 @@ You are converting ONE OR MORE ATTACHED CV FILES into JSONL lines that conform t
 
 ```json
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "doc_id": "cv-infra-2025",
   "chunk_id": "infra-010",
   "position": 10,
@@ -134,7 +158,7 @@ You are converting ONE OR MORE ATTACHED CV FILES into JSONL lines that conform t
 
 ```json
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "doc_id": "cv-infra-2025",
   "chunk_id": "infra-020",
   "position": 20,
@@ -166,8 +190,8 @@ You are converting ONE OR MORE ATTACHED CV FILES into JSONL lines that conform t
 The output `chunks.jsonl` file contains one JSON object per line. Here is an example with two lines:
 
 ```jsonl
-{"schema_version":2,"doc_id":"cv-infra-2025","chunk_id":"infra-001","position":1,"text":"DevOps/SRE engineer experienced in automating infrastructure, running Kubernetes in production, and improving observability.","profile":"infra","topics":["devops","sre","automation","kubernetes","observability"],"tags":["profile:infra","topic:devops","topic:sre","topic:automation","topic:kubernetes","topic:observability"],"section":"Summary","start_year":2025,"end_year":2025,"lang":"en","updated_at":"2025-09-02T20:00:00Z","source_uri":"gs://bucket/cv-infra-2025.docx","permissions":["public"],"extras":{"employer":"","tech":["Kubernetes","Prometheus","Terraform"]}}
-{"schema_version":2,"doc_id":"cv-infra-2025","chunk_id":"infra-002","position":2,"text":"Skills: Kubernetes, Terraform, Argo CD, Prometheus, Grafana, AWS, GCP.","profile":"infra","topics":["kubernetes","terraform","argocd","prometheus","grafana","aws","gcp"],"tags":["profile:infra","topic:kubernetes","topic:terraform","topic:argocd","topic:prometheus","topic:grafana","topic:aws","topic:gcp"],"section":"Skills","start_year":2025,"end_year":2025,"lang":"en","updated_at":"2025-09-02T20:00:00Z","source_uri":"gs://bucket/cv-infra-2025.docx","permissions":["public"],"extras":{"employer":"","tech":["Kubernetes","Terraform","Argo CD","Prometheus","Grafana","AWS","GCP"]}}
+{"schema_version":3,"doc_id":"cv-infra-2025","chunk_id":"infra-001","position":1,"text":"DevOps/SRE engineer experienced in automating infrastructure, running Kubernetes in production, and improving observability.","profile":"infra","topics":["devops","sre","automation","kubernetes","observability"],"tags":["profile:infra","topic:devops","topic:sre","topic:automation","topic:kubernetes","topic:observability"],"section":"Summary","start_year":2025,"end_year":2025,"lang":"en","updated_at":"2025-09-02T20:00:00Z","source_uri":"gs://bucket/cv-infra-2025.docx","permissions":["public"],"extras":{"employer":"","tech":["Kubernetes","Prometheus","Terraform"]}}
+{"schema_version":3,"doc_id":"cv-infra-2025","chunk_id":"infra-002","position":2,"text":"Skills: Kubernetes, Terraform, Argo CD, Prometheus, Grafana, AWS, GCP.","profile":"infra","topics":["kubernetes","terraform","argocd","prometheus","grafana","aws","gcp"],"tags":["profile:infra","topic:kubernetes","topic:terraform","topic:argocd","topic:prometheus","topic:grafana","topic:aws","topic:gcp"],"section":"Skills","start_year":2025,"end_year":2025,"lang":"en","updated_at":"2025-09-02T20:00:00Z","source_uri":"gs://bucket/cv-infra-2025.docx","permissions":["public"],"extras":{"employer":"","tech":["Kubernetes","Terraform","Argo CD","Prometheus","Grafana","AWS","GCP"]}}
 ```
 
 Each line is a valid JSON object, and the file as a whole is line-delimited JSON (JSONL).

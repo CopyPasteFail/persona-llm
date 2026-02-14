@@ -124,7 +124,7 @@ eval-gating: $(VENV)/bin/activate
 	$(PY) scripts/eval_gating.py $(ARGS)
 
 pack_and_push: $(VENV)/bin/activate
-	$(PY) jobs/pack_and_push.py
+	$(PY) -m jobs.pack_and_push
 
 build_datapoints: $(VENV)/bin/activate
 	$(PY) jobs/build_datapoints.py
@@ -134,7 +134,7 @@ dataset-version-check:
 	@printf "%s" "$(DATASET_VERSION)" | grep -Eq '^v[0-9A-Za-z_-]+$$' || { echo "Invalid DATASET_VERSION '$(DATASET_VERSION)'; expected v followed by [0-9A-Za-z_-]."; exit 1; }
 
 dataset-chunks: dataset-version-check $(VENV)/bin/activate
-	$(PY) jobs/pack_and_push.py --output-dir "$(DATASET_DIR)" --skip-upload
+	$(PY) -m jobs.pack_and_push --output-dir "$(DATASET_DIR)" --skip-upload
 
 dataset-datapoints: dataset-version-check $(VENV)/bin/activate
 	$(PY) jobs/build_datapoints.py

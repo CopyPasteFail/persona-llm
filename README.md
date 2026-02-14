@@ -247,12 +247,18 @@ Place `chunks.jsonl` in your private overlay (default: `$PRIVATE_DIR/persona/dat
 The runtime loads `datasets/current.json` and expects a coupled dataset folder:
 `datasets/<version>/{datapoints.jsonl, chunks.jsonl.gz, manifest.json}`.
 
+Input source:
+- `$PRIVATE_DIR/persona/data/chunks.jsonl`
 
-Local build (example `v13`). Default input: `$PRIVATE_DIR/persona/data/chunks.jsonl`.
+Before running the dataset build commands, set the target dataset version in
+`private/secrets/backend.env`.
 
-Set these in private/secrets/backend.env
+Use a **new** version (for example, if current is `v04`, create `v05`).
 ```bash
-DATASET_VERSION=v13
+# target version to create now (must be new)
+DATASET_VERSION=v05
+
+# output path for generated datapoints in that version folder
 DATAPOINTS_FILE=$(PRIVATE_DIR)/persona/data/datasets/$(DATASET_VERSION)/datapoints.jsonl
 ```
 
@@ -271,10 +277,11 @@ make be-dataset-upload
 make be-dataset-pointer-update
 ```
 
-Atomic update order (locked):
-1) Upload `datasets/vNN/datapoints.jsonl`, `datasets/vNN/chunks.jsonl.gz`, `datasets/vNN/manifest.json`
-2) Update `datasets/current.json` to `{ "version": "vNN" }`
-3) Call `POST /ops/vector/reload` (or restart service)
+How it works:
+- `be-dataset-chunks` writes `chunks.jsonl.gz` into the folder derived from `DATAPOINTS_FILE`.
+- `be-dataset-datapoints` writes `datapoints.jsonl` + `manifest.json` to that same folder.
+- `be-dataset-upload` uploads that version folder to `datasets/<version>/` in GCS.
+- `be-dataset-pointer-update` updates the field `{ "version": "vNN" }` in `datasets/current.json` to the new version.
 
 For `local-integrated` with a local dataset root (`DATASET_URI=file:/...`), also update the local pointer file used by that root (for example `$PRIVATE_DIR/persona/data/datasets/current.json`) to the same version.
 
