@@ -13,7 +13,8 @@ from .security import create_session_token, enforce_key_login_rate_limits
 from .settings import settings
 
 MIN_COOKIE_MAX_AGE_SECONDS = 1
-TOKEN_TYPE_BEARER = "bearer"
+# OAuth token type label, not a credential.
+TOKEN_TYPE_BEARER = "bearer"  # noqa: S105  # nosec B105
 
 router = APIRouter()
 

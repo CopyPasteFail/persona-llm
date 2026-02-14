@@ -19,7 +19,7 @@ from jsonschema import Draft202012Validator
 
 DEFAULT_MAX_CHARS = 2200
 READ_CHUNK_SIZE_BYTES = 1024 * 1024
-SHA1_HEX_LENGTH = 12
+SHORT_HASH_HEX_LENGTH = 12
 OUTPUT_FILENAME_TEMPLATE = "chunks-{digest}.jsonl.gz"
 DATASET_CHUNKS_FILENAME = "chunks.jsonl.gz"
 
@@ -218,7 +218,7 @@ def split_sentences(text: str, max_chars: int = DEFAULT_MAX_CHARS) -> list[str]:
 
 
 def deterministic_id(text: str) -> str:
-    """Generate a stable SHA-1 hex fragment derived from `text`.
+    """Generate a stable SHA-256 hex fragment derived from `text`.
 
     Args:
         text: Input text to hash.
@@ -226,7 +226,7 @@ def deterministic_id(text: str) -> str:
     Returns:
         A deterministic hex fragment suitable for compact identifiers.
     """
-    return hashlib.sha1(text.encode("utf-8")).hexdigest()[:SHA1_HEX_LENGTH]
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:SHORT_HASH_HEX_LENGTH]
 
 
 def _load_chunks(input_path: Path, schema: Mapping[str, object]) -> Iterable[dict[str, object]]:
@@ -367,7 +367,7 @@ def _serialize_records(records: Iterable[dict[str, object]]) -> tuple[bytes, str
     content = "\n".join(json.dumps(record, ensure_ascii=False) for record in records).encode(
         "utf-8"
     )
-    digest = hashlib.sha1(content).hexdigest()[:SHA1_HEX_LENGTH]
+    digest = hashlib.sha256(content).hexdigest()[:SHORT_HASH_HEX_LENGTH]
     return content, OUTPUT_FILENAME_TEMPLATE.format(digest=digest)
 
 

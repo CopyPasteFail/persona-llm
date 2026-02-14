@@ -13,11 +13,17 @@ DATASET_VERSION ?= $(notdir $(patsubst %/,%,$(DATASET_DIR)))
 DATASET_FOLDER := datasets
 DATASET_GCS_PREFIX ?= $(DATASET_FOLDER)/$(DATASET_VERSION)
 
-.PHONY: help install run run-debug mock eval-gating test-smoke test-core test-voice test-int test-cors-deploy test-vector-live test-build_datapoints test-auth-key-login test-create-access-key-cli test-keys-store test-llm-prompt test-thinking-gating test-llm-gating test-main-chat-logging test-security-session test-load-backend-env test-pack-and-push-processing check envs clean build_datapoints create-access-key dataset-version-check dataset-chunks dataset-datapoints dataset-upload dataset-pointer-update
+.PHONY: help install security-install security security-static security-bandit security-deps security-semgrep run run-debug mock eval-gating test-smoke test-core test-voice test-int test-cors-deploy test-vector-live test-build_datapoints test-auth-key-login test-create-access-key-cli test-keys-store test-llm-prompt test-thinking-gating test-llm-gating test-main-chat-logging test-security-session test-load-backend-env test-pack-and-push-processing check envs clean build_datapoints create-access-key dataset-version-check dataset-chunks dataset-datapoints dataset-upload dataset-pointer-update
 
 help:
 	@echo "Targets:"
 	@echo "  install      - create venv and install deps"
+	@echo "  security-install - install pinned security tooling into venv"
+	@echo "  security     - run local backend security scans"
+	@echo "  security-static - run ruff security rules (S)"
+	@echo "  security-bandit - run bandit over backend source"
+	@echo "  security-deps - run pip-audit on backend requirements"
+	@echo "  security-semgrep - run semgrep security scan if semgrep exists"
 	@echo "  run          - start integrated API (api.main:app) on :8080 (requires envs)"
 	@echo "  mock         - start mock API on :8080"
 	@echo "  eval-gating   - run dataset-based gating eval (pass ARGS='...')"
@@ -58,6 +64,28 @@ $(VENV)/bin/activate: requirements.txt
 	touch $(VENV)/bin/activate
 
 install: $(VENV)/bin/activate
+
+security-install: $(VENV)/bin/activate
+	$(PIP) install -r requirements-security.txt
+
+security: security-static security-bandit security-deps
+
+security-static: security-install
+	$(PY) -m ruff check --select S api jobs scripts
+
+security-bandit: security-install
+	$(PY) -m bandit -q -r api jobs scripts -x tests
+
+security-deps: security-install
+	$(PY) -m pip_audit -r requirements.txt
+
+security-semgrep:
+	@if command -v semgrep >/dev/null 2>&1; then \
+		semgrep --config p/security-audit --error --exclude private --exclude private-template .; \
+	else \
+		echo "semgrep is not installed, skipping semgrep scan."; \
+		echo "Install semgrep with: pipx install semgrep"; \
+	fi
 
 run: $(VENV)/bin/activate
 	$(RUN_ENV) $(PY) -m uvicorn api.main:app --reload --port 8080

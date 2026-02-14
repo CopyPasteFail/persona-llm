@@ -50,7 +50,8 @@ SIMPLE_QUESTION_PREFIXES = (
 llm_gate_reason_SCORE_BELOW_THRESHOLD = "score_below"
 llm_gate_reason_BM25_BELOW_THRESHOLD = "bm25_below"
 llm_gate_reason_NO_CANDIDATES = "no_candidates"
-llm_gate_reason_PASS = "pass"
+# Gating status label, not sensitive data.
+llm_gate_reason_PASS = "pass"  # noqa: S105  # nosec B105
 MIN_WEIGHTED_CONSENSUS_COUNT = DEFAULT_WEIGHTED_CONSENSUS_COUNT
 
 

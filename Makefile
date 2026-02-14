@@ -1,4 +1,4 @@
-.PHONY: help install local-integrated local-mock build fe-% fe-install be-install be-% require-private require-gcp-env require-index-ids require-datapoints-file require-operation-id clean clean-all gcp-create-project gcp-set-project gcp-create-bucket gcp-create-artifact-registry gcp-sa-create gcp-sa-delete gcp-sa-bind-roles gcp-sa-roles gcp-sa-key gcp-index-create gcp-index-endpoint-create gcp-index-deploy gcp-index-upsert gcp-index-list gcp-index-op-describe gcp-index-op-done gcp-index-update-time gcp-cloud-run-deploy-mock gcp-cloud-run-delete gcp-cloud-run-delete-mock
+.PHONY: help install security security-backend security-frontend-deps security-semgrep security-secrets local-integrated local-mock build fe-% fe-install be-install be-% require-private require-gcp-env require-index-ids require-datapoints-file require-operation-id clean clean-all gcp-create-project gcp-set-project gcp-create-bucket gcp-create-artifact-registry gcp-sa-create gcp-sa-delete gcp-sa-bind-roles gcp-sa-roles gcp-sa-key gcp-index-create gcp-index-endpoint-create gcp-index-deploy gcp-index-upsert gcp-index-list gcp-index-op-describe gcp-index-op-done gcp-index-update-time gcp-cloud-run-deploy-mock gcp-cloud-run-delete gcp-cloud-run-delete-mock
 
 # -------------------------------
 # Private directory resolution
@@ -11,6 +11,11 @@ include make/env.mk
 help:
 	@echo "Targets:"
 	@echo "  install      - install frontend/backend dependencies"
+	@echo "  security     - run local security scans (backend + frontend + optional extras)"
+	@echo "  security-backend - run backend local security scans"
+	@echo "  security-frontend-deps - run npm audit for frontend dependencies"
+	@echo "  security-semgrep - run repository semgrep scan if semgrep exists"
+	@echo "  security-secrets - run gitleaks secret scan if gitleaks exists"
 	@echo "  local-integrated - run integrated backend + frontend locally"
 	@echo "  local-mock   - run mock backend + frontend locally"
 	@echo "  build        - build backend image and frontend assets"
@@ -150,6 +155,30 @@ be-install: require-private
 install:
 	$(MAKE) fe-install
 	$(MAKE) be-install
+
+security: security-backend security-frontend-deps security-semgrep security-secrets
+
+security-backend:
+	$(MAKE) -C backend security
+
+security-frontend-deps:
+	npm --prefix frontend audit --audit-level=high --omit=dev
+
+security-semgrep:
+	@if command -v semgrep >/dev/null 2>&1; then \
+		semgrep --config p/security-audit --error --exclude private --exclude private-template .; \
+	else \
+		echo "semgrep is not installed, skipping semgrep scan."; \
+		echo "Install semgrep with: pipx install semgrep"; \
+	fi
+
+security-secrets:
+	@if command -v gitleaks >/dev/null 2>&1; then \
+		gitleaks detect --no-banner --redact --source . --config .gitleaks.toml; \
+	else \
+		echo "gitleaks is not installed, skipping gitleaks scan."; \
+		echo "Install gitleaks from https://github.com/gitleaks/gitleaks/releases"; \
+	fi
 
 local-integrated: require-private
 	PERSONA_DIR="$${PERSONA_DIR:-$(PRIVATE_DIR)/persona}" OPS_AUTH=disabled $(MAKE) be-run & \

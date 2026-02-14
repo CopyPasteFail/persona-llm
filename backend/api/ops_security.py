@@ -6,7 +6,8 @@ from fastapi import Header, HTTPException
 
 from .settings import settings
 
-OPS_SECRET_HEADER = "x-ops-secret"
+# HTTP header name, not a secret value.
+OPS_SECRET_HEADER = "x-ops-secret"  # noqa: S105  # nosec B105
 OPS_AUTH_DISABLED = "disabled"
 OPS_AUTH_ERROR = "ops_auth_required"
 OPS_AUTH_MISCONFIGURED = "ops_secret_not_configured"

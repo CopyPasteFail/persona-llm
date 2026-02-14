@@ -34,11 +34,13 @@ PLACEHOLDER_ORIGIN = "https://placeholder.web.app"
 SERVICE_UNAVAILABLE_STATUS = 503
 ANSWER_PREVIEW_HEAD_CHARS = 200
 ANSWER_PREVIEW_TAIL_CHARS = 200
-EMPTY_ANSWER_CLASS_TOKEN_STARVATION = "token_starvation"
+# Telemetry classification label only.
+EMPTY_ANSWER_CLASS_TOKEN_STARVATION = "token_starvation"  # noqa: S105  # nosec B105
 EMPTY_ANSWER_CLASS_NO_RELEVANT_CONTEXT = "no_relevant_context"
 EMPTY_ANSWER_CLASS_UNKNOWN = "empty_text_unknown"
 TOKEN_STARVATION_MESSAGE = (
-    "I couldn\u2019t finish the reply. Try again, or ask for a shorter answer."
+    # User-facing fallback text, not a secret.
+    "I couldn\u2019t finish the reply. Try again, or ask for a shorter answer."  # noqa: S105  # nosec B105
 )
 
 is_ready = False

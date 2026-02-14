@@ -1,0 +1,11 @@
+title = "persona-llm gitleaks config"
+
+[allowlist]
+description = "Ignore private overlays, local caches, and vendored dependencies"
+paths = [
+  '''^private/''',
+  '''^private-template/''',
+  '''^frontend/node_modules/''',
+  '''^backend/\.venv/''',
+  '''^frontend/web/\.next/''',
+]

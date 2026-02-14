@@ -1,0 +1,4 @@
+# Security and static analysis tooling (local-only, pinned for reproducibility).
+pip-audit==2.10.0
+bandit==1.9.2
+ruff==0.15.0

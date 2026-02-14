@@ -24,11 +24,12 @@ JWT_TYPE_SESSION = "session"
 UNKNOWN_CLIENT_IP = "unknown"
 
 ERROR_FORBIDDEN = "forbidden"
-ERROR_INVALID_TOKEN = "invalid_token"
-ERROR_MISSING_TOKEN = "missing_token"
+# API error code constants.
+ERROR_INVALID_TOKEN = "invalid_token"  # noqa: S105  # nosec B105
+ERROR_MISSING_TOKEN = "missing_token"  # noqa: S105  # nosec B105
 ERROR_RATE_LIMITED = "rate_limited"
 ERROR_RATE_LIMIT_EXCEEDED = "rate limit exceeded"
-ERROR_TOKEN_EXPIRED = "token_expired"
+ERROR_TOKEN_EXPIRED = "token_expired"  # noqa: S105  # nosec B105
 
 CHAT_RATE_LIMIT_MAX_PER_MINUTE = 10
 CHAT_RATE_LIMIT_MAX_PER_DAY = 100

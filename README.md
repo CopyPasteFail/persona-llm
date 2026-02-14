@@ -64,6 +64,29 @@ PRIVATE_DIR=/abs/path/to/your-private-overlay make local-mock
 
 At this stage you can locally run the mock backend and frontend, see [here](#mode-a-mock-frontend--mock-backend-local).
 
+## Local security scans (on demand)
+
+Run all configured local security checks:
+
+```bash
+make security
+```
+
+This runs:
+- backend static security checks (`ruff` security rules + `bandit`)
+- backend dependency vulnerability checks (`pip-audit`)
+- frontend dependency vulnerability checks (`npm audit`)
+- repository scans with `semgrep` and `gitleaks` when those binaries are installed
+
+You can also run individual checks:
+
+```bash
+make security-backend
+make security-frontend-deps
+make security-semgrep
+make security-secrets
+```
+
 ## Preparing GCP and Firebase Environments
 
 ### Required environment variables
