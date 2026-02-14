@@ -54,7 +54,7 @@ SIMPLE_QUESTION_PREFIXES = (
     "list",
     "summarize",
 )
-GREETING_SINGLE_TOKENS = {
+GREETING_SINGLE_TOKENS: set[str] = {
     "hi",
     "hello",
     "hey",
@@ -65,7 +65,7 @@ GREETING_SINGLE_TOKENS = {
     "wassup",
     "wassap",
 }
-GREETING_PHRASE_TOKENS = {
+GREETING_PHRASE_TOKENS: set[tuple[str, ...]] = {
     ("good", "morning"),
     ("good", "afternoon"),
     ("good", "evening"),
@@ -75,7 +75,7 @@ GREETING_PHRASE_TOKENS = {
     ("how", "you", "doin"),
     ("how", "do", "you", "feel"),
 }
-GREETING_FILLER_TOKENS = {
+GREETING_FILLER_TOKENS: set[str] = {
     "there",
     "team",
     "all",
