@@ -16,11 +16,9 @@ from .types import ChatResponse, Citation, Usage
 
 APPROX_CHARS_PER_TOKEN = 4
 NO_SIGNAL_ANSWER = (
-    "TLDR: I do not have that in my indexed experience right now.\n"
-    "- I only summarize what is in my available context.\n"
-    "- Ask again with a more specific query.\n"
-    "- Or tell me to expand the data source.\n"
-    "Wrap: Ask me something that appears in my experience or projects."
+    "TLDR: I could not find a clear match for that in my current indexed experience.\n"
+    "- I can only answer from the context that is currently available to me.\n"
+    "- If you ask with a bit more detail, I can try again.\n"
 )
 GREETING_ONLY_ANSWER = (
     "Hi, happy to chat.\n"
