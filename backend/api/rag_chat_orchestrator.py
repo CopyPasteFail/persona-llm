@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import re
+import unicodedata
 from typing import Any, Dict, List, Optional, Protocol, Sequence, TypedDict
 
 from . import llm
@@ -28,6 +29,10 @@ GREETING_ONLY_ANSWER = (
     "Wrap: Try a specific question such as \"Do you know Kubernetes?\"."
 )
 UNABLE_TO_GENERATE_ANSWER = "TLDR: Unable to generate an answer.\nWrap: Try again shortly."
+ENGLISH_INPUT_ONLY_ANSWER = (
+    "TLDR: I support English input only right now.\n"
+    "Wrap: Please rephrase your question in English."
+)
 
 ELLIPSIS_SUFFIX = "..."
 SNIPPET_CHAR_LIMIT = 320
@@ -89,6 +94,7 @@ llm_gate_reason_SCORE_BELOW_THRESHOLD = "score_below"
 llm_gate_reason_BM25_BELOW_THRESHOLD = "bm25_below"
 llm_gate_reason_NO_CANDIDATES = "no_candidates"
 llm_gate_reason_GREETING_BYPASS = "greeting_bypass"
+llm_gate_reason_NON_ENGLISH_INPUT = "non_english_input"
 # Gating status label, not sensitive data.
 llm_gate_reason_PASS = "pass"  # noqa: S105  # nosec B105
 MIN_WEIGHTED_CONSENSUS_COUNT = DEFAULT_WEIGHTED_CONSENSUS_COUNT
@@ -98,6 +104,7 @@ BULLET_TRANSITION_LINE = "More specifically:"
 SPLIT_ON_CONNECTORS_PATTERN = re.compile(r"\s*(?:,|;|\band\b|/)\s*")
 NON_ALPHANUMERIC_PATTERN = re.compile(r"[^a-z0-9\s]")
 WHITESPACE_PATTERN = re.compile(r"\s+")
+NON_LATIN_LETTER_RATIO_THRESHOLD = 0.30
 
 
 class RetrievalPipeline(Protocol):
@@ -236,6 +243,41 @@ def run_rag_chat(
     normalized_question = retrieval.normalize_question_for_first_person(
         (question or "").strip()
     )
+    if not _is_supported_english_input(normalized_question):
+        english_only_usage = Usage(
+            input_tokens=max(1, len(normalized_question) // APPROX_CHARS_PER_TOKEN),
+            output_tokens=max(
+                1, len(ENGLISH_INPUT_ONLY_ANSWER) // APPROX_CHARS_PER_TOKEN
+            ),
+        )
+        return ChatResult(
+            response=ChatResponse(
+                answer=ENGLISH_INPUT_ONLY_ANSWER,
+                citations=[],
+                usage=english_only_usage,
+                input_token_limit=max_input_tokens,
+            ),
+            selected_chunks=[],
+            normalized_question=normalized_question,
+            usage_detail=_empty_usage_detail(),
+            thinking_budget_tokens_effective=_resolve_thinking_budget_tokens(
+                normalized_question,
+                selected_chunks_count=0,
+                enable_thinking_gating=enable_thinking_gating,
+                default_thinking_budget_tokens=default_thinking_budget_tokens,
+            ),
+            llm_gate_enabled=enable_llm_call_gating,
+            would_call_llm_if_gated=False,
+            llm_gate_reason=llm_gate_reason_NON_ENGLISH_INPUT,
+            top1_weighted_score=None,
+            top1_bm25_score=None,
+            top1_vector_score=None,
+            best_weighted_score=None,
+            best_bm25_score=None,
+            weighted_consensus_count=0,
+            weighted_score_threshold=float(weighted_score_threshold),
+            bm25_score_threshold=float(bm25_score_threshold),
+        )
     if _is_greeting_only_question(normalized_question):
         greeting_usage = Usage(
             input_tokens=max(1, len(normalized_question) // APPROX_CHARS_PER_TOKEN),
@@ -600,6 +642,51 @@ def _is_simple_question(question: str) -> bool:
         return True
 
     return not any(keyword in lowered for keyword in SIMPLE_QUESTION_KEYWORDS)
+
+
+def _is_supported_english_input(question: str) -> bool:
+    """Check whether a question is likely English-script input.
+
+    Inputs:
+    - question: Raw or normalized user text.
+
+    Output:
+    - True when the text is empty/punctuation-only, or when most letters belong
+      to the Latin script.
+
+    Edge cases:
+    - Empty input is treated as supported to preserve existing no-signal flow.
+    - Questions with mixed scripts are rejected only when non-Latin letters are
+      at or above the configured ratio threshold.
+
+    Concurrency/atomicity:
+    - Pure text classification with no shared state mutation.
+    """
+    normalized_question = (question or "").strip()
+    if not normalized_question:
+        return True
+
+    total_letter_count = 0
+    non_latin_letter_count = 0
+    for character in normalized_question:
+        if not character.isalpha():
+            continue
+
+        total_letter_count += 1
+        try:
+            unicode_name = unicodedata.name(character)
+        except ValueError:
+            non_latin_letter_count += 1
+            continue
+
+        if "LATIN" not in unicode_name:
+            non_latin_letter_count += 1
+
+    if total_letter_count == 0:
+        return True
+
+    non_latin_letter_ratio = non_latin_letter_count / total_letter_count
+    return non_latin_letter_ratio < NON_LATIN_LETTER_RATIO_THRESHOLD
 
 
 def _is_greeting_only_question(question: str) -> bool:

@@ -217,3 +217,40 @@ def test_run_rag_chat_greeting_plus_question_uses_regular_flow() -> None:
     assert retrieval_spy.search_called
     assert retrieval_spy.apply_called
     assert llm_spy.generate_called
+
+
+def test_run_rag_chat_non_latin_input_bypasses_retrieval_and_llm() -> None:
+    """Non-Latin input should short-circuit before retrieval and LLM calls.
+
+    What is tested:
+        Input guard for unsupported non-Latin scripts in run_rag_chat.
+    How it's tested:
+        Execute run_rag_chat with Hebrew text using retrieval/LLM spies.
+    Expected result format:
+        English-only input answer returned, retrieval and LLM are not called,
+        and reason is non_english_input.
+    """
+    retrieval_spy = _GreetingAwareRetrievalSpy()
+    llm_spy = _GreetingAwareLlmSpy()
+
+    result = rag_chat_orchestrator.run_rag_chat(
+        "\u05e9\u05dc\u05d5\u05dd",
+        retrieval=retrieval_spy,
+        llm_backend=llm_spy,
+        top_k=4,
+        persona_name="Test Persona",
+        max_input_tokens=1000,
+        max_output_tokens=128,
+        enable_thinking_gating=False,
+        default_thinking_budget_tokens=None,
+        enable_llm_call_gating=True,
+    )
+
+    assert result.response.answer == rag_chat_orchestrator.ENGLISH_INPUT_ONLY_ANSWER
+    assert (
+        result.llm_gate_reason == rag_chat_orchestrator.llm_gate_reason_NON_ENGLISH_INPUT
+    )
+    assert not retrieval_spy.embed_called
+    assert not retrieval_spy.search_called
+    assert not retrieval_spy.apply_called
+    assert not llm_spy.generate_called
