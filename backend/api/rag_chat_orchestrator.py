@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import re
 from typing import Any, Dict, List, Optional, Protocol, Sequence, TypedDict
 
 from . import llm
@@ -53,6 +54,12 @@ llm_gate_reason_NO_CANDIDATES = "no_candidates"
 # Gating status label, not sensitive data.
 llm_gate_reason_PASS = "pass"  # noqa: S105  # nosec B105
 MIN_WEIGHTED_CONSENSUS_COUNT = DEFAULT_WEIGHTED_CONSENSUS_COUNT
+RELATED_EXPERIENCE_MARKER = "but i do have related experience:"
+BULLET_PREFIX = "- "
+BULLET_TRANSITION_LINE = "More specifically:"
+SPLIT_ON_CONNECTORS_PATTERN = re.compile(r"\s*(?:,|;|\band\b|/)\s*")
+NON_ALPHANUMERIC_PATTERN = re.compile(r"[^a-z0-9\s]")
+WHITESPACE_PATTERN = re.compile(r"\s+")
 
 
 class RetrievalPipeline(Protocol):
@@ -253,7 +260,10 @@ def run_rag_chat(
         max_output_tokens=max_output_tokens,
         thinking_budget_tokens=thinking_budget_tokens_effective,
     )
-    answer_final = answer_text.strip() or UNABLE_TO_GENERATE_ANSWER
+    answer_final = _deduplicate_answer_bullets(answer_text.strip())
+    answer_final = _insert_transition_line_before_bullets(answer_final)
+    if not answer_final:
+        answer_final = UNABLE_TO_GENERATE_ANSWER
 
     citations = [_chunk_to_citation(chunk) for chunk in selected_chunks]
     usage = _usage_from_llm_meta(
@@ -312,6 +322,180 @@ def choose_thinking_budget_tokens(
     if _is_simple_question(question):
         return 0
     return int(default_budget)
+
+
+def _deduplicate_answer_bullets(answer_text: str) -> str:
+    """Remove bullets that repeat facts already present in the first sentence.
+
+    Inputs:
+    - answer_text: Raw LLM answer that may include one sentence and optional bullets.
+
+    Output:
+    - Cleaned answer text that preserves order but removes redundant bullets.
+
+    Edge cases:
+    - Empty input returns an empty string.
+    - Single-line answers are returned unchanged.
+    - Non-bullet continuation lines are preserved as-is.
+
+    Concurrency/atomicity:
+    - Pure string transformation with no shared state mutation.
+    """
+    stripped_answer = (answer_text or "").strip()
+    if not stripped_answer:
+        return ""
+
+    lines = stripped_answer.splitlines()
+    if len(lines) <= 1:
+        return stripped_answer
+
+    first_line = lines[0].strip()
+    if not first_line:
+        return stripped_answer
+
+    dedupe_targets = _build_bullet_dedupe_targets(first_line)
+    if not dedupe_targets:
+        return stripped_answer
+
+    cleaned_lines = [lines[0]]
+    for raw_line in lines[1:]:
+        line = raw_line.strip()
+        if not line.startswith(BULLET_PREFIX):
+            cleaned_lines.append(raw_line)
+            continue
+
+        bullet_text = line[len(BULLET_PREFIX) :].strip()
+        normalized_bullet_text = _normalize_answer_text_for_dedupe(bullet_text)
+        if not normalized_bullet_text:
+            continue
+        if normalized_bullet_text in dedupe_targets:
+            continue
+        cleaned_lines.append(raw_line)
+
+    return "\n".join(cleaned_lines).strip()
+
+
+def _insert_transition_line_before_bullets(answer_text: str) -> str:
+    """Insert a short transition line before the first bullet when bullets exist.
+
+    Inputs:
+    - answer_text: Raw or post-processed answer text that may include bullets.
+
+    Output:
+    - Answer text with a connective line before the bullet list.
+
+    Edge cases:
+    - Empty input returns an empty string.
+    - Single-line answers are returned unchanged.
+    - Existing transition lines are preserved (no duplicate insertion).
+    - Other non-bullet lines between the first sentence and the first bullet are removed.
+    """
+    stripped_answer = (answer_text or "").strip()
+    if not stripped_answer:
+        return ""
+
+    lines = stripped_answer.splitlines()
+    if len(lines) <= 1:
+        return stripped_answer
+
+    first_bullet_index = -1
+    for line_index, raw_line in enumerate(lines[1:], start=1):
+        if raw_line.strip().startswith(BULLET_PREFIX):
+            first_bullet_index = line_index
+            break
+
+    if first_bullet_index <= 0:
+        return stripped_answer
+
+    # Normalize any model-emitted "bridge" lines so the transition is consistent.
+    # Contract: only one line may appear between the first sentence and the first bullet.
+    transition_line_lower = BULLET_TRANSITION_LINE.lower()
+    non_bullet_indices_between = [
+        line_index
+        for line_index in range(1, first_bullet_index)
+        if lines[line_index].strip()
+        and not lines[line_index].strip().startswith(BULLET_PREFIX)
+    ]
+    transition_indices_between = [
+        line_index
+        for line_index in non_bullet_indices_between
+        if lines[line_index].strip().lower() == transition_line_lower
+    ]
+
+    if transition_indices_between:
+        # Keep the last canonical transition line and remove other non-bullet lines
+        # (including earlier transition duplicates) between sentence and bullets.
+        transition_index_to_keep = transition_indices_between[-1]
+        for line_index in reversed(non_bullet_indices_between):
+            if line_index != transition_index_to_keep:
+                lines.pop(line_index)
+        return "\n".join(lines).strip()
+
+    for line_index in reversed(non_bullet_indices_between):
+        lines.pop(line_index)
+        first_bullet_index -= 1
+
+    lines.insert(first_bullet_index, BULLET_TRANSITION_LINE)
+    return "\n".join(lines).strip()
+
+
+def _build_bullet_dedupe_targets(first_line: str) -> set[str]:
+    """Build normalized text targets that bullets should not repeat.
+
+    Inputs:
+    - first_line: The first line of the generated answer.
+
+    Output:
+    - Set of normalized text variants that represent first-line facts.
+
+    Edge cases:
+    - Empty or non-normalizable first lines return an empty set.
+    - Related-experience fragments are extracted only when the marker exists.
+    """
+    normalized_first_line = _normalize_answer_text_for_dedupe(first_line)
+    if not normalized_first_line:
+        return set()
+
+    dedupe_targets = {normalized_first_line}
+    lowered_first_line = first_line.lower()
+    marker_index = lowered_first_line.find(RELATED_EXPERIENCE_MARKER)
+    if marker_index < 0:
+        return dedupe_targets
+
+    related_experience_start = marker_index + len(RELATED_EXPERIENCE_MARKER)
+    related_experience_text = first_line[related_experience_start:].strip()
+    normalized_related_experience_text = _normalize_answer_text_for_dedupe(
+        related_experience_text
+    )
+    if normalized_related_experience_text:
+        dedupe_targets.add(normalized_related_experience_text)
+
+    for fragment in SPLIT_ON_CONNECTORS_PATTERN.split(related_experience_text):
+        normalized_fragment = _normalize_answer_text_for_dedupe(fragment)
+        if normalized_fragment:
+            dedupe_targets.add(normalized_fragment)
+
+    return dedupe_targets
+
+
+def _normalize_answer_text_for_dedupe(text: str) -> str:
+    """Normalize answer text for deterministic duplicate detection.
+
+    Inputs:
+    - text: Arbitrary answer fragment.
+
+    Output:
+    - Lowercased alphanumeric string with collapsed whitespace.
+
+    Edge cases:
+    - Empty text or punctuation-only text returns an empty string.
+    """
+    lowered_text = (text or "").strip().lower()
+    if not lowered_text:
+        return ""
+    text_without_punctuation = NON_ALPHANUMERIC_PATTERN.sub(" ", lowered_text)
+    normalized_text = WHITESPACE_PATTERN.sub(" ", text_without_punctuation).strip()
+    return normalized_text
 
 
 def _is_simple_question(question: str) -> bool:

@@ -3,6 +3,7 @@ CONTEXT_HEADER = "Context:"
 CONTEXT_ONLY_INSTRUCTION = "Only use facts that appear in Context."
 PROMPT_OUTPUT_FORMAT = (
     "<one short sentence>\n"
+    "More specifically:\n"
     "- <bullet 1>\n"
     "- <bullet 2>\n"
     "[Add bullets only when supported by the context, up to 5 total]"
@@ -19,6 +20,11 @@ SYSTEM_PROMPT_TEMPLATE = (
     "Only mention related experience if it would reasonably be considered relevant by a human in that field.\n"
     "Writing rules:\n"
     "- Always first person (I, my, me).\n"
+    "- Bullets must add new information that is not already stated in the first sentence.\n"
+    "- If you include bullets, the line between the first sentence and bullets must be exactly:\n"
+    "  \"More specifically:\"\n"
+    "- Do not add any other text between the first sentence and the first bullet.\n"
+    "- If the first sentence already contains all supported facts, output only the first sentence and no bullets.\n"
     "- No em dashes. Use commas, colons, or periods.\n"
     "- Be concise and concrete with facts from the chunks.\n"
     "- Use absolute dates when that clarifies.\n"
@@ -26,4 +32,3 @@ SYSTEM_PROMPT_TEMPLATE = (
     "Output format EXACTLY:\n"
     "{output_format}"
 )
-
