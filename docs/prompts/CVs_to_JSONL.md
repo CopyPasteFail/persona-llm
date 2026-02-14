@@ -9,14 +9,22 @@ You are converting ONE OR MORE ATTACHED CV FILES into JSONL lines that conform t
 * Infer the professional domain `profile` from the filename and CV content. Examples: "infra", "product", "marketing", "sales", "finance", "legal", "dentistry".
 * Use a single `profile` value per CV. If the CV spans multiple domains, pick the primary profile and reflect the rest via `topics`.
 
-## Required attachment gate
+## Required attachment gates
 
-You must verify that an attachment named exactly `chunk.schema.json` is present and readable.
+You must verify that attachments named exactly `chunk.schema.json` and `experience_domain_config.json` are present and readable.
 
 If `chunk.schema.json` is not attached, or cannot be opened, STOP and output exactly this single line (and nothing else):
 ERROR: Missing required attachment chunk.schema.json
 
-If it is attached, use it as the source of truth for required fields, types, and allowed enum values. If anything in this prompt conflicts with the JSON schema, the JSON schema wins.
+If `experience_domain_config.json` is not attached, or cannot be opened, STOP and output exactly this single line (and nothing else):
+ERROR: Missing required attachment experience_domain_config.json
+
+If both are attached:
+* Use `chunk.schema.json` as the source of truth for required fields, types, and allowed enum values.
+* Parse `experience_domain_config.json` as JSON and load:
+  * `allowed_stint_domains` = `experience_domain_config.json.canonical_labels` (array of strings).
+* `allowed_stint_domains` is the only allowed value set for `extras.stint_domains` in Experience chunks.
+If anything in this prompt conflicts with the JSON schema, the JSON schema wins.
 
 ## Output
 
@@ -43,9 +51,9 @@ If it is attached, use it as the source of truth for required fields, types, and
 * `extras`:
   * `employer`: company/institution if applicable.
   * `title`: stint title when available.
-  * `stint_domains`: list of fine-grained labels (for example: `["devops"]`, `["sre"]`, `["platform"]`, `["marketing"]`, `["sales"]`, `["backend"]`) for dated Experience chunks.
+  * `stint_domains`: REQUIRED for `section == "Experience"`. Non-empty array of strings. Every item must be in `allowed_stint_domains`.
   * `tech`: human-friendly names (tools, systems, methods, platforms, instruments, software, equipment, etc.).
-  * `type`: "experience" or "achievement", **only for Experience**.
+  * `type`: "experience" or "achievement", only for `section == "Experience"`.
 
 ## Multi-file Rules
 
@@ -66,18 +74,31 @@ If it is attached, use it as the source of truth for required fields, types, and
 
 ## Experience Coverage Rules
 
-- Every bullet and every sentence under each dated Experience stint must appear in at least one chunk in the Experience section for that same stint.
-- Do not move Experience bullets into Summary or Skills instead of representing them in Experience.
-- Before outputting JSONL, internally verify that no Experience bullet was omitted. If any bullet is missing, create an additional Experience chunk for it.
-- Do not print the verification.
+* Every bullet and every sentence under each dated Experience stint must appear in at least one chunk in the Experience section for that same stint.
+* Do not move Experience bullets into Summary or Skills instead of representing them in Experience.
+* Before outputting JSONL, internally verify that no Experience bullet was omitted. If any bullet is missing, create an additional Experience chunk for it.
+* Do not print the verification.
 
-### Coverage Audit
+## Experience stint_domains rules
 
-Before writing the final JSONL, do an internal audit:
-- For each CV, for each Experience stint, confirm you emitted at least one chunk representing every bullet/sentence in that stint.
-- If anything is missing, add a chunk for it.
-- Only then output chunks.jsonl.
-Do not print the audit.
+For every chunk where `section == "Experience"`:
+* `extras.stint_domains` is required and must be non-empty.
+* Every value in `extras.stint_domains` must be one of `allowed_stint_domains`.
+* Do not invent new stint domain labels.
+
+### Edge case: industry or channel labels (repair, do not print)
+
+Some CV content describes an industry or channel rather than a role-domain label (examples: "ecommerce", "e-commerce", "amazon", "fba", "fintech", "healthcare", "retail").
+These must not appear in `extras.stint_domains`.
+
+If you encounter such a label:
+1) Move it into `topics` (normalized lowercase token).
+2) Choose the closest matching canonical role labels from `allowed_stint_domains` for `extras.stint_domains`.
+3) Keep `extras.stint_domains` non-empty.
+
+Heuristic mapping for common cases:
+* "ecommerce" / "amazon" / "fba" / "private label" → include `["sales","marketing","product"]` (add `"data"` only if analytics-heavy).
+* "entrepreneurship" / "business owner" → include `["product","sales"]` (add `"marketing"` if relevant).
 
 ## Tags
 
@@ -193,9 +214,3 @@ The output `chunks.jsonl` file contains one JSON object per line. Here is an exa
 {"schema_version":3,"doc_id":"cv-infra-2025","chunk_id":"infra-001","position":1,"text":"DevOps/SRE engineer experienced in automating infrastructure, running Kubernetes in production, and improving observability.","profile":"infra","topics":["devops","sre","automation","kubernetes","observability"],"tags":["profile:infra","topic:devops","topic:sre","topic:automation","topic:kubernetes","topic:observability"],"section":"Summary","start_year":2025,"end_year":2025,"lang":"en","updated_at":"2025-09-02T20:00:00Z","source_uri":"gs://bucket/cv-infra-2025.docx","permissions":["public"],"extras":{"employer":"","tech":["Kubernetes","Prometheus","Terraform"]}}
 {"schema_version":3,"doc_id":"cv-infra-2025","chunk_id":"infra-002","position":2,"text":"Skills: Kubernetes, Terraform, Argo CD, Prometheus, Grafana, AWS, GCP.","profile":"infra","topics":["kubernetes","terraform","argocd","prometheus","grafana","aws","gcp"],"tags":["profile:infra","topic:kubernetes","topic:terraform","topic:argocd","topic:prometheus","topic:grafana","topic:aws","topic:gcp"],"section":"Skills","start_year":2025,"end_year":2025,"lang":"en","updated_at":"2025-09-02T20:00:00Z","source_uri":"gs://bucket/cv-infra-2025.docx","permissions":["public"],"extras":{"employer":"","tech":["Kubernetes","Terraform","Argo CD","Prometheus","Grafana","AWS","GCP"]}}
 ```
-
-Each line is a valid JSON object, and the file as a whole is line-delimited JSON (JSONL).
-
----
-
-BEGIN: Read all attachments, infer profile per CV, then output the `chunks.jsonl` file.
