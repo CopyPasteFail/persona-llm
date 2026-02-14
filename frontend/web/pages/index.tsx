@@ -1,6 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChatResponse } from "../utils/api";
-import { ApiError, getSessionToken, isCookieMode, keyLogin, logout, postChat } from "../utils/api";
+import {
+  ApiError,
+  clearStoredSessionToken,
+  getSessionToken,
+  isCookieMode,
+  keyLogin,
+  logout,
+  postChat,
+  storeSessionToken,
+} from "../utils/api";
 
 type Usage = NonNullable<ChatResponse["usage"]>;
 
@@ -10,6 +19,9 @@ const NO_ANSWER_MESSAGE =
 const WARMUP_BANNER_MESSAGE = "Warming up the API... usually a few seconds.";
 const CONNECTIVITY_BANNER_MESSAGE =
   "Temporary connection issue while checking API health. Retrying...";
+const COOKIES_BLOCKED_MESSAGE =
+  "Your browser blocked the sign-in cookie. Enable cookies for this site and sign in again.";
+const SESSION_EXPIRED_MESSAGE = "Session expired. Enter a new access key.";
 
 export default function IndexPage() {
   const [ready, setReady] = useState(true);
@@ -78,9 +90,7 @@ export default function IndexPage() {
   }, []);
 
   function clearSession(message?: string) {
-    if (!isCookieSession && typeof window !== "undefined") {
-      window.localStorage.removeItem("sessionToken");
-    }
+    clearStoredSessionToken();
     setSessionToken(null);
     setCookieSessionActive(false);
     setSessionModelName(null);
@@ -130,7 +140,10 @@ export default function IndexPage() {
       const message = err?.message || "Something went wrong";
       setError(message);
       if (err instanceof ApiError && err.status === 401) {
-        clearSession("Session expired. Enter a new access key.");
+        const isCookieBlocked =
+          isCookieSession &&
+          err.code === "missing_token";
+        clearSession(isCookieBlocked ? COOKIES_BLOCKED_MESSAGE : SESSION_EXPIRED_MESSAGE);
       }
     } finally {
       setLoading(false);
@@ -149,7 +162,7 @@ export default function IndexPage() {
       if (isCookieSession) {
         setCookieSessionActive(true);
       } else if (typeof window !== "undefined") {
-        window.localStorage.setItem("sessionToken", res.access_token);
+        storeSessionToken(res.access_token, res.expires_at);
         setSessionToken(res.access_token);
       }
       if (res.model) {

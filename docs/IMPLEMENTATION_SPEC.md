@@ -16,6 +16,7 @@ Backend configuration is loaded from process environment. When `PRIVATE_DIR` is 
 
 - **Shared variables (loaded from `secrets/common.env`):**
   - `PROJECT_ID`: Shared identifier for both Firebase and GCP resources.
+  - `SESSION_COOKIE_ENABLED`: Canonical session mode toggle shared by backend and frontend (`true` for cookie sessions, `false` for bearer mode). Frontend derives `NEXT_PUBLIC_USE_COOKIE_SESSION` from this value when the frontend-specific variable is unset.
 
 - **Backend variables (loaded from backend.env):**
   - `PERSONA_NAME`: Display name used in mock responses.
@@ -62,6 +63,7 @@ Backend configuration is loaded from process environment. When `PRIVATE_DIR` is 
 
 - **Frontend variables (in `frontend/web/.env.local`):**
   - `NEXT_PUBLIC_API_URL`: URL of the backend (e.g. `http://localhost:8080` during local dev).
+  - `NEXT_PUBLIC_USE_COOKIE_SESSION`: Optional frontend override for browser session mode. When unset, frontend tooling derives this from shared `SESSION_COOKIE_ENABLED`.
 
 `settings.py` uses `python-dotenv` to load `${PRIVATE_DIR}/secrets/common.env` followed by `${PRIVATE_DIR}/secrets/backend.env` into the process environment before FastAPI starts. Missing required values will raise validation errors on startup.
 
@@ -77,7 +79,7 @@ Backend configuration is loaded from process environment. When `PRIVATE_DIR` is 
 **Public**
 - `GET /health` (liveness) – returns `{ "status": "ok" }`.
 - `GET /ready` (readiness) – returns `{ "ready": true }` when startup completed (local readiness only), otherwise 503.
-- `POST /auth/key-login` – accepts `{ "key": "<access key>" }` and returns a bearer token.
+- `POST /auth/key-login` – accepts `{ "key": "<access key>" }`, returns token metadata, and sets an HttpOnly session cookie when cookie sessions are enabled.
 - `POST /auth/logout` – returns 204 and clears the session cookie when enabled.
 
 **Protected**
@@ -101,9 +103,18 @@ Backend configuration is loaded from process environment. When `PRIVATE_DIR` is 
 - `thoughts_tokens`: Optional[int]
 
 ### Auth
-- `/chat` requires authentication via `Authorization: Bearer <token>`.
-- Tokens are issued by `/auth/key-login` and may also be stored in a session cookie when enabled.
-  - Key login response includes `model` and `input_token_limit` for the active session.
+- `/chat` requires authentication and accepts either:
+  - a session cookie (default browser mode), or
+  - `Authorization: Bearer <token>` (supported fallback mode).
+- Cookie mode defaults:
+  - Backend default: `SESSION_COOKIE_ENABLED=true`.
+  - Frontend default: derives from shared `SESSION_COOKIE_ENABLED` when `NEXT_PUBLIC_USE_COOKIE_SESSION` is unset.
+- Session refresh policy:
+  - Sliding refresh near expiry is enabled in `/chat`.
+  - `REFRESH_WINDOW_SECONDS=300` (5 minutes): when a valid session is within this window, the backend issues refreshed session credentials.
+  - In cookie mode, refresh is applied by resetting the HttpOnly session cookie.
+  - In bearer mode, refresh is returned via response headers (`x-session-token`, `x-session-expires-at`).
+- Key login response includes `model` and `input_token_limit` for the active session.
 
 ### Minimal examples
 See [backend/README.md#curl-examples](../backend/README.md#curl-examples) for runnable curl commands and current local ports.

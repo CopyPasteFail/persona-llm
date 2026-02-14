@@ -37,7 +37,7 @@ class Settings(BaseModel):
     API_KEY: str = Field(...)
     JWT_SECRET: str | None = Field(default=None)
     JWT_SESSION_TTL_SECONDS: int = Field(default=3600, ge=300, le=86400)
-    SESSION_COOKIE_ENABLED: bool = Field(default=False)
+    SESSION_COOKIE_ENABLED: bool = Field(default=True)
     SESSION_COOKIE_NAME: str = Field(default="session")
     SESSION_COOKIE_SAMESITE: str = Field(default="lax")
     SESSION_COOKIE_SECURE: bool = Field(default=True)
@@ -266,7 +266,7 @@ def load_settings() -> Settings:
             API_KEY=_require_env("API_KEY"),
             JWT_SECRET=os.getenv("JWT_SECRET"),
             JWT_SESSION_TTL_SECONDS=_env_int("JWT_SESSION_TTL_SECONDS", 3600),
-            SESSION_COOKIE_ENABLED=_env_bool("SESSION_COOKIE_ENABLED", False),
+            SESSION_COOKIE_ENABLED=_env_bool("SESSION_COOKIE_ENABLED", True),
             SESSION_COOKIE_NAME=os.getenv("SESSION_COOKIE_NAME") or "session",
             SESSION_COOKIE_SAMESITE=os.getenv("SESSION_COOKIE_SAMESITE") or "lax",
             SESSION_COOKIE_SECURE=_env_bool("SESSION_COOKIE_SECURE", True),

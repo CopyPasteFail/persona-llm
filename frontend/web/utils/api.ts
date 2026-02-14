@@ -1,5 +1,9 @@
 // web/utils/api.ts
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+const SESSION_TOKEN_STORAGE_KEY = "sessionToken";
+const SESSION_TOKEN_EXPIRES_AT_STORAGE_KEY = "sessionTokenExpiresAt";
+const CHAT_REFRESHED_TOKEN_HEADER = "x-session-token";
+const CHAT_REFRESHED_EXPIRES_AT_HEADER = "x-session-expires-at";
 
 /**
  * Detects whether the app should use cookie-based sessions instead of bearer tokens.
@@ -10,14 +14,16 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
  * Concurrency/atomicity: pure read of environment variables; no shared mutable state.
  */
 export function isCookieMode(): boolean {
-  return (process.env.NEXT_PUBLIC_USE_COOKIE_SESSION || "").toLowerCase() === "true";
+  return (process.env.NEXT_PUBLIC_USE_COOKIE_SESSION || "true").toLowerCase() !== "false";
 }
 
 export class ApiError extends Error {
   status?: number;
-  constructor(message: string, status?: number) {
+  code?: string;
+  constructor(message: string, status?: number, code?: string) {
     super(message);
     this.status = status;
+    this.code = code;
   }
 }
 
@@ -26,6 +32,11 @@ const AUTH_ERROR_MESSAGES: Record<string, string> = {
   invalid_key: "That access key doesn't look right. Check it and try again.",
   key_expired: "That access key has expired. Request a new one and try again.",
   key_revoked: "That access key was revoked. Request a new one and try again.",
+};
+const SESSION_ERROR_MESSAGES: Record<string, string> = {
+  missing_token: "Session cookie is missing. Please sign in again.",
+  token_expired: "Your session expired. Please sign in again.",
+  invalid_token: "Your session is invalid. Please sign in again.",
 };
 
 /**
@@ -68,6 +79,25 @@ function formatAuthError(status: number, text: string): string {
   return "Unable to verify the access key right now. Please try again.";
 }
 
+/**
+ * Produces a user-friendly session error message from HTTP status and body.
+ *
+ * Inputs: HTTP status code and raw response text.
+ * Outputs: a localized-ish message suitable for UI display.
+ * Edge cases: favors known `detail` codes; falls back to status-based messaging.
+ * Concurrency/atomicity: pure function; no shared state.
+ */
+function formatSessionError(status: number, text: string): string {
+  const detail = extractErrorDetail(text);
+  if (detail && SESSION_ERROR_MESSAGES[detail]) {
+    return SESSION_ERROR_MESSAGES[detail];
+  }
+  if (status === 401) {
+    return "Your session is no longer valid. Please sign in again.";
+  }
+  return "Unable to continue this session right now. Please sign in again.";
+}
+
 // Optional: snake_case -> camelCase mapper (safe no-op for primitives)
 /**
  * Recursively converts object keys from snake_case to camelCase.
@@ -101,7 +131,62 @@ export function toCamel(o: any): any {
  */
 export function getSessionToken(): string | null {
   if (isCookieMode() || typeof window === "undefined") return null;
-  return window.localStorage.getItem("sessionToken");
+  const sessionToken = window.localStorage.getItem(SESSION_TOKEN_STORAGE_KEY);
+  if (!sessionToken) {
+    return null;
+  }
+
+  const sessionExpiresAtIso = window.localStorage.getItem(SESSION_TOKEN_EXPIRES_AT_STORAGE_KEY);
+  if (!sessionExpiresAtIso) {
+    clearStoredSessionToken();
+    return null;
+  }
+
+  const sessionExpiresAtMilliseconds = Date.parse(sessionExpiresAtIso);
+  if (!Number.isFinite(sessionExpiresAtMilliseconds)) {
+    clearStoredSessionToken();
+    return null;
+  }
+
+  if (Date.now() >= sessionExpiresAtMilliseconds) {
+    clearStoredSessionToken();
+    return null;
+  }
+
+  return sessionToken;
+}
+
+/**
+ * Persists bearer-session token credentials for token mode.
+ *
+ * Inputs: token string and absolute expiration timestamp (ISO-8601).
+ * Outputs: none.
+ * Edge cases: no-ops during SSR or cookie mode; invalid expiry clears any existing token.
+ * Concurrency/atomicity: two localStorage writes in the same event loop tick.
+ */
+export function storeSessionToken(sessionToken: string, expiresAtIso: string): void {
+  if (isCookieMode() || typeof window === "undefined") return;
+  const sessionExpiresAtMilliseconds = Date.parse(expiresAtIso);
+  if (!Number.isFinite(sessionExpiresAtMilliseconds)) {
+    clearStoredSessionToken();
+    return;
+  }
+  window.localStorage.setItem(SESSION_TOKEN_STORAGE_KEY, sessionToken);
+  window.localStorage.setItem(SESSION_TOKEN_EXPIRES_AT_STORAGE_KEY, expiresAtIso);
+}
+
+/**
+ * Removes bearer-session token credentials from local storage.
+ *
+ * Inputs: none.
+ * Outputs: none.
+ * Edge cases: safe in SSR and cookie mode.
+ * Concurrency/atomicity: two independent localStorage delete operations.
+ */
+export function clearStoredSessionToken(): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.removeItem(SESSION_TOKEN_STORAGE_KEY);
+  window.localStorage.removeItem(SESSION_TOKEN_EXPIRES_AT_STORAGE_KEY);
 }
 
 /**
@@ -215,12 +300,26 @@ export async function postChat(payload: ChatRequest): Promise<ChatResponse> {
   }));
   if (!r.ok) {
     const text = await r.text().catch(() => "");
+    if (r.status === 401) {
+      const detail = extractErrorDetail(text) || undefined;
+      throw new ApiError(formatSessionError(r.status, text), r.status, detail);
+    }
     throw new ApiError(
       `Backend error ${r.status}${text ? `: ${text.slice(0, 160)}` : ""}`,
       r.status
     );
   }
-  return (await r.json()) as ChatResponse;
+  const responseBody = (await r.json()) as ChatResponse;
+
+  if (!isCookieMode()) {
+    const refreshedToken = r.headers.get(CHAT_REFRESHED_TOKEN_HEADER);
+    const refreshedExpiresAt = r.headers.get(CHAT_REFRESHED_EXPIRES_AT_HEADER);
+    if (refreshedToken && refreshedExpiresAt) {
+      storeSessionToken(refreshedToken, refreshedExpiresAt);
+    }
+  }
+
+  return responseBody;
 }
 
 /**

@@ -17,11 +17,15 @@ API_KEY_HEADER_NAME = "x-api-key"
 BEARER_AUTH_SCHEME = "bearer"
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRATION_FIELD = "exp"
+JWT_ACCESS_KEY_EXPIRATION_FIELD = "key_exp"
 JWT_LABEL_FIELD = "label"
 JWT_SUBJECT_FIELD = "sub"
 JWT_TYPE_FIELD = "type"
 JWT_TYPE_SESSION = "session"
 UNKNOWN_CLIENT_IP = "unknown"
+REFRESH_WINDOW_SECONDS = 300
+SESSION_AUTH_SOURCE_HEADER = "header"
+SESSION_AUTH_SOURCE_COOKIE = "cookie"
 
 ERROR_FORBIDDEN = "forbidden"
 # API error code constants.
@@ -94,6 +98,9 @@ class Session:
 
     key_id: str
     label: Optional[str] = None
+    session_expires_at: datetime | None = None
+    access_key_expires_at: datetime | None = None
+    auth_source: str = SESSION_AUTH_SOURCE_HEADER
 
 
 class _KeyRecord(Protocol):
@@ -221,6 +228,7 @@ def create_session_token(
         JWT_SUBJECT_FIELD: str(key_identifier),
         JWT_TYPE_FIELD: JWT_TYPE_SESSION,
         JWT_EXPIRATION_FIELD: int(session_expires_at.timestamp()),
+        JWT_ACCESS_KEY_EXPIRATION_FIELD: int(access_key_expires_at.timestamp()),
     }
     label = getattr(key_record, "label", None)
     if label:
@@ -228,6 +236,73 @@ def create_session_token(
 
     token = jwt_module.encode(payload, secret_key, algorithm=JWT_ALGORITHM)
     return token, session_expires_at
+
+
+def should_refresh_session(session: Session, *, now_utc: datetime | None = None) -> bool:
+    """Determine whether the session is close enough to expiry to refresh.
+
+    Inputs:
+        session: Authenticated session metadata from the current token.
+        now_utc: Optional current UTC timestamp override for deterministic tests.
+
+    Outputs:
+        True when the remaining token lifetime is within REFRESH_WINDOW_SECONDS.
+
+    Edge cases:
+        Returns False when the current token has no parsed expiration.
+    Atomicity/concurrency:
+        Pure computation with no shared state.
+    """
+    if not session.session_expires_at:
+        return False
+    current_time_utc = now_utc or _utc_now()
+    seconds_until_expiry = (session.session_expires_at - current_time_utc).total_seconds()
+    return seconds_until_expiry <= REFRESH_WINDOW_SECONDS
+
+
+def issue_refreshed_session_token(
+    session: Session,
+    *,
+    jwt_module: _JwtModule = jwt,
+    secret_key: str = settings.jwt_secret,
+    session_ttl_seconds: int = settings.session_ttl_seconds,
+) -> tuple[str, datetime]:
+    """Issue a refreshed session token for an existing authenticated session.
+
+    Inputs:
+        session: Current authenticated session details.
+        jwt_module: JWT implementation for encoding the token.
+        secret_key: Secret used to sign the token.
+        session_ttl_seconds: Maximum lifetime for the refreshed session token.
+
+    Outputs:
+        A tuple of (encoded_token, refreshed_session_expiration_datetime).
+
+    Edge cases:
+        Raises ValueError when the session lacks an access-key expiration.
+    Atomicity/concurrency:
+        Pure token generation; no shared mutable state updates.
+    """
+    if not session.access_key_expires_at:
+        raise ValueError("session.access_key_expires_at is required for token refresh")
+
+    @dataclass
+    class _RefreshKeyRecord:
+        id: str
+        expires_at: datetime
+        label: Optional[str]
+
+    refresh_key_record = _RefreshKeyRecord(
+        id=session.key_id,
+        expires_at=session.access_key_expires_at,
+        label=session.label,
+    )
+    return create_session_token(
+        refresh_key_record,
+        jwt_module=jwt_module,
+        secret_key=secret_key,
+        session_ttl_seconds=session_ttl_seconds,
+    )
 
 
 async def get_current_session(request: Request) -> Session:
@@ -244,6 +319,7 @@ async def get_current_session(request: Request) -> Session:
     """
     authorization_header = request.headers.get(AUTHORIZATION_HEADER_NAME)
     token: Optional[str] = None
+    auth_source = SESSION_AUTH_SOURCE_HEADER
 
     if authorization_header:
         try:
@@ -262,6 +338,7 @@ async def get_current_session(request: Request) -> Session:
 
     if not token and settings.session_cookie_enabled:
         token = request.cookies.get(settings.session_cookie_name)
+        auth_source = SESSION_AUTH_SOURCE_COOKIE
 
     if not token:
         raise HTTPException(
@@ -288,9 +365,29 @@ async def get_current_session(request: Request) -> Session:
             detail=ERROR_INVALID_TOKEN,
         )
 
+    session_expiration_raw = payload.get(JWT_EXPIRATION_FIELD)
+    if not isinstance(session_expiration_raw, int):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=ERROR_INVALID_TOKEN,
+        )
+    session_expires_at = datetime.fromtimestamp(session_expiration_raw, tz=timezone.utc)
+
+    access_key_expiration_raw = payload.get(JWT_ACCESS_KEY_EXPIRATION_FIELD)
+    if isinstance(access_key_expiration_raw, int):
+        access_key_expires_at = datetime.fromtimestamp(
+            access_key_expiration_raw,
+            tz=timezone.utc,
+        )
+    else:
+        access_key_expires_at = session_expires_at
+
     return Session(
         key_id=str(payload[JWT_SUBJECT_FIELD]),
         label=payload.get(JWT_LABEL_FIELD),
+        session_expires_at=session_expires_at,
+        access_key_expires_at=access_key_expires_at,
+        auth_source=auth_source,
     )
 
 

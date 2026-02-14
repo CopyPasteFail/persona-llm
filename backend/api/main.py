@@ -6,12 +6,21 @@ import time
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 from .types import ChatRequest, ChatResponse, Usage
-from .security import Session, check_rate_limit_dependency, get_current_session
+from .security import (
+    SESSION_AUTH_SOURCE_COOKIE,
+    SESSION_AUTH_SOURCE_HEADER,
+    Session,
+    check_rate_limit_dependency,
+    get_current_session,
+    issue_refreshed_session_token,
+    should_refresh_session,
+)
 from .settings import settings
 from .auth import router as auth_router
 from . import retrieval
@@ -42,6 +51,13 @@ TOKEN_STARVATION_MESSAGE = (
     # User-facing fallback text, not a secret.
     "I couldn\u2019t finish the reply. Try again, or ask for a shorter answer."  # noqa: S105  # nosec B105
 )
+CHAT_REFRESHED_TOKEN_HEADER = "x-session-token"
+CHAT_REFRESHED_EXPIRES_AT_HEADER = "x-session-expires-at"
+EXPOSED_RESPONSE_HEADERS = [
+    CHAT_REFRESHED_TOKEN_HEADER,
+    CHAT_REFRESHED_EXPIRES_AT_HEADER,
+]
+MIN_COOKIE_MAX_AGE_SECONDS = 1
 
 is_ready = False
 is_init_done = False
@@ -81,6 +97,47 @@ def _log_chat_answer_preview(answer_text: str, request_id: str, *, context: str)
             "answer_tail": tail_preview,
         }
     )
+
+
+def _apply_refreshed_session_if_needed(http_response: Response, session: Session) -> None:
+    """Attach refreshed session credentials when a token is near expiration.
+
+    Inputs:
+        http_response: Outbound response object to mutate with refreshed credentials.
+        session: Authenticated session extracted from the incoming request token.
+
+    Outputs:
+        None. Mutates response headers and/or cookies in place.
+
+    Edge cases:
+        Skips refresh when the token is not near expiry or when refresh fails.
+    Concurrency:
+        Stateless helper that mutates only the request-local response object.
+    """
+    if not should_refresh_session(session):
+        return
+
+    refreshed_token, refreshed_expires_at = issue_refreshed_session_token(session)
+    if session.auth_source == SESSION_AUTH_SOURCE_COOKIE and settings.session_cookie_enabled:
+        max_age_seconds = max(
+            MIN_COOKIE_MAX_AGE_SECONDS,
+            int((refreshed_expires_at - datetime.now(timezone.utc)).total_seconds()),
+        )
+        http_response.set_cookie(
+            key=settings.session_cookie_name,
+            value=refreshed_token,
+            httponly=True,
+            secure=settings.session_cookie_secure,
+            samesite=settings.session_cookie_samesite,
+            path=settings.session_cookie_path,
+            max_age=max_age_seconds,
+            expires=refreshed_expires_at,
+        )
+        return
+
+    if session.auth_source == SESSION_AUTH_SOURCE_HEADER:
+        http_response.headers[CHAT_REFRESHED_TOKEN_HEADER] = refreshed_token
+        http_response.headers[CHAT_REFRESHED_EXPIRES_AT_HEADER] = refreshed_expires_at.isoformat()
 
 @asynccontextmanager
 async def lifespan(_app_instance: FastAPI) -> AsyncIterator[None]:
@@ -128,6 +185,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=ALLOWED_METHODS,
     allow_headers=ALLOWED_HEADERS,
+    expose_headers=EXPOSED_RESPONSE_HEADERS,
 )
 
 app.include_router(auth_router)
@@ -165,6 +223,7 @@ def ready():
 async def chat(
     chat_request: ChatRequest,
     request: Request,
+    http_response: Response,
     session: Session = Depends(get_current_session),
     _rate_limit: None = Depends(check_rate_limit_dependency),
 ) -> ChatResponse:
@@ -208,12 +267,12 @@ async def chat(
             bm25_score_threshold=settings.BM25_SCORE_THRESHOLD,
             weighted_consensus_count=settings.WEIGHTED_CONSENSUS_COUNT,
         )
-        response = chat_result.response
-        response.model = settings.LLM_MODEL_NAME
+        chat_response = chat_result.response
+        chat_response.model = settings.LLM_MODEL_NAME
 
         if not chat_result.selected_chunks:
             _log_chat_answer_preview(
-                response.answer,
+                chat_response.answer,
                 request_id,
                 context=EVENT_CHAT_LLM_SKIPPED,
             )
@@ -240,7 +299,8 @@ async def chat(
                     "bm25_score_threshold": chat_result.bm25_score_threshold,
                 }
             )
-            return response
+            _apply_refreshed_session_if_needed(http_response, session)
+            return chat_response
 
         logger.info(
             {
@@ -248,8 +308,8 @@ async def chat(
                 "request_id": request_id,
                 "elapsed_ms": int((time.time() - request_start_time) * 1000),
                 "ip": getattr(request.client, "host", None),
-                "chunks": [citation.id for citation in response.citations],
-                "usage": response.usage.model_dump(),
+                "chunks": [citation.id for citation in chat_response.citations],
+                "usage": chat_response.usage.model_dump(),
                 "usage_detail": chat_result.usage_detail,
                 "llm_limits": {
                     "max_output_tokens": settings.MAX_OUTPUT_TOKENS,
@@ -274,11 +334,12 @@ async def chat(
         )
 
         _log_chat_answer_preview(
-            response.answer,
+            chat_response.answer,
             request_id,
             context=EVENT_CHAT_SUCCESS,
         )
-        return response
+        _apply_refreshed_session_if_needed(http_response, session)
+        return chat_response
 
     except HTTPException:
         raise
@@ -322,7 +383,7 @@ async def chat(
                     "max_output_tokens": settings.MAX_OUTPUT_TOKENS,
                 }
             )
-        return ChatResponse(
+        fallback_response = ChatResponse(
             answer=TOKEN_STARVATION_MESSAGE
             if empty_answer_classification == EMPTY_ANSWER_CLASS_TOKEN_STARVATION
             else "",
@@ -331,6 +392,8 @@ async def chat(
             input_token_limit=settings.MAX_INPUT_TOKENS,
             model=settings.LLM_MODEL_NAME,
         )
+        _apply_refreshed_session_if_needed(http_response, session)
+        return fallback_response
     except Exception as exc:
         logger.exception(
             EVENT_CHAT_FAILED,
