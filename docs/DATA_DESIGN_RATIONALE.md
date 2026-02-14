@@ -1,7 +1,7 @@
 # Data Design Decisions for CV Persona LLM Retrieval Pipeline
 
 ## Table of Contents
-1. [One CV file per Role (role:infra, role:product)](#1-one-cv-file-per-role-roleinfra-roleproduct)
+1. [One or More CV Files per Role](#1-one-or-more-cv-files-per-role)
 2. [Optional Topic Tags (not role synonyms)](#2-optional-topic-tags-not-role-synonyms)
 3. [Keep a JSONL “Chunks Sidecar” (Chosen)](#3-keep-a-jsonl-chunks-sidecar-chosen)
 4. [ANN via Vertex AI Vector Search](#4-ann-via-vertex-ai-vector-search)
@@ -19,22 +19,22 @@
 16. [Versioned Dataset Folder + Pointer](#16-versioned-dataset-folder--pointer)
 17. [Pre-normalized Embeddings](#17-pre-normalized-embeddings)
 
-## 1. One CV file per Role (role:infra, role:product)
+## 1. One or More CV Files per Role
 
-**What:** Keep the infra CV (DevOps/SRE/Platform) and the product CV (PM/TPM/PO) as separate documents. Tag all chunks from each with a single role: `role:infra` or `role:product`.  
+**What:** Keep CV content separated into one or more files per role. Tag all chunks from each file with a single role tag (for example, `role:infra`, `role:product`).  
 **Alternatives considered:**
-- Merge both CVs into one file.
-- Keep multiple fine-grained role tags (`role:devops`, `role:sre`, `role:platform`, `role:pm`, `role:tpm`, `role:po`).
+- Merge all roles into one file.
+- Keep only fine-grained title tags (`role:devops`, `role:sre`, `role:platform`, `role:pm`, `role:tpm`, `role:po`) without role-level grouping.
 
 **Pros:**
-- Simple mental model: two “modes” of the same persona.
+- Scales as new role files are added without changing the ingestion model.
 - Easy to steer retrieval by role without brittle job-title semantics.
 - No risk of cross-contamination unless a query is mixed.
 
 **Cons:**
-- Less granularity than per-title roles.
+- Less granularity than per-title roles inside a role bucket.
 
-**Decision:** Use `role:infra` and `role:product` only. It’s the least complex way to keep answers consistent.
+**Decision:** Use one role tag per file/chunk, with the allowed role set defined by configuration/dataset. Keep role tags coarse, and use topic tags for finer precision.
 
 ---
 
@@ -192,7 +192,7 @@
 
 **Pros:**
 - **At retrieval**: vector DBs (like Vertex AI Matching Engine) filter fastest on flat metadata. `tags` make ANN filtering simple and efficient.
-- **Data quality**: structured fields give schema guarantees (e.g., `role ∈ {infra, product}`), avoiding typos like `role:infraa`.
+- **Data quality**: structured fields give schema guarantees (e.g., `role` must be in a configured allowed-role set), avoiding typos like `role:infraa`.
 - **Analytics & ops**: structured fields are easier to aggregate (“how many infra chunks?”, “topic coverage?”) and evolve (add new fields) without regexing strings.
 - **Clarity**: humans can read `role`/`topics` at a glance; `tags` are a runtime convenience.
 
