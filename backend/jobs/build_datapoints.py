@@ -105,7 +105,7 @@ _METADATA_TAGS_KEY = "tags"
 _METADATA_SECTION_KEY = "section"
 _RECORD_TEXT_KEY = "text"
 
-_RESTRICT_NAMESPACE_ROLE = "role"
+_RESTRICT_NAMESPACE_PROFILE = "profile"
 _RESTRICT_NAMESPACE_DOC_ID = "doc_id"
 _RESTRICT_NAMESPACE_TOPIC = "topic"
 _RESTRICT_NAMESPACE_TAG = "tag"
@@ -223,7 +223,7 @@ def _build_restricts(metadata: Mapping[str, object]) -> list[dict[str, object]]:
     if profile_value is not None:
         restricts.append(
             {
-                "namespace": _RESTRICT_NAMESPACE_ROLE,
+                "namespace": _RESTRICT_NAMESPACE_PROFILE,
                 "allowTokens": [profile_value],
             }
         )
@@ -254,7 +254,7 @@ def _resolve_profile_for_restricts(metadata: Mapping[str, object]) -> str | None
     - metadata: Chunk metadata mapping.
 
     Output:
-    - Lowercase profile string used in the `role` restrict namespace, or None.
+    - Lowercase profile string used in the `profile` restrict namespace, or None.
 
     Edge cases:
     - Returns None when `profile` is missing or blank.

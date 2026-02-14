@@ -4,7 +4,7 @@
 
 - **ANN (Approximate Nearest Neighbors)**: A fast, approximate search method for finding the most similar vectors to a query embedding.
 - **BM25**: A keyword-based ranking algorithm that scores documents based on term frequency and inverse document frequency.
-- **Chunk**: A bounded slice of source text used for retrieval, typically a few hundred tokens with metadata like `role` and `topic`.
+- **Chunk**: A bounded slice of source text used for retrieval, typically a few hundred tokens with metadata like `profile` and `topic`.
 - **Citation**: A reference to a retrieved chunk used to justify an answer; surfaced in API responses.
 - **Context window**: The maximum amount of tokens a model can accept in a single request (prompt + retrieved chunks + response).
 - **Datapoint**: One embedding vector plus its metadata, used for vector search indexing.
@@ -21,7 +21,7 @@
 - **Prompt**: The structured input to the LLM, including instructions and retrieved context.
 - **RAG (Retrieval-Augmented Generation)**: An approach that retrieves relevant context and conditions the model on it before generating an answer.
 - **Reranking / score weighting**: Adjusting and combining retrieval scores (vector + BM25 + boosts) before selecting top results.
-- **Role/topic tags**: Metadata applied to chunks (for example `role:infra`, `topic:kubernetes`) used for filtering and boosting.
+- **Profile/topic tags**: Metadata applied to chunks (for example `profile:infra`, `topic:kubernetes`) used for filtering and boosting.
 - **Token**: The model’s unit of text processing; both input and output are measured in tokens.
 - **Top-K**: The number of highest-scoring results kept after retrieval.
 - **Vector store**: The storage and query layer for embeddings (local in-memory search or Matching Engine).

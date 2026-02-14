@@ -53,7 +53,7 @@ This guide explains each field: what it signifies, how the app uses it, the bene
 
 ### `profile` (string)
 - **Meaning**: Canonical persona profile for this chunk.
-- **Use**: Retrieval biasing via the `role` restrict namespace and query-time metadata boosts.
+- **Use**: Retrieval biasing via the `profile` restrict namespace and query-time metadata boosts.
 - **Benefit**: One persona voice, precise evidence selection.
 - **Example**: `"infra"` (also valid: `"marketing"`, `"sales"`, `"product"`)
 - **If dropped**: Harder to steer retrieval; more cross-contamination.
@@ -67,9 +67,9 @@ This guide explains each field: what it signifies, how the app uses it, the bene
 
 ### `tags` (array<string>)
 - **Meaning**: Flattened metadata for fast vector-DB filtering.
-- **Use**: ANN pre-filter (e.g., tags contains `role:infra`).
+- **Use**: ANN pre-filter (e.g., tags contains `profile:infra`).
 - **Benefit**: Efficient, simple metadata filters in the vector store.
-- **Example**: `["role:infra","topic:kubernetes","topic:terraform"]`
+- **Example**: `["profile:infra","topic:kubernetes","topic:terraform"]`
 - **If dropped**: Must fetch broadly then post-filter in backend (slower, costlier).
 
 ---
@@ -136,7 +136,7 @@ This guide explains each field: what it signifies, how the app uses it, the bene
 ### `extras.title` (string)
 - **Meaning**: Job title for the stint represented by the chunk.
 - **Use**: Better stint dedupe and clearer deterministic duration summaries.
-- **Benefit**: Reduces over-counting when multiple chunks mirror one role.
+- **Benefit**: Reduces over-counting when multiple chunks mirror one profile.
 - **Example**: `"Senior SRE"`
 
 ### `extras.tech` (array<string>)
@@ -174,7 +174,7 @@ This guide explains each field: what it signifies, how the app uses it, the bene
   "text": "DevOps/SRE engineer experienced in automating infrastructure, running Kubernetes in production, and improving observability.",
   "profile": "infra",
   "topics": ["devops","sre","automation","kubernetes","observability"],
-  "tags": ["role:infra","topic:devops","topic:sre","topic:automation","topic:kubernetes","topic:observability"],
+  "tags": ["profile:infra","topic:devops","topic:sre","topic:automation","topic:kubernetes","topic:observability"],
   "section": "Summary",
   "start_year": 2025,
   "end_year": 2025,
@@ -199,7 +199,7 @@ This guide explains each field: what it signifies, how the app uses it, the bene
   "text": "Skills: Kubernetes, Terraform, Argo CD, Prometheus, Grafana, AWS, GCP.",
   "profile": "infra",
   "topics": ["kubernetes","terraform","argocd","prometheus","grafana","aws","gcp"],
-  "tags": ["role:infra","topic:kubernetes","topic:terraform","topic:argocd","topic:prometheus","topic:grafana","topic:aws","topic:gcp"],
+  "tags": ["profile:infra","topic:kubernetes","topic:terraform","topic:argocd","topic:prometheus","topic:grafana","topic:aws","topic:gcp"],
   "section": "Skills",
   "start_year": 2025,
   "end_year": 2025,
@@ -224,7 +224,7 @@ This guide explains each field: what it signifies, how the app uses it, the bene
   "text": "At Acme Inc., managed production EKS clusters with Terraform and Argo CD, improved monitoring with Prometheus and Grafana, and defined SLOs to improve reliability.",
   "profile": "infra",
   "topics": ["eks","terraform","argocd","prometheus","grafana","slo","reliability"],
-  "tags": ["role:infra","topic:eks","topic:terraform","topic:argocd","topic:prometheus","topic:grafana","topic:slo","topic:reliability"],
+  "tags": ["profile:infra","topic:eks","topic:terraform","topic:argocd","topic:prometheus","topic:grafana","topic:slo","topic:reliability"],
   "section": "Experience",
   "start_year": 2019,
   "end_year": 2021,

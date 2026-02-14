@@ -48,7 +48,7 @@ _APOS = r"[’']"
 # Business-tuned thresholds and weights.
 _DEFAULT_TOP_K = 8
 _MAX_CONTEXT_CHUNKS = 8
-_ROLE_BOOST = 0.05
+_PROFILE_BOOST = 0.05
 _TOPIC_BOOST = 0.02
 _MAX_TOPIC_BOOST = 0.06
 _DEBUG_NEIGHBOR_SAMPLE = 5
@@ -628,18 +628,6 @@ def _chunk_profile(metadata: Mapping[str, Any]) -> Optional[str]:
     return None
 
 
-def _chunk_role(metadata: Mapping[str, Any]) -> Optional[str]:
-    """
-    Return the profile value used by role-based retrieval boosts.
-
-    Inputs:
-        metadata: Metadata mapping for a chunk.
-    Outputs:
-        Profile label as lowercase string, or None if not available.
-    """
-    return _chunk_profile(metadata)
-
-
 def _chunk_topics(metadata: Mapping[str, Any]) -> Set[str]:
     """
     Extract topic labels from chunk metadata.
@@ -665,9 +653,9 @@ def _chunk_topics(metadata: Mapping[str, Any]) -> Set[str]:
     return topics
 
 
-def _classify_query_role(question: str) -> Optional[str]:
+def _classify_query_profile(question: str) -> Optional[str]:
     """
-    Classify a query as infra or product based on keyword hints.
+    Classify a query as infra or product profile based on keyword hints.
 
     Inputs:
         question: Raw user question.
@@ -1091,7 +1079,7 @@ def apply_filters_and_boosting(candidates: List[Dict[str, Any]]) -> List[Dict[st
     bm25_scores = (
         _bm25_index.score(_tokenize_for_bm25(question)) if _bm25_index and question else {}
     )
-    role_hint = _classify_query_role(question)
+    profile_hint = _classify_query_profile(question)
     topic_tokens = set(_tokenize(question))
     vector_weight = float(settings.RETRIEVAL_VECTOR_WEIGHT)
     bm25_weight = float(settings.RETRIEVAL_BM25_WEIGHT)
@@ -1113,9 +1101,9 @@ def apply_filters_and_boosting(candidates: List[Dict[str, Any]]) -> List[Dict[st
         )
 
         metadata = cast(Dict[str, Any], chunk.get("metadata") or {})
-        role = _chunk_profile(metadata)
-        if role_hint and role and role == role_hint:
-            weighted += _ROLE_BOOST
+        profile = _chunk_profile(metadata)
+        if profile_hint and profile and profile == profile_hint:
+            weighted += _PROFILE_BOOST
 
         if topic_tokens:
             matches = len(_chunk_topics(metadata) & topic_tokens)
@@ -1180,9 +1168,9 @@ def build_context_prompt(question: str, selected: List[Dict[str, Any]]) -> str:
 
         metadata = cast(Dict[str, Any], chunk.get("metadata") or {})
         label_parts: List[str] = []
-        role = _chunk_profile(metadata)
-        if role:
-            label_parts.append(role)
+        profile = _chunk_profile(metadata)
+        if profile:
+            label_parts.append(profile)
         section = metadata.get("section")
         if isinstance(section, str) and section:
             label_parts.append(section)

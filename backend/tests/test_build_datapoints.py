@@ -29,8 +29,8 @@ NAMESPACE_FIELD = "namespace"
 PROFILE_SECTION = "profile"
 PROD_TAG = "prod"
 RESTRICTS_FIELD = "restricts"
-ROLE_FIELD = "role"
-ROLE_VALUE = "infra"
+PROFILE_NAMESPACE = "profile"
+PROFILE_INFRA_VALUE = "infra"
 PROFILE_FIELD = "profile"
 PROFILE_MARKETING_VALUE = "marketing"
 SECTION_FIELD = "section"
@@ -85,14 +85,14 @@ def test_build_restricts_includes_all_supported_namespaces() -> None:
     """Verify restricts include all supported namespaces.
 
     What is tested:
-        _build_restricts mapping for role, doc_id, topics, and tags.
+        _build_restricts mapping for profile, doc_id, topics, and tags.
     How it's tested:
         Build metadata with all supported fields and compare restricts output.
     Expected result format:
         The restricts list matches the expected namespace/token mapping order.
     """
     metadata: Metadata = {
-        PROFILE_FIELD: ROLE_VALUE,
+        PROFILE_FIELD: PROFILE_INFRA_VALUE,
         DOC_ID_FIELD: DOC_ID_VALUE,
         TOPICS_FIELD: [KUBERNETES_TOPIC, GKE_TOPIC],
         TAG_FIELD: [PROD_TAG, HIGHLIGHTS_TAG],
@@ -101,7 +101,7 @@ def test_build_restricts_includes_all_supported_namespaces() -> None:
     restricts = build_datapoints._build_restricts(metadata) # pyright: ignore[reportPrivateUsage]
 
     assert restricts == [
-        {NAMESPACE_FIELD: ROLE_FIELD, ALLOW_TOKENS_FIELD: [ROLE_VALUE]},
+        {NAMESPACE_FIELD: PROFILE_NAMESPACE, ALLOW_TOKENS_FIELD: [PROFILE_INFRA_VALUE]},
         {NAMESPACE_FIELD: DOC_ID_FIELD, ALLOW_TOKENS_FIELD: [DOC_ID_VALUE]},
         {
             NAMESPACE_FIELD: TOPIC_NAMESPACE,
@@ -114,8 +114,8 @@ def test_build_restricts_includes_all_supported_namespaces() -> None:
     ]
 
 
-def test_build_restricts_uses_profile_for_role_namespace() -> None:
-    """Verify profile is the only source for the role restrict namespace."""
+def test_build_restricts_uses_profile_namespace() -> None:
+    """Verify profile is the only source for the profile restrict namespace."""
     metadata: Metadata = {
         PROFILE_FIELD: PROFILE_MARKETING_VALUE,
     }
@@ -123,7 +123,7 @@ def test_build_restricts_uses_profile_for_role_namespace() -> None:
     restricts = build_datapoints._build_restricts(metadata) # pyright: ignore[reportPrivateUsage]
 
     assert restricts == [
-        {NAMESPACE_FIELD: ROLE_FIELD, ALLOW_TOKENS_FIELD: [PROFILE_MARKETING_VALUE]}
+        {NAMESPACE_FIELD: PROFILE_NAMESPACE, ALLOW_TOKENS_FIELD: [PROFILE_MARKETING_VALUE]}
     ]
 
 
@@ -144,7 +144,7 @@ def test_write_datapoints_emits_expected_json_lines(tmp_path: Path) -> None:
             ID_FIELD: CHUNK_ID_ONE,
             METADATA_FIELD: {
                 SECTION_FIELD: PROFILE_SECTION,
-                PROFILE_FIELD: ROLE_VALUE,
+                PROFILE_FIELD: PROFILE_INFRA_VALUE,
                 DOC_ID_FIELD: DOC_ID_VALUE,
                 TOPICS_FIELD: [KUBERNETES_TOPIC],
                 TAG_FIELD: [PROD_TAG],
@@ -173,7 +173,7 @@ def test_write_datapoints_emits_expected_json_lines(tmp_path: Path) -> None:
     _assert_float_vectors_close(datapoint[FEATURE_VECTOR_FIELD], normalized_vector)
     assert datapoint[CROWDING_TAG_FIELD] == PROFILE_SECTION
     assert datapoint[RESTRICTS_FIELD] == [
-        {NAMESPACE_FIELD: ROLE_FIELD, ALLOW_TOKENS_FIELD: [ROLE_VALUE]},
+        {NAMESPACE_FIELD: PROFILE_NAMESPACE, ALLOW_TOKENS_FIELD: [PROFILE_INFRA_VALUE]},
         {NAMESPACE_FIELD: DOC_ID_FIELD, ALLOW_TOKENS_FIELD: [DOC_ID_VALUE]},
         {
             NAMESPACE_FIELD: TOPIC_NAMESPACE,

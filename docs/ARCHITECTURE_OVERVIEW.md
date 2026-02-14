@@ -32,7 +32,7 @@ The ingestion pipeline validates persona content, chunks it, embeds it, and uplo
 - **Chunks** = source of truth, always recoverable.
 - **Vertex AI Vector Search** = scalable semantic ANN engine.
 - **BM25** = cheap keyword precision, especially for acronyms, IDs, rare terms.
-- **Hybrid retrieval** = best of both worlds, with reranking and role boosts.
+- **Hybrid retrieval** = best of both worlds, with reranking and profile boosts.
 - **Sidecar store in GCS** = portable, versioned artifacts.
 - **Runtime classification** = answers stay persona-consistent but context-aware.
 

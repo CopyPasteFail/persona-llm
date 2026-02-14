@@ -241,7 +241,7 @@ For a human-readable guide explaining the meaning, use cases, benefits, and trad
 
 - **One profile per CV**: each chunk keeps a single `profile` string for restricts/boosts.
 - **Tags**:
-  - Always add `role:<profile>`.
+  - Always add `profile:<profile>`.
   - Optionally add `topic:*` for precision (`topic:kubernetes`, `topic:roadmap`).
 - **Chunks**: store as JSONL lines with text + metadata; keep gzipped in GCS as `datasets/<version>/chunks.jsonl.gz` and switch versions via `datasets/current.json`.
 - **Vectors**: embeddings from each chunk → local cosine search by default; optional upsert to **Vertex AI Matching Engine** for semantic search.
@@ -251,7 +251,7 @@ For a human-readable guide explaining the meaning, use cases, benefits, and trad
 
 1. **Chunking**
    - Split CV docs into ~450-token chunks (could be generated via an LLM for the initial corpus; keep source material private).
-   - Attach `profile` and tags (`role:<profile>` + optional `topic:*`).
+   - Attach `profile` and tags (`profile:<profile>` + optional `topic:*`).
    - Validate against `chunk.schema.json`.
 2. **Packaging**
    - Write `chunks.jsonl.gz` into `datasets/<version>/`.
@@ -279,12 +279,12 @@ This section applies only when `VECTOR_BACKEND=matching_engine`.
    - Build in-memory BM25 inverted index (tokenize chunks, compute idf, etc.).
 2. **Query flow**
    - **First-person normalization** (convert “Omer Reznik” → “I”).
-   - **Role classification**: keyword-hint heuristic can bias `infra`/`product`; other profiles remain neutral.
+   - **Profile classification**: keyword-hint heuristic can bias `infra`/`product`; other profiles remain neutral.
    - **Vector search**: embed query, run local cosine search by default or call Vertex Matching Engine when configured.
    - **BM25 scoring**: run query tokens against the in-memory BM25 index over chunk text/section/topics/tags.
    - **Rerank/boost**:
      - Weight scores with env-configured vector/BM25 weights and fixed profile/topic boosts.
-     - If classified, boost chunks with matching role tag.
+     - If classified, boost chunks with matching profile tag.
    - **Trim**: keep at most 8 chunks after reranking (candidate depth comes from `TOP_K`, default 4).
    - **Prompt LLM**: feed selected reranked chunks into Gemini Flash, generate strict, grounded first-person answer.
    - **Return**: `{answer, citations, usage}` JSON.

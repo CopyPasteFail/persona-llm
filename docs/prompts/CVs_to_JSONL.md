@@ -24,7 +24,7 @@ You are converting ONE OR MORE ATTACHED CV FILES into JSONL lines that conform t
 * `text`: first-person chunk content.
 * `profile`: normalized lowercase professional domain inferred from the CV (single value per CV).
 * `topics`: normalized lowercase tokens.
-* `tags`: mirror `role:<profile>` + topics (for fast ANN filtering).
+* `tags`: mirror `profile:<profile>` + topics (for fast ANN filtering).
 * `section`: "Experience","Projects","Education","Certifications","Skills","Summary","Publications","Awards".
 * `start_year` / `end_year`: optional integers; same year = both equal.
 * `lang`: "en".
@@ -33,7 +33,7 @@ You are converting ONE OR MORE ATTACHED CV FILES into JSONL lines that conform t
 * `permissions`: ["public"].
 * `extras`:
   * `employer`: company/institution if applicable.
-  * `title`: role title when available.
+  * `title`: stint title when available.
   * `stint_domains`: list of fine-grained labels (for example: `["devops"]`, `["sre"]`, `["platform"]`, `["marketing"]`, `["sales"]`, `["backend"]`) for dated Experience chunks.
   * `tech`: human-friendly names (tools, systems, methods, platforms, instruments, software, equipment, etc.).
   * `type`: "experience" or "achievement", **only for Experience**.
@@ -57,9 +57,9 @@ You are converting ONE OR MORE ATTACHED CV FILES into JSONL lines that conform t
 
 ## Tags
 
-* Always include `role:<profile>`.
+* Always include `profile:<profile>`.
 * For each topic, include `topic:<t>`.
-* Tags = role + topics only.
+* Tags = profile + topics only.
 
 ## Examples (from SCHEMA.md)
 
@@ -79,7 +79,7 @@ You are converting ONE OR MORE ATTACHED CV FILES into JSONL lines that conform t
   "text": "DevOps/SRE engineer experienced in automating infrastructure, running Kubernetes in production, and improving observability.",
   "profile": "infra",
   "topics": ["devops","sre","automation","kubernetes","observability"],
-  "tags": ["role:infra","topic:devops","topic:sre","topic:automation","topic:kubernetes","topic:observability"],
+  "tags": ["profile:infra","topic:devops","topic:sre","topic:automation","topic:kubernetes","topic:observability"],
   "section": "Summary",
   "start_year": 2025,
   "end_year": 2025,
@@ -110,7 +110,7 @@ You are converting ONE OR MORE ATTACHED CV FILES into JSONL lines that conform t
   "text": "Skills: Kubernetes, Terraform, Argo CD, Prometheus, Grafana, AWS, GCP.",
   "profile": "infra",
   "topics": ["kubernetes","terraform","argocd","prometheus","grafana","aws","gcp"],
-  "tags": ["role:infra","topic:kubernetes","topic:terraform","topic:argocd","topic:prometheus","topic:grafana","topic:aws","topic:gcp"],
+  "tags": ["profile:infra","topic:kubernetes","topic:terraform","topic:argocd","topic:prometheus","topic:grafana","topic:aws","topic:gcp"],
   "section": "Skills",
   "start_year": 2025,
   "end_year": 2025,
@@ -141,7 +141,7 @@ You are converting ONE OR MORE ATTACHED CV FILES into JSONL lines that conform t
   "text": "At Acme Inc., managed production EKS clusters with Terraform and Argo CD, improved monitoring with Prometheus and Grafana, and defined SLOs to improve reliability.",
   "profile": "infra",
   "topics": ["eks","terraform","argocd","prometheus","grafana","slo","reliability"],
-  "tags": ["role:infra","topic:eks","topic:terraform","topic:argocd","topic:prometheus","topic:grafana","topic:slo","topic:reliability"],
+  "tags": ["profile:infra","topic:eks","topic:terraform","topic:argocd","topic:prometheus","topic:grafana","topic:slo","topic:reliability"],
   "section": "Experience",
   "start_year": 2019,
   "end_year": 2021,
@@ -166,8 +166,8 @@ You are converting ONE OR MORE ATTACHED CV FILES into JSONL lines that conform t
 The output `chunks.jsonl` file contains one JSON object per line. Here is an example with two lines:
 
 ```jsonl
-{"schema_version":2,"doc_id":"cv-infra-2025","chunk_id":"infra-001","position":1,"text":"DevOps/SRE engineer experienced in automating infrastructure, running Kubernetes in production, and improving observability.","profile":"infra","topics":["devops","sre","automation","kubernetes","observability"],"tags":["role:infra","topic:devops","topic:sre","topic:automation","topic:kubernetes","topic:observability"],"section":"Summary","start_year":2025,"end_year":2025,"lang":"en","updated_at":"2025-09-02T20:00:00Z","source_uri":"gs://bucket/cv-infra-2025.docx","permissions":["public"],"extras":{"employer":"","tech":["Kubernetes","Prometheus","Terraform"]}}
-{"schema_version":2,"doc_id":"cv-infra-2025","chunk_id":"infra-002","position":2,"text":"Skills: Kubernetes, Terraform, Argo CD, Prometheus, Grafana, AWS, GCP.","profile":"infra","topics":["kubernetes","terraform","argocd","prometheus","grafana","aws","gcp"],"tags":["role:infra","topic:kubernetes","topic:terraform","topic:argocd","topic:prometheus","topic:grafana","topic:aws","topic:gcp"],"section":"Skills","start_year":2025,"end_year":2025,"lang":"en","updated_at":"2025-09-02T20:00:00Z","source_uri":"gs://bucket/cv-infra-2025.docx","permissions":["public"],"extras":{"employer":"","tech":["Kubernetes","Terraform","Argo CD","Prometheus","Grafana","AWS","GCP"]}}
+{"schema_version":2,"doc_id":"cv-infra-2025","chunk_id":"infra-001","position":1,"text":"DevOps/SRE engineer experienced in automating infrastructure, running Kubernetes in production, and improving observability.","profile":"infra","topics":["devops","sre","automation","kubernetes","observability"],"tags":["profile:infra","topic:devops","topic:sre","topic:automation","topic:kubernetes","topic:observability"],"section":"Summary","start_year":2025,"end_year":2025,"lang":"en","updated_at":"2025-09-02T20:00:00Z","source_uri":"gs://bucket/cv-infra-2025.docx","permissions":["public"],"extras":{"employer":"","tech":["Kubernetes","Prometheus","Terraform"]}}
+{"schema_version":2,"doc_id":"cv-infra-2025","chunk_id":"infra-002","position":2,"text":"Skills: Kubernetes, Terraform, Argo CD, Prometheus, Grafana, AWS, GCP.","profile":"infra","topics":["kubernetes","terraform","argocd","prometheus","grafana","aws","gcp"],"tags":["profile:infra","topic:kubernetes","topic:terraform","topic:argocd","topic:prometheus","topic:grafana","topic:aws","topic:gcp"],"section":"Skills","start_year":2025,"end_year":2025,"lang":"en","updated_at":"2025-09-02T20:00:00Z","source_uri":"gs://bucket/cv-infra-2025.docx","permissions":["public"],"extras":{"employer":"","tech":["Kubernetes","Terraform","Argo CD","Prometheus","Grafana","AWS","GCP"]}}
 ```
 
 Each line is a valid JSON object, and the file as a whole is line-delimited JSON (JSONL).

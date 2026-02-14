@@ -26,7 +26,7 @@
       "type": "array",
       "items": {
         "type": "string",
-        "pattern": "^(role:[a-z0-9._-]+|topic:[a-z0-9._-]+)$"
+        "pattern": "^(profile:[a-z0-9._-]+|topic:[a-z0-9._-]+)$"
       },
       "uniqueItems": true
     },
@@ -75,7 +75,7 @@
         "properties": {
           "tags": {
             "type": "array",
-            "contains": { "type": "string", "pattern": "^role:[a-z0-9._-]+$" }
+            "contains": { "type": "string", "pattern": "^profile:[a-z0-9._-]+$" }
           }
         }
       }

@@ -1,14 +1,14 @@
 # Data Design Decisions for CV Persona LLM Retrieval Pipeline
 
 ## Table of Contents
-1. [One or More CV Files per Role](#1-one-or-more-cv-files-per-role)
-2. [Optional Topic Tags (not role synonyms)](#2-optional-topic-tags-not-role-synonyms)
+1. [One or More CV Files per Profile](#1-one-or-more-cv-files-per-profile)
+2. [Optional Topic Tags (not profile synonyms)](#2-optional-topic-tags-not-profile-synonyms)
 3. [Keep a JSONL “Chunks Sidecar” (Chosen)](#3-keep-a-jsonl-chunks-sidecar-chosen)
 4. [ANN via Vertex AI Vector Search](#4-ann-via-vertex-ai-vector-search)
 5. [Add BM25 (Keyword Signal)](#5-add-bm25-keyword-signal)
 6. [Build BM25 Index at Startup (for now)](#6-build-bm25-index-at-startup-for-now)
 7. [Hybrid Retrieval and Rerank (Wide to Narrow)](#7-hybrid-retrieval-and-rerank-wide-to-narrow)
-8. [Runtime Classification by Role](#8-runtime-classification-by-role)
+8. [Runtime Classification by Profile](#8-runtime-classification-by-profile)
 9. [No Elasticsearch/OpenSearch (for now)](#9-no-elasticsearchopensearch-for-now)
 10. [Strict First-Person, Grounded Answers](#10-strict-first-person-grounded-answers)
 11. [Structured Metadata + Tags (Denormalization for Retrieval)](#11-structured-metadata--tags-denormalization-for-retrieval)
@@ -19,37 +19,37 @@
 16. [Versioned Dataset Folder + Pointer](#16-versioned-dataset-folder--pointer)
 17. [Pre-normalized Embeddings](#17-pre-normalized-embeddings)
 
-## 1. One or More CV Files per Role
+## 1. One or More CV Files per Profile
 
-**What:** Keep CV content separated into one or more files per role. Tag all chunks from each file with a single role tag (for example, `role:infra`, `role:product`).  
+**What:** Keep CV content separated into one or more files per profile. Tag all chunks from each file with a single profile tag (for example, `profile:infra`, `profile:product`).  
 **Alternatives considered:**
-- Merge all roles into one file.
-- Keep only fine-grained title tags (`role:devops`, `role:sre`, `role:platform`, `role:pm`, `role:tpm`, `role:po`) without role-level grouping.
+- Merge all profiles into one file.
+- Keep only fine-grained title tags (`profile:devops`, `profile:sre`, `profile:platform`, `profile:pm`, `profile:tpm`, `profile:po`) without profile-level grouping.
 
 **Pros:**
-- Scales as new role files are added without changing the ingestion model.
-- Easy to steer retrieval by role without brittle job-title semantics.
+- Scales as new profile files are added without changing the ingestion model.
+- Easy to steer retrieval by profile without brittle job-title semantics.
 - No risk of cross-contamination unless a query is mixed.
 
 **Cons:**
-- Less granularity than per-title roles inside a role bucket.
+- Less granularity than per-title profiles inside a profile bucket.
 
-**Decision:** Use one role tag per file/chunk, with the allowed role set defined by configuration/dataset. Keep role tags coarse, and use topic tags for finer precision.
+**Decision:** Use one profile tag per file/chunk, with the allowed profile set defined by configuration/dataset. Keep profile tags coarse, and use topic tags for finer precision.
 
 ---
 
-## 2. Optional Topic Tags (not role synonyms)
+## 2. Optional Topic Tags (not profile synonyms)
 
-**What:** Add topic tags like `topic:kubernetes`, `topic:roadmap` for precision. Do not duplicate role synonyms.  
-**Alternatives considered:** Encode many role synonyms as tags.
+**What:** Add topic tags like `topic:kubernetes`, `topic:roadmap` for precision. Do not duplicate profile synonyms.  
+**Alternatives considered:** Encode many profile synonyms as tags.
 
 **Pros:**  
 - Topics sharpen retrieval without overfitting to job titles.  
-- Less tagging churn if role taxonomy changes.  
+- Less tagging churn if profile taxonomy changes.  
 
 **Cons:** Requires discipline in tagging.
 
-**Decision:** Use topics for precision; keep roles minimal.
+**Decision:** Use topics for precision; keep profiles minimal.
 
 ---
 
@@ -135,16 +135,16 @@
 
 ---
 
-## 8. Runtime Classification by Role
+## 8. Runtime Classification by Profile
 
 **What:** On each query, classify toward `infra` or `product` using keyword hints. Leave unclassified if mixed.  
-**Alternatives:** Let LLM decide; or require user to pick a role.
+**Alternatives:** Let LLM decide; or require user to pick a profile.
 
 **Pros:**  
 - Cheap, low-latency.  
 - Keeps persona consistent without user having to choose.  
 - Mixed queries (e.g. “How do you prioritize infra work?”) can surface both product-style and infra chunks.  
-- Prevents wasting LLM tokens on irrelevant role-specific content.  
+- Prevents wasting LLM tokens on irrelevant profile-specific content.  
 
 **Cons:** Small logic layer to maintain.  
 
@@ -184,24 +184,24 @@
 
 ## 11. Structured Metadata + Tags (Denormalization for Retrieval)
 
-**What:** Keep structured fields in the chunks JSONL (e.g., `role: "infra" | "product"`, `topics: [...]`) **and** also generate flattened `tags` (e.g., `["role:infra","topic:kubernetes"]`). Push **only `tags`** into the vector DB metadata for fast filtering; keep the full structured fields in the sidecar JSONL for validation, analytics, and provenance.
+**What:** Keep structured fields in the chunks JSONL (e.g., `profile: "infra" | "product"`, `topics: [...]`) **and** also generate flattened `tags` (e.g., `["profile:infra","topic:kubernetes"]`). Push **only `tags`** into the vector DB metadata for fast filtering; keep the full structured fields in the sidecar JSONL for validation, analytics, and provenance.
 
 **Alternatives considered:**
-- **Tags only** (no structured fields): keep just `["role:infra","topic:kubernetes"]`.
-- **Structured only** (no tags): keep `role`/`topics` but don’t denormalize to `tags`.
+- **Tags only** (no structured fields): keep just `["profile:infra","topic:kubernetes"]`.
+- **Structured only** (no tags): keep `profile`/`topics` but don’t denormalize to `tags`.
 
 **Pros:**
 - **At retrieval**: vector DBs (like Vertex AI Matching Engine) filter fastest on flat metadata. `tags` make ANN filtering simple and efficient.
-- **Data quality**: structured fields give schema guarantees (e.g., `role` must be in a configured allowed-role set), avoiding typos like `role:infraa`.
+- **Data quality**: structured fields give schema guarantees (e.g., `profile` must be in a configured allowed-profile set), avoiding typos like `profile:infraa`.
 - **Analytics & ops**: structured fields are easier to aggregate (“how many infra chunks?”, “topic coverage?”) and evolve (add new fields) without regexing strings.
-- **Clarity**: humans can read `role`/`topics` at a glance; `tags` are a runtime convenience.
+- **Clarity**: humans can read `profile`/`topics` at a glance; `tags` are a runtime convenience.
 
 **Cons:**
-- **Duplication**: `tags` repeat information that’s already in `role`/`topics`.
+- **Duplication**: `tags` repeat information that’s already in `profile`/`topics`.
 - **Slightly more ingestion logic**: must auto-generate tags from structured fields.
 
 **Decision:** **Keep both.**  
-- Generate `tags` automatically at ingestion from `role` + `topics` (deterministic, no manual maintenance).  
+- Generate `tags` automatically at ingestion from `profile` + `topics` (deterministic, no manual maintenance).  
 - **Push only `tags`** (plus `chunk_id`) to the vector index for fast ANN filtering.  
 - Keep **structured fields** in the JSONL sidecar for validation, analytics, and future evolution.
 
@@ -210,9 +210,9 @@
 {
   "doc_id": "cv-infra-2025",
   "chunk_id": "infra-001",
-  "role": "infra",
+  "profile": "infra",
   "topics": ["kubernetes","terraform"],
-  "tags": ["role:infra","topic:kubernetes","topic:terraform"],
+  "tags": ["profile:infra","topic:kubernetes","topic:terraform"],
   "text": "Ran EKS with Terraform and ArgoCD."
 }
 ```
@@ -238,9 +238,9 @@
 **Related guardrail:** `DATAPOINTS_DIMENSIONS` defaults to the selected model’s native dimensionality (3,072 for `gemini-embedding-001`, 768 for the `text-embedding-00x` family) so the embeddings always match the Matching Engine index configuration. Only change it when you also plan to recreate the index with that different dimensionality.
 
 **Query usage:**
-- ANN call with metadata filter: `tags CONTAINS "role:infra"`.
+- ANN call with metadata filter: `tags CONTAINS "profile:infra"`.
 - Rerank boost: `tags CONTAINS "topic:kubernetes"`.
-- Analytics (outside ANN): group by `role`, count by `topics`.
+- Analytics (outside ANN): group by `profile`, count by `topics`.
 
 ---
 
@@ -276,7 +276,7 @@
 
 ## 14. Overlap for Retrieval Continuity
 
-**What:** Allow a small (~10%) overlap by sentence between consecutive chunks, but only inside the same role/employer block.  
+**What:** Allow a small (~10%) overlap by sentence between consecutive chunks, but only inside the same profile/employer block.  
 
 **Alternatives considered:**
 - No overlap at all, strictly adjacent non-overlapping chunks.
@@ -289,9 +289,9 @@
 
 **Cons:**
 - Slight duplication across chunks increases file size marginally.
-- Requires careful implementation to ensure overlaps stay inside role/employer blocks only.
+- Requires careful implementation to ensure overlaps stay inside profile/employer blocks only.
 
-**Decision:** Add ~10% overlap by sentence within the same role/employer block. Never overlap across roles, employers, or across sections (e.g., Experience → Education). This improves retrieval quality by ensuring adjacent chunks share enough context for coherent answers.
+**Decision:** Add ~10% overlap by sentence within the same profile/employer block. Never overlap across profiles, employers, or across sections (e.g., Experience → Education). This improves retrieval quality by ensuring adjacent chunks share enough context for coherent answers.
 
 ---
 
