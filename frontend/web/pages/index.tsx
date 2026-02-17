@@ -303,9 +303,9 @@ export default function IndexPage() {
             {/* Conversation box */}
             <div
               ref={streamRef}
-              className="flex-1 overflow-y-auto rounded-2xl border border-zinc-800 bg-zinc-900/30 p-4 space-y-4"
+              className="flex-1 overflow-y-auto rounded-2xl border border-zinc-800 bg-zinc-900/30 px-4 pb-4 pt-0 space-y-4"
             >
-              <div className="sticky top-0 z-10 -mx-4 -mt-4 mb-3 border-b border-zinc-800/80 bg-zinc-950/90 px-4 py-2 text-[11px] text-zinc-400 backdrop-blur">
+              <div className="sticky top-0 z-10 -mx-4 mb-3 border-b border-zinc-800/80 bg-zinc-950/90 px-4 py-2 text-[11px] text-zinc-400 backdrop-blur">
                 <div className="flex flex-wrap items-center gap-3">
                   <span className="uppercase tracking-wide text-zinc-500">Session</span>
                   <span>Model: {sessionModelName ?? "—"}</span>
