@@ -182,10 +182,10 @@ security-secrets:
 
 local-integrated: require-private
 	PERSONA_DIR="$${PERSONA_DIR:-$(PRIVATE_DIR)/persona}" OPS_AUTH=disabled $(MAKE) be-run & \
-	NEXT_PUBLIC_API_URL="http://localhost:8080" PRIVATE_DIR="$(PRIVATE_DIR)" $(MAKE) fe-dev
+	$(MAKE) NEXT_PUBLIC_API_URL="http://localhost:8080" PRIVATE_DIR="$(PRIVATE_DIR)" fe-dev
 
 local-mock: require-private
-	( $(MAKE) be-mock & NEXT_PUBLIC_API_URL="http://localhost:8080" PRIVATE_DIR="$(PRIVATE_DIR)" $(MAKE) fe-dev )
+	( $(MAKE) be-mock & $(MAKE) NEXT_PUBLIC_API_URL="http://localhost:8080" PRIVATE_DIR="$(PRIVATE_DIR)" fe-dev )
 
 build:
 	$(MAKE) be-docker-build
