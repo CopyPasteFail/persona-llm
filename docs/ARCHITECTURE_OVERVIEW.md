@@ -36,7 +36,22 @@ The ingestion pipeline validates persona content, chunks it, embeds it, and uplo
 - **Sidecar store in GCS** = portable, versioned artifacts.
 - **Runtime classification** = answers stay persona-consistent but context-aware.
 
-See [`DATA_DESIGN_RATIONALE.md`](./DATA_DESIGN_RATIONALE.md) for discussion.
+### Dataset cache rationale
+- **Performance**
+  - Load dataset artifacts once (pointer + manifest + chunks + datapoints), not on every request.
+  - Keep embeddings/chunks in memory for low-latency retrieval.
+- **Consistency**
+  - All requests in a running process use one immutable snapshot (`DatasetCache`) instead of partially updated files.
+  - Avoid mixed-version reads during traffic.
+- **Safe version switching**
+  - Switch datasets by updating `datasets/current.json`.
+  - Cache reload gives an atomic cutover to the new version after validation.
+- **Startup/readiness gating**
+  - Startup fails fast when pointer/manifests are invalid or incompatible.
+  - `/ready` remains non-ready until a valid cache snapshot is loaded.
+
+For cache internals (pointer resolution, validations, atomic swap, readiness and reload behavior), see
+[`IMPLEMENTATION_SPEC.md` - Dataset cache lifecycle](./IMPLEMENTATION_SPEC.md#dataset-cache-lifecycle).
 
 ## Security
 - Access keys live in Firestore collection `access_keys` with `key_hash` (bcrypt), `key_fingerprint` (SHA-256), `expires_at`, `revoked`, and optional labels.

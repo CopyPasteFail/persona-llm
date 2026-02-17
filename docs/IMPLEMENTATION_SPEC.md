@@ -128,6 +128,42 @@ See [backend/README.md#curl-examples](../backend/README.md#curl-examples) for ru
 - `api/llm_backends.py`: Vertex LLM vs deterministic mock backend selection.
 - `api/ops_routes.py` + `api/ops_security.py`: `/ops/vector/status` and `/ops/vector/reload` with header auth + rate limiting.
 
+### Dataset cache lifecycle
+- Purpose:
+  - Keep a validated, in-memory snapshot of dataset artifacts so chat requests do not read pointer/manifests/chunks/datapoints on every call.
+  - Provide atomic dataset version cutover after pointer updates.
+  - Fail startup or reload early when dataset artifacts are incompatible.
+- Input contract:
+  - Pointer file: `datasets/current.json` with `{ "dataset_version": "vNN" }`.
+  - Version folder: `datasets/<version>/manifest.json`, `datasets/<version>/chunks.jsonl.gz`, `datasets/<version>/datapoints.jsonl`.
+- Load sequence:
+  1. Read pointer and resolve `dataset_version`.
+  2. Read and validate `manifest.json`.
+  3. Read `chunks.jsonl.gz` and construct `chunks_by_id`.
+  4. Read `datapoints.jsonl`, validate vectors, and ensure IDs map to chunks.
+  5. Atomically swap the global cache reference.
+- Validation guards:
+  - `manifest.dataset_version` must match pointer version.
+  - `manifest.chunk_schema_version` must equal runtime supported chunk schema version.
+  - `manifest.embedding_model` must match runtime embedding model setting.
+  - If `DATAPOINTS_DIMENSIONS` is set, it must match `manifest.dimensions`.
+  - Datapoint vectors must be present, have expected dimensions, and be approximately unit-norm.
+  - Every datapoint ID must exist in chunks.
+- Concurrency model:
+  - Cache build happens before lock acquisition for the global pointer swap.
+  - Global cache pointer replacement is protected by a lock to avoid torn reads.
+  - Readers get either the previous full cache or the new full cache, never a partial state.
+- Startup and readiness behavior:
+  - Integrated app startup (`api.main:app`) loads cache during lifespan initialization.
+  - `/ready` returns 503 until initialization completes successfully.
+  - Schema/version/manifest mismatches keep service unready and surface structured diagnostics in `/ready`.
+- Retrieval integration:
+  - `api/retrieval.py` uses the cache-backed chunk store and builds BM25 index in memory from loaded chunks.
+  - When `DATASET_POINTER_PATH` is configured, dataset-cache load failure is treated as hard failure (no silent fallback).
+- Operational note:
+  - Updating `datasets/current.json` does not update running instances until reload/startup path runs.
+  - Use the reload endpoint (`/ops/vector/reload`) or restart rollout to pick up new dataset pointer targets.
+
 ### Retrieval internals (current behavior)
 - Query embedding path: normalize question -> `embed_query(...)` -> L2-normalized vector search (`search_vector_store(...)`).
 - Hybrid scoring (`apply_filters_and_boosting(...)`):
