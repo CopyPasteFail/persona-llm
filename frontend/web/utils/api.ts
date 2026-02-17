@@ -231,7 +231,7 @@ export type ChatRequest = {
 
 export type ChatResponse = {
   answer: string;
-  citations?: Array<{ id: string; title?: string; url?: string }>;
+  citations?: Array<{ id: string; text?: string }>;
   usage?: { input_tokens?: number; output_tokens?: number; thoughts_tokens?: number };
   llm_called?: boolean;
   input_token_limit?: number;

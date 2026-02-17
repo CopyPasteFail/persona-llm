@@ -2,7 +2,10 @@ export interface ChatRequest {
   question: string
 }
 
-export interface Citation { id: string }
+export interface Citation {
+  id: string
+  text?: string
+}
 
 // If you use api.ts's toCamel(), these remain camelCase.
 // index.tsx reads snake_case directly from the API response.
