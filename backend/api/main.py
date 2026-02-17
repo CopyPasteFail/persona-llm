@@ -453,6 +453,7 @@ async def chat(
             else "",
             citations=[],
             usage=Usage(input_tokens=0, output_tokens=0, thoughts_tokens=None),
+            llm_called=True,
             input_token_limit=settings.MAX_INPUT_TOKENS,
             model=settings.LLM_MODEL_NAME,
         )

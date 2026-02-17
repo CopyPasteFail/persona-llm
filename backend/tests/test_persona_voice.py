@@ -13,7 +13,7 @@ ACCESS_TOKEN_JSON_FIELD = "access_token"
 AUTH_ENDPOINT = "/auth/key-login"
 BEARER_TOKEN_PREFIX = "Bearer"
 CHAT_ENDPOINT = "/chat"
-EXPECTED_RESPONSE_KEYS = {"answer", "citations", "usage"}
+EXPECTED_RESPONSE_KEYS = {"answer", "citations", "usage", "llm_called"}
 FIRST_PERSON_PHRASES = [" I ", " my ", " me "]
 HTTP_OK_STATUS = 200
 TEST_BASE_URL = "http://test"
@@ -107,6 +107,7 @@ async def test_first_person_normalization(test_client: AsyncClient) -> None:
     assert "id" in citations[0]
     assert isinstance(response_payload["usage"]["input_tokens"], int)
     assert isinstance(response_payload["usage"]["output_tokens"], int)
+    assert isinstance(response_payload["llm_called"], bool)
 
     # Content checks
     answer_text: str = response_payload["answer"]

@@ -233,6 +233,7 @@ export type ChatResponse = {
   answer: string;
   citations?: Array<{ id: string; title?: string; url?: string }>;
   usage?: { input_tokens?: number; output_tokens?: number; thoughts_tokens?: number };
+  llm_called?: boolean;
   input_token_limit?: number;
   model?: string;
 };

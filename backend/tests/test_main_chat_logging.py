@@ -85,6 +85,7 @@ async def test_chat_success_log_includes_signal_shadow_fields(
                 answer="TLDR: stub answer\nWrap: stub wrap",
                 citations=[Citation(id="chunk-1", text="stub citation")],
                 usage=Usage(input_tokens=10, output_tokens=20, thoughts_tokens=None),
+                llm_called=True,
                 input_token_limit=1000,
             ),
             selected_chunks=[{"id": "chunk-1", "score": 0.5, "bm25_score": 1.0}],

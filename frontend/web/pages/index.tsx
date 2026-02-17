@@ -44,7 +44,7 @@ export default function IndexPage() {
   const [loadedChunkSchemaVersion, setLoadedChunkSchemaVersion] = useState<number | null>(null);
   const [startupStatusMessage, setStartupStatusMessage] = useState<string | null>(null);
   const [messages, setMessages] = useState<
-    Array<{ role: "user" | "assistant"; content: string; usage?: Usage }>
+    Array<{ role: "user" | "assistant"; content: string; usage?: Usage; llmCalled?: boolean }>
   >([]);
 
   const isCookieSession = isCookieMode();
@@ -147,6 +147,7 @@ export default function IndexPage() {
         role: "assistant",
         content: data.answer,
         usage: data.usage,
+        llmCalled: data.llm_called,
       }]);
       if (data.model) {
         setSessionModelName(data.model);
@@ -332,7 +333,7 @@ export default function IndexPage() {
                 </div>
               )}
               {messages.map((m, i) => (
-                <Bubble key={i} role={m.role} usage={m.usage}>
+                <Bubble key={i} role={m.role} usage={m.usage} llmCalled={m.llmCalled}>
                   {m.content}
                 </Bubble>
               ))}
@@ -385,10 +386,12 @@ function Bubble({
   role,
   children,
   usage,
+  llmCalled,
 }: {
   role: "user" | "assistant";
   children: any;
   usage?: Usage;
+  llmCalled?: boolean;
 }) {
   const isUser = role === "user";
   return (
@@ -400,11 +403,16 @@ function Bubble({
         ].join(" ")}
       >
         <div className="whitespace-pre-wrap">{children}</div>
-        {usage && (
+        {(usage || !isUser) && (
           <div className="mt-2 flex gap-2 text-[10px] text-zinc-500">
-            <span>in: {usage.input_tokens}</span>
-            <span>out: {usage.output_tokens}</span>
-            <span>thoughts: {usage.thoughts_tokens ?? 0}</span>
+            {usage && (
+              <>
+                <span>In: {usage.input_tokens}</span>
+                <span>Out: {usage.output_tokens}</span>
+                <span>Thoughts: {usage.thoughts_tokens ?? 0}</span>
+              </>
+            )}
+            {!isUser && <span>LLM called: {llmCalled === true ? "yes" : "no"}</span>}
           </div>
         )}
       </div>

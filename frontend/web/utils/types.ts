@@ -16,4 +16,5 @@ export interface ChatResponse {
   answer: string
   citations?: Citation[]
   usage?: Usage
+  llmCalled?: boolean
 }
