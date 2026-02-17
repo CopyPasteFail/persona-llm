@@ -6,11 +6,11 @@ This guide explains each field: what it signifies, how the app uses it, the bene
 
 ## Core Identity
 
-### `schema_version` (integer; const: 3)
+### `schema_version` (integer; const from `backend/schema/chunk.schema.json`)
 - **Meaning**: Version tag for this schema.
 - **Use**: Lets the backend to handle logic/migrations safely.
 - **Benefit**: Future evolution without breaking old data.
-- **Example**: `3`
+- **Example**: Use the numeric const from `backend/schema/chunk.schema.json`.
 - **If dropped**: Harder to migrate or validate across schema versions.
 
 ### `doc_id` (string)
@@ -164,10 +164,13 @@ This guide explains each field: what it signifies, how the app uses it, the bene
 
 ## Examples
 
+Use the current `schema_version` const from `backend/schema/chunk.schema.json` in all examples below.
+The value `0` is a placeholder and must be replaced with the schema const.
+
 ### Summary (omit `extras.type`)
 ```json
 {
-  "schema_version": 3,
+  "schema_version": 0,
   "doc_id": "cv-infra-2025",
   "chunk_id": "infra-001",
   "position": 1,
@@ -192,7 +195,7 @@ This guide explains each field: what it signifies, how the app uses it, the bene
 ### Skills (omit `extras.type`)
 ```json
 {
-  "schema_version": 3,
+  "schema_version": 0,
   "doc_id": "cv-infra-2025",
   "chunk_id": "infra-010",
   "position": 10,
@@ -217,7 +220,7 @@ This guide explains each field: what it signifies, how the app uses it, the bene
 ### Experience (optionally set `extras.type`)
 ```json
 {
-  "schema_version": 3,
+  "schema_version": 0,
   "doc_id": "cv-infra-2025",
   "chunk_id": "infra-020",
   "position": 20,
