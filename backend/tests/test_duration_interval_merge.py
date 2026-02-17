@@ -179,6 +179,37 @@ def test_compute_duration_for_question_excludes_non_experience_chunks() -> None:
     )
 
 
+def test_compute_duration_for_question_accepts_tuple_stint_domains() -> None:
+    """Immutable snapshot tuple values should still resolve stint domain labels."""
+    chunks_by_id = {
+        "chunk-1": {
+            "chunk_id": "chunk-1",
+            "doc_id": "doc-1",
+            "text": "stub",
+            "section": "Experience",
+            "start_year": 2023,
+            "end_year": None,
+            "extras": {
+                "employer": "Acme",
+                "title": "SRE",
+                "stint_domains": ("devops", "platform"),
+            },
+        }
+    }
+
+    result = deterministic_duration.compute_duration_for_question(
+        chunks_by_id,
+        question="How many years of DevOps experience do you have?",
+        current_year=2026,
+    )
+
+    assert result.union_total_years == 4
+    assert len(result.union_matched_stints) == 1
+    assert result.union_merged_intervals == (
+        deterministic_duration.DurationInterval(start_year=2023, end_year=2026),
+    )
+
+
 def test_format_based_on_stints_uses_distinct_contributing_stints_only() -> None:
     """Based-on output should dedupe duplicate chunks and exclude non-matching stints."""
     chunks_by_id = {

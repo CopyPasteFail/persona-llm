@@ -34,33 +34,11 @@ If anything in this prompt conflicts with the JSON schema, the JSON schema wins.
 
 ## Schema
 
-* `schema_version`: use the numeric const defined in `backend/schema/chunk.schema.json` (source of truth).
+* `schema_version`: must match `chunk.schema.json` exactly.
 * `doc_id`: stable ID per CV, derived from profile and year when available, e.g. `"cv-infra-2025"`. Human-readable, not hashed.
-* `chunk_id`: `<profile>-NNN` (sequential per doc, starting at 001).
-* `position`: integer ≥1.
-* `text`: first-person chunk content.
-* `profile`: normalized lowercase professional domain inferred from the CV (single value per CV).
-* `topics`: normalized lowercase tokens.
-* `tags`: mirror `profile:<profile>` + topics (for fast ANN filtering).
-* `section`: "Experience","Projects","Education","Certifications","Skills","Summary","Publications","Awards".
-* `start_year` / `end_year`: optional integers; same year = both equal.
-* `lang`: "en".
-* `updated_at`: one UTC ISO timestamp across all lines.
-* `source_uri`: `"file://<filename>"`.
-* `permissions`: ["public"].
-* `extras`:
-  * `employer`: company/institution if applicable.
-  * `title`: stint title when available.
-  * `stint_domains`: REQUIRED for `section == "Experience"`. Non-empty array of strings. Every item must be in `allowed_stint_domains`.
-  * `tech`: human-friendly names (tools, systems, methods, platforms, instruments, software, equipment, etc.).
-  * `type`: "experience" or "achievement", only for `section == "Experience"`.
-
-## Multi-file Rules
-
-* Generate one `doc_id` per input CV file.
-* For each CV, `chunk_id` numbering starts at 001 and increments sequentially within that CV.
-* `position` starts at 1 for each CV and increments sequentially within that CV.
-* `source_uri` must reference the correct filename for each record.
+* `chunk_id`: `<profile>-NNN` (sequential per CV, zero-padded to 3 digits).
+* `position`: monotonically increasing across the whole CV (1..N).
+* Use required fields from `chunk.schema.json`. Do not omit required fields.
 
 ## Chunking Rules
 

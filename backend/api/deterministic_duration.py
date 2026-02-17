@@ -480,9 +480,11 @@ def _resolve_stint_domains(
 
     Edge cases:
     - Invalid field shapes or unknown labels produce an empty set.
+    - Supports list/tuple/set/frozenset values (immutable retrieval snapshots
+      freeze JSON arrays to tuples).
     """
 
-    if not isinstance(raw_value, list):
+    if not isinstance(raw_value, (list, tuple, set, frozenset)):
         return set()
 
     labels: set[str] = set()
