@@ -273,7 +273,7 @@ make be-dataset-datapoints
 # 3) upload dataset folder to GCS
 make be-dataset-upload
 
-# 4) atomically update pointer
+# 4) atomically update pointer at gs://$BUCKET_NAME/datasets/current.json
 make be-dataset-pointer-update
 ```
 

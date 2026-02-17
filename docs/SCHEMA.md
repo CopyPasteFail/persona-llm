@@ -22,7 +22,7 @@ This guide explains each field: what it signifies, how the app uses it, the bene
 
 ### `chunk_id` (string)
 - **Meaning**: Unique ID per chunk (primary key for retrieval).
-- **Use**: Key in vector index; join back to text/metadata.
+- **Use**: Key in vector index; join back to text and structured fields.
 - **Benefit**: Stable citations and debugging.
 - **Example**: `"infra-014"`
 - **If dropped**: Can’t map ANN hits back to exact text.
@@ -53,7 +53,7 @@ This guide explains each field: what it signifies, how the app uses it, the bene
 
 ### `profile` (string)
 - **Meaning**: Canonical persona profile for this chunk.
-- **Use**: Retrieval biasing via the `profile` restrict namespace and query-time metadata boosts.
+- **Use**: Retrieval biasing via the `profile` restrict namespace and query-time boosts.
 - **Benefit**: One persona voice, precise evidence selection.
 - **Example**: `"infra"` (also valid: `"marketing"`, `"sales"`, `"product"`)
 - **If dropped**: Harder to steer retrieval; more cross-contamination.
@@ -71,6 +71,24 @@ This guide explains each field: what it signifies, how the app uses it, the bene
 - **Benefit**: Efficient, simple metadata filters in the vector store.
 - **Example**: `["profile:infra","topic:kubernetes","topic:terraform"]`
 - **If dropped**: Must fetch broadly then post-filter in backend (slower, costlier).
+
+---
+
+## No Nested `metadata` Object
+
+This schema intentionally does **not** allow a nested `metadata` object (for example `chunk["metadata"]["section"]`).
+All chunk attributes live at the top level (`profile`, `section`, `topics`, `tags`, `permissions`, and `extras.*`).
+
+Practical reasons:
+
+- **One canonical shape**: Avoids dual-source fields (`section` vs `metadata.section`) and the “which one wins?” ambiguity that causes silent drift and bugs.
+- **Prevent BM25 + heuristic leakage**: Nested metadata tends to accumulate “junk text” (`doc_id`, `source_uri`, ad-hoc keywords) that can accidentally influence token-based scoring and gates, creating false positives (e.g., the dentistry case).
+- **Stricter validation, faster failures**: Rejecting legacy `metadata` at load time makes incorrect artifacts fail loudly at startup rather than producing confusing retrieval behavior later.
+- **Better portability and clearer contracts**: Storage format, runtime format, and vector-datapoint mapping stay consistent: `chunk_id` plus flat keys everywhere, no adapters.
+- **Performance and simplicity**: Flat records are cheaper to validate, serialize, snapshot, and debug (no nested traversal, fewer conditionals).
+- **Easier schema evolution**: Bumping versions is simpler when there is one definitive record layout; nested metadata otherwise becomes a dumping ground of semi-supported keys.
+
+Note: “Vector DB metadata” is a separate concept. It’s fine (and expected) to push **flat** fields like `tags` into the vector store’s metadata for fast filtering; the chunk JSONL itself stays flat and strongly validated.
 
 ---
 
@@ -120,7 +138,7 @@ This guide explains each field: what it signifies, how the app uses it, the bene
 - **Use**: Filter restricted chunks at retrieval time.
 - **Benefit**: Safe multi-tenant or public demos.
 - **Example**: `["public"]` or `["team:eng","internal"]`
-- **If dropped**: No access control via metadata.
+- **If dropped**: No access control label to filter on.
 
 ---
 
