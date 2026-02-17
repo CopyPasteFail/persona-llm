@@ -92,13 +92,8 @@ export default function IndexPage() {
         setLoadedChunkSchemaVersion(runtimeStatus.loaded_chunk_schema_version);
         setSupportedChunkSchemaVersion(runtimeStatus.supported_chunk_schema_version);
         if (runtimeStatus.startup_error_code === "chunk_schema_unsupported") {
-          const supportedVersionLabel = runtimeStatus.supported_chunk_schema_version;
-          const supportedVersionMessage =
-            typeof supportedVersionLabel === "number"
-              ? ` Supported chunk schema version: v${supportedVersionLabel}.`
-              : "";
           const startupMessage = runtimeStatus.startup_error_message || SCHEMA_HARD_FAIL_FALLBACK_MESSAGE;
-          setStartupStatusMessage(`${startupMessage}${supportedVersionMessage}`);
+          setStartupStatusMessage(startupMessage);
           return;
         }
         setStartupStatusMessage(null);
