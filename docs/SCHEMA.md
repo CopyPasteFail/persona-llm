@@ -10,7 +10,7 @@ This guide explains each field: what it signifies, how the app uses it, the bene
 - **Meaning**: Version tag for this schema.
 - **Use**: Lets the backend to handle logic/migrations safely.
 - **Benefit**: Future evolution without breaking old data.
-- **Example**: Use the numeric const from `backend/schema/chunk.schema.json`.
+- **Example**: See the Summary example below for an illustrative value; always verify the current const in `backend/schema/chunk.schema.json`.
 - **If dropped**: Harder to migrate or validate across schema versions.
 
 ### `doc_id` (string)
@@ -164,13 +164,13 @@ This guide explains each field: what it signifies, how the app uses it, the bene
 
 ## Examples
 
-Use the current `schema_version` const from `backend/schema/chunk.schema.json` in all examples below.
-The value `0` is a placeholder and must be replaced with the schema const.
+`schema_version` must equal the const in `backend/schema/chunk.schema.json`.
+The Summary example includes `3` as an illustrative value; verify the schema file before generating datasets.
 
 ### Summary (omit `extras.type`)
 ```json
 {
-  "schema_version": 0,
+  "schema_version": 3,
   "doc_id": "cv-infra-2025",
   "chunk_id": "infra-001",
   "position": 1,
@@ -195,7 +195,6 @@ The value `0` is a placeholder and must be replaced with the schema const.
 ### Skills (omit `extras.type`)
 ```json
 {
-  "schema_version": 0,
   "doc_id": "cv-infra-2025",
   "chunk_id": "infra-010",
   "position": 10,
@@ -220,7 +219,6 @@ The value `0` is a placeholder and must be replaced with the schema const.
 ### Experience (optionally set `extras.type`)
 ```json
 {
-  "schema_version": 0,
   "doc_id": "cv-infra-2025",
   "chunk_id": "infra-020",
   "position": 20,

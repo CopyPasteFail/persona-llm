@@ -20,7 +20,7 @@ help:
 	@echo "  install      - create venv and install deps"
 	@echo "  security-install - install pinned security tooling into venv"
 	@echo "  security     - run local backend security scans"
-	@echo "  security-static - run ruff security rules (S)"
+	@echo "  security-static - run ruff security rules (S) when ruff is available"
 	@echo "  security-bandit - run bandit over backend source"
 	@echo "  security-deps - run pip-audit on backend requirements"
 	@echo "  security-semgrep - run semgrep security scan if semgrep exists"
@@ -74,7 +74,11 @@ security-install: $(VENV)/bin/activate
 security: security-static security-bandit security-deps
 
 security-static: security-install
-	$(PY) -m ruff check --select S api jobs scripts
+	@if $(PY) -m ruff --version >/dev/null 2>&1; then \
+		$(PY) -m ruff check --select S api jobs scripts; \
+	else \
+		echo "ruff is not installed in $(VENV); skipping ruff security checks."; \
+	fi
 
 security-bandit: security-install
 	$(PY) -m bandit -q -r api jobs scripts -x tests

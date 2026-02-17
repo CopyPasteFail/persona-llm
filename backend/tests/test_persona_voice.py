@@ -36,7 +36,7 @@ class _DeterministicVectorClient:
     """Deterministic vector search stub for mock mode."""
 
     def query(self, embedding: Sequence[float], *, top_k: int) -> list[dict[str, Any]]:
-        return [{"id": "mock:1", "distance": 0.0}]
+        return [{"chunk_id": "mock:1", "distance": 0.0}]
 
 
 @pytest_asyncio.fixture
@@ -56,7 +56,7 @@ async def test_client(
     retrieval.configure_embedding_client(_DeterministicEmbeddingClient())
     retrieval.configure_vector_client(_DeterministicVectorClient())
     retrieval.configure_chunk_store(
-        [{"id": "mock:1", "text": "deterministic mock chunk", "metadata": {}}]
+        [{"chunk_id": "mock:1", "text": "deterministic mock chunk"}]
     )
     transport = ASGITransport(app=cast(Any, mock_app))
     try:

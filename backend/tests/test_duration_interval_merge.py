@@ -17,19 +17,16 @@ def _chunk(
 ) -> dict[str, object]:
     """Build a minimal chunk payload for duration computation tests."""
     return {
-        "id": chunk_id,
+        "chunk_id": chunk_id,
+        "doc_id": "doc-1",
         "text": "stub",
-        "metadata": {
-            "doc_id": "doc-1",
-            "chunk_id": chunk_id,
-            "section": section,
-            "start_year": start_year,
-            "end_year": end_year,
-            "extras": {
-                "stint_domains": stint_domains or ["devops"],
-                "employer": employer,
-                "title": title,
-            },
+        "section": section,
+        "start_year": start_year,
+        "end_year": end_year,
+        "extras": {
+            "stint_domains": stint_domains or ["devops"],
+            "employer": employer,
+            "title": title,
         },
     }
 

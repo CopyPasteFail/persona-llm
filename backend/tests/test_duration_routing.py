@@ -39,35 +39,29 @@ def test_compute_duration_for_question_returns_union_and_breakdown_for_combined_
     """Combined-domain queries should return union totals and per-family breakdown."""
     chunks_by_id = {
         "chunk-devops": {
-            "id": "chunk-devops",
+            "chunk_id": "chunk-devops",
+            "doc_id": "doc-1",
             "text": "stub",
-            "metadata": {
-                "doc_id": "doc-1",
-                "chunk_id": "chunk-devops",
-                "section": "Experience",
-                "start_year": 2020,
-                "end_year": 2022,
-                "extras": {
-                    "employer": "Acme",
-                    "title": "Platform Engineer",
-                    "stint_domains": ["devops", "marketing"],
-                },
+            "section": "Experience",
+            "start_year": 2020,
+            "end_year": 2022,
+            "extras": {
+                "employer": "Acme",
+                "title": "Platform Engineer",
+                "stint_domains": ["devops", "marketing"],
             },
         },
         "chunk-marketing": {
-            "id": "chunk-marketing",
+            "chunk_id": "chunk-marketing",
+            "doc_id": "doc-1",
             "text": "stub",
-            "metadata": {
-                "doc_id": "doc-1",
-                "chunk_id": "chunk-marketing",
-                "section": "Experience",
-                "start_year": 2023,
-                "end_year": 2024,
-                "extras": {
-                    "employer": "Beta",
-                    "title": "Marketing Manager",
-                    "stint_domains": ["marketing"],
-                },
+            "section": "Experience",
+            "start_year": 2023,
+            "end_year": 2024,
+            "extras": {
+                "employer": "Beta",
+                "title": "Marketing Manager",
+                "stint_domains": ["marketing"],
             },
         },
     }

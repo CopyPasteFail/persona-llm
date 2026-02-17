@@ -88,7 +88,7 @@ async def test_chat_success_log_includes_signal_shadow_fields(
                 llm_called=True,
                 input_token_limit=1000,
             ),
-            selected_chunks=[{"id": "chunk-1", "score": 0.5, "bm25_score": 1.0}],
+            selected_chunks=[{"chunk_id": "chunk-1", "score": 0.5, "bm25_score": 1.0}],
             normalized_question=TEST_QUESTION,
             usage_detail={"total_tokens": 30, "finish_reason": "STOP"},
             thinking_budget_tokens_effective=0,

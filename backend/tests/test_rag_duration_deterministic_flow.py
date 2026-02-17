@@ -21,18 +21,17 @@ class _DurationRoutingRetrievalSpy:
         self.snapshot_called = False
         self._snapshot: Mapping[str, Mapping[str, Any]] = snapshot or {
             "chunk-1": {
-                "id": "chunk-1",
+                "chunk_id": "chunk-1",
+                "doc_id": "doc-1",
                 "text": "stub",
-                "metadata": {
-                    "profile": "infra",
-                    "section": "Experience",
-                    "start_year": 2023,
-                    "end_year": None,
-                    "extras": {
-                        "stint_domains": ["devops"],
-                        "employer": "Acme",
-                        "title": "SRE",
-                    },
+                "profile": "infra",
+                "section": "Experience",
+                "start_year": 2023,
+                "end_year": None,
+                "extras": {
+                    "stint_domains": ["devops"],
+                    "employer": "Acme",
+                    "title": "SRE",
                 },
             }
         }
@@ -48,13 +47,13 @@ class _DurationRoutingRetrievalSpy:
         self, embedding: Optional[Sequence[float]], top_k: int
     ) -> List[Dict[str, Any]]:
         self.search_called = True
-        return [{"id": "chunk-1", "distance": 0.2}]
+        return [{"chunk_id": "chunk-1", "distance": 0.2}]
 
     def apply_filters_and_boosting(
         self, candidates: List[Dict[str, Any]]
     ) -> List[Dict[str, Any]]:
         self.apply_called = True
-        return [{"id": "chunk-1", "text": "stub", "metadata": {}}]
+        return [{"chunk_id": "chunk-1", "text": "stub"}]
 
     def has_selected_chunks(self, selected: List[Dict[str, Any]]) -> bool:
         return bool(selected)
@@ -172,18 +171,17 @@ def test_run_rag_chat_duration_query_with_no_matched_stints_returns_guard_answer
     retrieval_spy = _DurationRoutingRetrievalSpy(
         snapshot={
             "chunk-1": {
-                "id": "chunk-1",
+                "chunk_id": "chunk-1",
+                "doc_id": "doc-1",
                 "text": "stub",
-                "metadata": {
-                    "profile": "marketing",
-                    "section": "Experience",
-                    "start_year": 2021,
-                    "end_year": 2022,
-                    "extras": {
-                        "stint_domains": ["marketing"],
-                        "employer": "Beta",
-                        "title": "Marketing Manager",
-                    },
+                "profile": "marketing",
+                "section": "Experience",
+                "start_year": 2021,
+                "end_year": 2022,
+                "extras": {
+                    "stint_domains": ["marketing"],
+                    "employer": "Beta",
+                    "title": "Marketing Manager",
                 },
             }
         }

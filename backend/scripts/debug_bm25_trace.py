@@ -58,28 +58,24 @@ SUPPORTED_MODES = (MODE_INTEGRATED_RETRIEVAL_ONLY, MODE_DETERMINISTIC)
 
 TOY_CHUNKS: dict[str, dict[str, Any]] = {
     "product-001": {
-        "id": "product-001",
+        "chunk_id": "product-001",
         "text": "I led product roadmap planning and launch coordination for checkout.",
-        "metadata": {
-            "section": "product",
-            "doc_id": "do-you-have-experience-in-dentistry-product-001",
-            "source_uri": "https://example.com/do-you-have-experience-in-dentistry",
-            "topics": ["roadmap", "experiments"],
-            "tags": ["topic:product", "topic:checkout"],
-            "extras": {"keywords": ["do", "you", "have", "experience", "dentistry"]},
-        },
+        "section": "product",
+        "doc_id": "do-you-have-experience-in-dentistry-product-001",
+        "source_uri": "https://example.com/do-you-have-experience-in-dentistry",
+        "topics": ["roadmap", "experiments"],
+        "tags": ["topic:product", "topic:checkout"],
+        "extras": {"keywords": ["do", "you", "have", "experience", "dentistry"]},
     },
     "infra-001": {
-        "id": "infra-001",
+        "chunk_id": "infra-001",
         "text": "I run Kubernetes clusters and Terraform delivery pipelines.",
-        "metadata": {
-            "section": "infra",
-            "doc_id": "infra-001",
-            "source_uri": "https://example.com/infra-001",
-            "topics": ["kubernetes", "terraform"],
-            "tags": ["topic:kubernetes", "topic:terraform"],
-            "extras": {"keywords": ["kubernetes", "terraform", "platform"]},
-        },
+        "section": "infra",
+        "doc_id": "infra-001",
+        "source_uri": "https://example.com/infra-001",
+        "topics": ["kubernetes", "terraform"],
+        "tags": ["topic:kubernetes", "topic:terraform"],
+        "extras": {"keywords": ["kubernetes", "terraform", "platform"]},
     },
 }
 
@@ -240,22 +236,17 @@ def _collect_raw_bm25_field_tokens(runtime: RuntimeContext, chunk: Mapping[str, 
     if isinstance(text, str):
         raw_tokens.extend(tokenize(text))
 
-    metadata_obj = chunk.get("metadata")
-    if not isinstance(metadata_obj, Mapping):
-        return raw_tokens
-
-    metadata = dict(metadata_obj)
-    section = metadata.get("section")
+    section = chunk.get("section")
     if isinstance(section, str):
         raw_tokens.extend(tokenize(section))
 
-    topics = metadata.get("topics")
+    topics = chunk.get("topics")
     if isinstance(topics, Iterable) and not isinstance(topics, (str, bytes)):
         for topic in topics:
             if isinstance(topic, str):
                 raw_tokens.extend(tokenize(topic))
 
-    tags = metadata.get("tags")
+    tags = chunk.get("tags")
     if isinstance(tags, Iterable) and not isinstance(tags, (str, bytes)):
         for tag in tags:
             if isinstance(tag, str):

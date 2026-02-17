@@ -33,6 +33,7 @@ KEY_LOGIN_MAX_ATTEMPTS_PER_FINGERPRINT = 5
 CHAT_RATE_LIMIT_MAX_PER_MINUTE = 10
 CHAT_RATE_LIMIT_ATTEMPT_BUFFER = 5
 DUMMY_ACCESS_KEY = "rate-limit-dummy-key"
+pytestmark = pytest.mark.integration
 
 def _get_base_url() -> str:
     base_url = os.getenv(BASE_URL_ENV, "")

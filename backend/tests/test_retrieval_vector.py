@@ -21,7 +21,7 @@ class RecordingVectorClient:
     def __init__(self) -> None:
         """Create a recording client with a preset response to verify calls and outputs."""
         self.calls: List[Tuple[List[float], int]] = []
-        self.return_value: List[Dict[str, Any]] = [{"id": "n-1", "distance": 0.12}]
+        self.return_value: List[Dict[str, Any]] = [{"chunk_id": "n-1", "distance": 0.12}]
 
     def query(self, embedding: Sequence[float], *, top_k: int) -> List[Dict[str, Any]]:
         """Record the query inputs and return the preset results for test assertions."""

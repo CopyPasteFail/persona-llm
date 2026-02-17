@@ -35,7 +35,7 @@ TOKEN_TYPE_BEARER = "bearer"
 EXPECTED_HEALTH_STATUS = "ok"
 
 _DETERMINISTIC_CHUNKS: list[dict[str, Any]] = [
-    {"id": "mock:1", "text": "deterministic mock chunk", "metadata": {}}
+    {"chunk_id": "mock:1", "text": "deterministic mock chunk"}
 ]
 
 
@@ -48,7 +48,7 @@ class _DeterministicVectorClient:
     def query(
         self, embedding: Sequence[float], *, top_k: int
     ) -> list[dict[str, Any]]:
-        return [{"id": "mock:1", "distance": 0.0}]
+        return [{"chunk_id": "mock:1", "distance": 0.0}]
 
 
 class AccessKeyStore(Protocol):

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import gzip
+import io
 import json
 from typing import Any
 
@@ -120,3 +122,64 @@ def test_parse_manifest_rejects_unsupported_chunk_schema_version() -> None:
         raised_error.value.found_chunk_schema_version
         == unsupported_chunk_schema_version
     )
+
+
+def test_load_chunks_accepts_flat_v3_records_without_metadata() -> None:
+    """Verify _load_chunks returns flat records keyed by chunk_id.
+
+    What is tested:
+        Dataset chunk loading for schema-v3 flat runtime records.
+    How it's tested:
+        Build a gzipped one-line chunks payload with chunk_id/text/profile fields.
+    Expected result format:
+        Mapping contains the chunk by chunk_id with no nested metadata field.
+    """
+    chunk_record = {
+        "schema_version": dataset_cache.get_supported_chunk_schema_version(),
+        "doc_id": "doc-1",
+        "chunk_id": "doc-1:01",
+        "position": 1,
+        "text": "Flat runtime chunk",
+        "profile": "infra",
+        "section": "Experience",
+    }
+    payload_buffer = io.BytesIO()
+    with gzip.open(payload_buffer, "wt", encoding="utf-8") as handle:
+        handle.write(json.dumps(chunk_record))
+        handle.write("\n")
+
+    loaded_chunks = dataset_cache._load_chunks(  # pyright: ignore[reportPrivateUsage]
+        payload_buffer.getvalue(),
+        "datasets/v1/chunks.jsonl.gz",
+    )
+
+    loaded_chunk = loaded_chunks["doc-1:01"]
+    assert loaded_chunk["chunk_id"] == "doc-1:01"
+    assert "metadata" not in loaded_chunk
+
+
+def test_load_chunks_rejects_legacy_metadata_field() -> None:
+    """Verify _load_chunks rejects legacy nested metadata chunk records.
+
+    What is tested:
+        Strict flat-schema enforcement for chunk payloads.
+    How it's tested:
+        Build a gzipped chunks payload containing a metadata field.
+    Expected result format:
+        RuntimeError is raised with rebuild guidance.
+    """
+    legacy_chunk_record = {
+        "chunk_id": "legacy-1",
+        "text": "Legacy chunk",
+        "metadata": {"section": "Experience"},
+    }
+    payload_buffer = io.BytesIO()
+    with gzip.open(payload_buffer, "wt", encoding="utf-8") as handle:
+        handle.write(json.dumps(legacy_chunk_record))
+        handle.write("\n")
+
+    with pytest.raises(RuntimeError, match="Rebuild dataset artifacts with pack_and_push"):
+        dataset_cache._load_chunks(  # pyright: ignore[reportPrivateUsage]
+            payload_buffer.getvalue(),
+            "datasets/v1/chunks.jsonl.gz",
+        )

@@ -19,12 +19,15 @@ import pytest
 from _pytest.monkeypatch import MonkeyPatch
 from jsonschema import ValidationError
 
+from api.chunk_schema_version import get_supported_chunk_schema_version
 from jobs import pack_and_push
 
 MAX_CHARS_LIMIT = 32
 EXPECTED_ID_LENGTH = 12
 EXPECTED_FRAGMENT_COUNT = 2
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = get_supported_chunk_schema_version(
+    Path(__file__).resolve().parents[1] / "schema" / "chunk.schema.json"
+)
 PROFILE_INFRA = "infra"
 TOPIC_LABEL = "infra"
 TAG_LABEL = "profile:infra"
@@ -162,18 +165,19 @@ def test_deterministic_id_returns_stable_hex_fragment() -> None:
     assert re.fullmatch(r"[0-9a-f]{12}", first_identifier)
 
 
-def test_build_metadata_includes_expected_fields_and_copies_collections() -> None:
-    """Verify metadata includes expected fields and copies list values.
+def test_build_flat_chunk_record_includes_expected_fields_and_copies_collections() -> None:
+    """Verify flat chunk records include expected fields and copy list values.
 
     What is tested:
-        _build_metadata should carry over key scalar fields and copy list-based
+        _build_flat_chunk_record should carry over key scalar fields and copy list-based
         fields so mutations do not leak back to the source chunk.
     How it's tested:
-        Build a chunk dict with all expected fields, call _build_metadata, and
+        Build a chunk dict with all expected fields, call _build_flat_chunk_record,
+        and
         compare the output against known values.
     Expected result format:
-        Metadata contains the expected scalar fields and list contents, plus
-        fragment_index/fragment_count, and list values are new lists.
+        Flat record contains expected scalar fields and list contents, and list
+        values are new lists.
     """
     # Arrange
     chunk: dict[str, Any] = {
@@ -195,36 +199,38 @@ def test_build_metadata_includes_expected_fields_and_copies_collections() -> Non
     }
 
     # Act
-    metadata = pack_and_push._build_metadata(  # pyright: ignore[reportPrivateUsage]
-        chunk,
-        index=0,
-        total=1,
+    record = pack_and_push._build_flat_chunk_record(  # pyright: ignore[reportPrivateUsage]
+        chunk=chunk,
+        fragment_chunk_id=CHUNK_ID_VALUE,
+        fragment_text=TEXT_SHORT,
+        schema_version=SCHEMA_VERSION,
     )
 
     # Assert
-    assert metadata["doc_id"] == DOC_ID_VALUE
-    assert metadata["chunk_id"] == CHUNK_ID_VALUE
-    assert metadata["position"] == 1
-    assert metadata["profile"] == PROFILE_INFRA
-    assert metadata["section"] == SECTION_LABEL
-    assert metadata["start_year"] == START_YEAR_VALUE
-    assert metadata["end_year"] == END_YEAR_VALUE
-    assert metadata["lang"] == LANGUAGE_CODE
-    assert metadata["updated_at"] == UPDATED_AT_VALUE
-    assert metadata["source_uri"] == SOURCE_URI_VALUE
-    assert metadata["topics"] == [TOPIC_LABEL]
-    assert metadata["tags"] == [TAG_LABEL]
-    assert metadata["permissions"] == [PERMISSION_LABEL]
-    assert metadata["extras"] == {"employer": EXTRA_EMPLOYER, "type": EXTRA_TYPE}
-    assert metadata["fragment_index"] == 0
-    assert metadata["fragment_count"] == 1
-    assert metadata["topics"] is not chunk["topics"]
-    assert metadata["tags"] is not chunk["tags"]
-    assert metadata["permissions"] is not chunk["permissions"]
+    assert record["schema_version"] == SCHEMA_VERSION
+    assert record["doc_id"] == DOC_ID_VALUE
+    assert record["chunk_id"] == CHUNK_ID_VALUE
+    assert record["position"] == 1
+    assert record["text"] == TEXT_SHORT
+    assert record["profile"] == PROFILE_INFRA
+    assert record["section"] == SECTION_LABEL
+    assert record["start_year"] == START_YEAR_VALUE
+    assert record["end_year"] == END_YEAR_VALUE
+    assert record["lang"] == LANGUAGE_CODE
+    assert record["updated_at"] == UPDATED_AT_VALUE
+    assert record["source_uri"] == SOURCE_URI_VALUE
+    assert record["topics"] == [TOPIC_LABEL]
+    assert record["tags"] == [TAG_LABEL]
+    assert record["permissions"] == [PERMISSION_LABEL]
+    assert record["extras"] == {"employer": EXTRA_EMPLOYER, "type": EXTRA_TYPE}
+    assert "metadata" not in record
+    assert record["topics"] is not chunk["topics"]
+    assert record["tags"] is not chunk["tags"]
+    assert record["permissions"] is not chunk["permissions"]
 
 
-def test_build_metadata_sets_profile_when_source_chunk_has_profile_only() -> None:
-    """Verify profile-only chunks populate canonical metadata profile."""
+def test_build_flat_chunk_record_sets_profile_when_source_chunk_has_profile_only() -> None:
+    """Verify profile-only chunks populate canonical flat-record profile."""
     chunk: dict[str, Any] = {
         "doc_id": DOC_ID_VALUE,
         "chunk_id": CHUNK_ID_VALUE,
@@ -233,13 +239,14 @@ def test_build_metadata_sets_profile_when_source_chunk_has_profile_only() -> Non
         "profile": PROFILE_INFRA,
     }
 
-    metadata = pack_and_push._build_metadata(  # pyright: ignore[reportPrivateUsage]
-        chunk,
-        index=0,
-        total=1,
+    record = pack_and_push._build_flat_chunk_record(  # pyright: ignore[reportPrivateUsage]
+        chunk=chunk,
+        fragment_chunk_id=CHUNK_ID_VALUE,
+        fragment_text=TEXT_SHORT,
+        schema_version=SCHEMA_VERSION,
     )
 
-    assert metadata["profile"] == PROFILE_INFRA
+    assert record["profile"] == PROFILE_INFRA
 
 
 def test_load_chunks_raises_on_schema_violation(tmp_path: Path) -> None:
@@ -295,8 +302,8 @@ def test_build_persona_records_splits_text_and_sets_fragment_metadata(
         Write a schema and a JSONL file with a two-sentence text, then call
         build_persona_records with a small max_chars value.
     Expected result format:
-        Multiple records are returned, record IDs start with the base chunk ID,
-        and fragment_index/fragment_count are set appropriately.
+        Multiple records are returned and record chunk_id values share the base
+        chunk prefix with deterministic fragment suffixes.
     """
     # Arrange
     schema_path = tmp_path / SCHEMA_FILENAME
@@ -320,9 +327,9 @@ def test_build_persona_records_splits_text_and_sets_fragment_metadata(
 
     # Assert
     assert len(records) == EXPECTED_FRAGMENT_COUNT
-    assert records[0]["id"].startswith(CHUNK_ID_VALUE)
-    assert records[0]["metadata"]["fragment_count"] == EXPECTED_FRAGMENT_COUNT
-    assert records[1]["metadata"]["fragment_index"] == 1
+    assert str(records[0]["chunk_id"]).startswith(CHUNK_ID_VALUE)
+    assert str(records[1]["chunk_id"]).startswith(CHUNK_ID_VALUE)
+    assert records[0]["chunk_id"] != records[1]["chunk_id"]
 
 
 def test_load_chunks_canonicalizes_profile_and_stint_domains(tmp_path: Path) -> None:
@@ -465,8 +472,8 @@ def test_serialize_records_returns_expected_payload_and_filename() -> None:
     """
     # Arrange
     records: list[dict[str, Any]] = [
-        {"id": "id-1", "text": "Alpha", "metadata": {"fragment_index": 0}},
-        {"id": "id-2", "text": "Beta", "metadata": {"fragment_index": 1}},
+        {"chunk_id": "id-1", "text": "Alpha", "fragment_index": 0},
+        {"chunk_id": "id-2", "text": "Beta", "fragment_index": 1},
     ]
 
     # Act
@@ -479,7 +486,7 @@ def test_serialize_records_returns_expected_payload_and_filename() -> None:
     assert filename.endswith(EXPECTED_GZ_EXTENSION)
     lines = payload.decode("utf-8").splitlines()
     assert len(lines) == len(records)
-    assert json.loads(lines[0])["id"] == "id-1"
+    assert json.loads(lines[0])["chunk_id"] == "id-1"
 
 
 def test_sha256_digest_matches_expected_value(tmp_path: Path) -> None:

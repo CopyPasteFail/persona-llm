@@ -30,7 +30,7 @@ _llm_backend: llm_backends.LlmBackend = llm_backends.get_llm_backend(
     default_backend="deterministic"
 )
 _DETERMINISTIC_CHUNKS: List[Dict[str, Any]] = [
-    {"id": "mock:1", "text": "deterministic mock chunk", "metadata": {}}
+    {"chunk_id": "mock:1", "text": "deterministic mock chunk"}
 ]
 
 
@@ -45,7 +45,7 @@ class _DeterministicVectorClient:
     """Deterministic vector search stub for mock mode."""
 
     def query(self, embedding: Sequence[float], *, top_k: int) -> List[Dict[str, Any]]:
-        return [{"id": "mock:1", "distance": 0.0}]
+        return [{"chunk_id": "mock:1", "distance": 0.0}]
 
 
 def _resolve_mock_key_store_path() -> Path | None:

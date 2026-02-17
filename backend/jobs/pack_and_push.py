@@ -17,6 +17,7 @@ from dotenv import dotenv_values
 from google.cloud import storage  # type: ignore[reportMissingTypeStubs]
 from jsonschema import Draft202012Validator, ValidationError
 
+from api.chunk_schema_version import get_supported_chunk_schema_version
 from api import duration_domain_config
 
 DEFAULT_MAX_CHARS = 2200
@@ -30,6 +31,27 @@ EXTRAS_KEY = "extras"
 EXTRAS_EMPLOYER_KEY = "employer"
 EXTRAS_TITLE_KEY = "title"
 EXTRAS_STINT_DOMAINS_KEY = "stint_domains"
+_CHUNK_REQUIRED_RECORD_KEYS = (
+    "schema_version",
+    "doc_id",
+    "chunk_id",
+    "position",
+    "text",
+    PROFILE_KEY,
+)
+_CHUNK_OPTIONAL_RECORD_KEYS = (
+    "section",
+    "start_year",
+    "end_year",
+    "topics",
+    "tags",
+    "lang",
+    "updated_at",
+    "source_uri",
+    "permissions",
+    EXTRAS_KEY,
+)
+_CHUNK_ALLOWED_RECORD_KEYS = set(_CHUNK_REQUIRED_RECORD_KEYS) | set(_CHUNK_OPTIONAL_RECORD_KEYS)
 
 
 def resolve_existing_path(path_value: str, *roots: Path) -> Path:
@@ -275,60 +297,6 @@ def _load_chunks(input_path: Path, schema: Mapping[str, object]) -> Iterable[dic
             yield cast(dict[str, object], chunk)
 
 
-def _build_metadata(
-    chunk: Mapping[str, object],
-    index: int,
-    total: int,
-) -> MutableMapping[str, object]:
-    """Build metadata for a chunk fragment.
-
-    Args:
-        chunk: Original chunk dictionary.
-        index: Zero-based fragment index.
-        total: Total number of fragments for this chunk.
-
-    Returns:
-        Metadata mapping containing selected fields and fragment info.
-    """
-    metadata: MutableMapping[str, object] = {}
-    for key in (
-        "doc_id",
-        "chunk_id",
-        "position",
-        "section",
-        "start_year",
-        "end_year",
-        "lang",
-        "updated_at",
-        "source_uri",
-    ):
-        value = chunk.get(key)
-        if value is not None:
-            metadata[key] = value
-    profile_value = _resolve_profile_value(chunk)
-    if profile_value is not None:
-        metadata[PROFILE_KEY] = profile_value
-
-    topics = _coerce_non_empty_list(chunk.get("topics"))
-    if topics is not None:
-        metadata["topics"] = topics
-    tags = _coerce_non_empty_list(chunk.get("tags"))
-    if tags is not None:
-        metadata["tags"] = tags
-    permissions = _coerce_non_empty_list(chunk.get("permissions"))
-    if permissions is not None:
-        metadata["permissions"] = permissions
-
-    extras = chunk.get("extras")
-    if isinstance(extras, dict) and extras:
-        extras_map = cast(Mapping[str, object], extras)
-        metadata["extras"] = dict(extras_map)
-
-    metadata["fragment_index"] = index
-    metadata["fragment_count"] = total
-    return metadata
-
-
 def _resolve_profile_value(chunk: Mapping[str, object]) -> str | None:
     """Resolve canonical profile metadata from the profile source field.
 
@@ -478,18 +446,103 @@ def _canonicalize_stint_domains(
     return sorted(normalized_labels)
 
 
-def _coerce_non_empty_list(value: object) -> list[object] | None:
-    """Return a non-empty list when the value is a list; otherwise None.
+def _build_flat_chunk_record(
+    *,
+    chunk: Mapping[str, object],
+    fragment_chunk_id: str,
+    fragment_text: str,
+    schema_version: int,
+) -> dict[str, object]:
+    """Build a flat schema-v3 runtime chunk record for one text fragment.
 
     Args:
-        value: Raw value to check and coerce.
+        chunk: Validated source chunk mapping.
+        fragment_chunk_id: Deterministic chunk_id for this fragment.
+        fragment_text: Fragment text payload.
 
     Returns:
-        List copy if the value is a non-empty list, otherwise None.
+        Flat chunk record that matches backend/schema/chunk.schema.json.
     """
-    if isinstance(value, list) and value:
-        return list(cast(list[object], value))
-    return None
+    profile_value = _resolve_profile_value(chunk)
+    if profile_value is None:
+        raise ValueError("Chunk profile is missing or blank")
+    position_value = chunk.get("position")
+    if not isinstance(position_value, int):
+        raise ValueError("Chunk position must be an integer")
+
+    record: dict[str, object] = {
+        "schema_version": schema_version,
+        "doc_id": chunk["doc_id"],
+        "chunk_id": fragment_chunk_id,
+        "position": position_value,
+        "text": fragment_text,
+        PROFILE_KEY: profile_value,
+    }
+    for optional_key in _CHUNK_OPTIONAL_RECORD_KEYS:
+        optional_value = chunk.get(optional_key)
+        if optional_value is None:
+            continue
+        if optional_key in {"topics", "tags", "permissions"} and isinstance(optional_value, list):
+            record[optional_key] = list(cast(list[object], optional_value))
+            continue
+        if optional_key == EXTRAS_KEY and isinstance(optional_value, Mapping):
+            record[optional_key] = dict(cast(Mapping[str, object], optional_value))
+            continue
+        record[optional_key] = optional_value
+    return record
+
+
+def _validate_output_chunk_record(
+    record: Mapping[str, object], *, index: int, expected_schema_version: int
+) -> None:
+    """Validate emitted runtime chunk records before serialization.
+
+    Args:
+        record: Output chunk payload.
+        index: Zero-based record index for error context.
+
+    Returns:
+        None.
+
+    Raises:
+        ValueError: If required fields are missing, schema version is invalid,
+            metadata is present, or extra keys violate the schema contract.
+    """
+    if record.get("schema_version") != expected_schema_version:
+        raise ValueError(
+            "Chunk output schema_version must be "
+            f"{expected_schema_version} "
+            f"(record_index={index})"
+        )
+    if "metadata" in record:
+        raise ValueError(
+            "Chunk output must not include metadata "
+            f"(record_index={index})"
+        )
+    missing_keys = [key for key in _CHUNK_REQUIRED_RECORD_KEYS if key not in record]
+    if missing_keys:
+        raise ValueError(
+            "Chunk output missing required fields "
+            f"{missing_keys} (record_index={index})"
+        )
+    extra_keys = sorted(set(record.keys()) - _CHUNK_ALLOWED_RECORD_KEYS)
+    if extra_keys:
+        raise ValueError(
+            "Chunk output contains unsupported fields "
+            f"{extra_keys} (record_index={index})"
+        )
+    for required_string_key in ("doc_id", "chunk_id", "text", PROFILE_KEY):
+        value = record.get(required_string_key)
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(
+                "Chunk output has invalid required string field "
+                f"'{required_string_key}' (record_index={index})"
+            )
+    if not isinstance(record.get("position"), int):
+        raise ValueError(
+            "Chunk output has invalid required integer field 'position' "
+            f"(record_index={index})"
+        )
 
 
 def build_persona_records(
@@ -498,7 +551,7 @@ def build_persona_records(
     *,
     max_chars: int = DEFAULT_MAX_CHARS,
 ) -> list[dict[str, object]]:
-    """Load JSONL chunks, split long entries, and enrich metadata.
+    """Load JSONL chunks, split long entries, and emit flat schema-v3 records.
 
     Args:
         schema_path: JSON schema file path for validation.
@@ -506,25 +559,37 @@ def build_persona_records(
         max_chars: Maximum character length for each fragment.
 
     Returns:
-        List of persona records ready for serialization.
+        List of flat persona records ready for serialization.
     """
 
     with open(schema_path, "r", encoding="utf-8") as schema_file:
         schema = json.load(schema_file)
+    # Intentionally single-source schema version from chunk.schema.json const.
+    supported_chunk_schema_version = get_supported_chunk_schema_version(schema_path)
 
     records: list[dict[str, object]] = []
     for chunk in _load_chunks(input_path, schema):
         text = cast(str, chunk["text"])
         fragments = split_sentences(text, max_chars=max_chars)
-        base_id = cast(str, chunk.get("chunk_id") or chunk.get("id") or deterministic_id(text))
+        base_id = cast(str, chunk.get("chunk_id") or deterministic_id(text))
         for fragment_index, fragment in enumerate(fragments):
-            fragment_id = (
+            fragment_chunk_id = (
                 base_id
                 if len(fragments) == 1
                 else f"{base_id}:{fragment_index + 1:02d}"
             )
-            metadata = _build_metadata(chunk, fragment_index, len(fragments))
-            records.append({"id": fragment_id, "text": fragment, "metadata": metadata})
+            record = _build_flat_chunk_record(
+                chunk=chunk,
+                fragment_chunk_id=fragment_chunk_id,
+                fragment_text=fragment,
+                schema_version=supported_chunk_schema_version,
+            )
+            _validate_output_chunk_record(
+                record,
+                index=len(records),
+                expected_schema_version=supported_chunk_schema_version,
+            )
+            records.append(record)
     return records
 
 

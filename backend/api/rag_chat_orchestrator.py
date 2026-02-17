@@ -886,7 +886,7 @@ def _chunk_to_citation(chunk: Dict[str, Any]) -> Citation:
     Concurrency/atomicity:
     - Pure computation with no side effects.
     """
-    chunk_id = str(chunk.get("id") or "")
+    chunk_id = str(chunk.get("chunk_id") or "")
     text = str(chunk.get("text") or "").strip()
     snippet = " ".join(text.split())
     if snippet and len(snippet) > SNIPPET_CHAR_LIMIT:

@@ -12,7 +12,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple, cast
 
-from .dataset_schema import SUPPORTED_CHUNK_SCHEMA_VERSION
+from .dataset_schema import (
+    get_supported_chunk_schema_version as _get_supported_chunk_schema_version,
+)
 from .settings import settings
 
 _DATASET_FOLDER = "datasets"
@@ -43,8 +45,8 @@ _MANIFEST_FILENAME = "manifest.json"
 _DATAPOINT_ID_KEY = "id"
 _DATAPOINT_ALT_ID_KEY = "datapointId"
 _DATAPOINT_VECTOR_KEY = "featureVector"
+_CHUNK_ID_KEY = "chunk_id"
 _CHUNK_TEXT_KEY = "text"
-_CHUNK_METADATA_KEY = "metadata"
 
 _GCS_URI_PREFIX = "gs://"
 _FILE_URI_PREFIX = "file:"
@@ -147,9 +149,9 @@ def get_supported_chunk_schema_version() -> int:
         Integer chunk schema version expected in dataset manifests.
 
     Concurrency:
-        Pure constant lookup; no shared mutable state.
+        Reads from a cached schema-version helper with no mutable state here.
     """
-    return SUPPORTED_CHUNK_SCHEMA_VERSION
+    return _get_supported_chunk_schema_version()
 
 
 def get_or_load_cache() -> DatasetCache:
@@ -215,7 +217,7 @@ def _load_cache_from_pointer() -> DatasetCache:
     """Resolve the pointer to a dataset version and load its artifacts.
 
     Returns:
-        A DatasetCache containing ids, embeddings, and chunk metadata for the
+        A DatasetCache containing ids, embeddings, and flat chunk records for the
         resolved dataset version.
 
     Raises:
@@ -326,6 +328,7 @@ def _parse_manifest(
 
     if not isinstance(loaded, Mapping):
         raise RuntimeError(f"Manifest must be a JSON object: {manifest_path}")
+    supported_chunk_schema_version = get_supported_chunk_schema_version()
     manifest = {
         str(key): value
         for key, value in cast(Mapping[str, Any], loaded).items()
@@ -338,7 +341,7 @@ def _parse_manifest(
         if "chunk_schema_version" in missing:
             raise ChunkSchemaVersionError(
                 "Manifest chunk_schema_version is missing; chunk schema is unsupported",
-                expected_chunk_schema_version=SUPPORTED_CHUNK_SCHEMA_VERSION,
+                expected_chunk_schema_version=supported_chunk_schema_version,
                 found_chunk_schema_version=None,
             )
         detail: List[str] = []
@@ -352,15 +355,15 @@ def _parse_manifest(
     if not isinstance(chunk_schema_version_value, int):
         raise ChunkSchemaVersionError(
             "Manifest chunk_schema_version must be an integer",
-            expected_chunk_schema_version=SUPPORTED_CHUNK_SCHEMA_VERSION,
+            expected_chunk_schema_version=supported_chunk_schema_version,
             found_chunk_schema_version=None,
         )
-    if chunk_schema_version_value != SUPPORTED_CHUNK_SCHEMA_VERSION:
+    if chunk_schema_version_value != supported_chunk_schema_version:
         raise ChunkSchemaVersionError(
             "Unsupported chunk schema version: "
-            f"supported={SUPPORTED_CHUNK_SCHEMA_VERSION} "
+            f"supported={supported_chunk_schema_version} "
             f"manifest={chunk_schema_version_value}",
-            expected_chunk_schema_version=SUPPORTED_CHUNK_SCHEMA_VERSION,
+            expected_chunk_schema_version=supported_chunk_schema_version,
             found_chunk_schema_version=chunk_schema_version_value,
         )
 
@@ -627,7 +630,7 @@ def _load_chunks(data: bytes, source: str) -> Dict[str, Dict[str, Any]]:
         source: Source path used for error context.
 
     Returns:
-        Mapping of chunk id to chunk payload (id, text, metadata).
+        Mapping of chunk id to flat chunk payload.
 
     Raises:
         RuntimeError: If no valid chunks are loaded from the payload.
@@ -640,19 +643,17 @@ def _load_chunks(data: bytes, source: str) -> Dict[str, Dict[str, Any]]:
             if not line:
                 continue
             record: Dict[str, Any] = json.loads(line)
-            chunk_id = str(record.get(_DATAPOINT_ID_KEY) or "")
+            if "metadata" in record:
+                raise RuntimeError(
+                    "Invalid chunk record in "
+                    f"{source}: found disallowed 'metadata'. "
+                    "Rebuild dataset artifacts with pack_and_push (flat schema-v3 chunks)."
+                )
+            chunk_id = record.get(_CHUNK_ID_KEY)
             text = record.get(_CHUNK_TEXT_KEY)
-            if not chunk_id or not isinstance(text, str):
+            if not isinstance(chunk_id, str) or not chunk_id or not isinstance(text, str):
                 continue
-            metadata_obj = record.get(_CHUNK_METADATA_KEY)
-            metadata: Dict[str, Any] = {}
-            if isinstance(metadata_obj, Mapping):
-                metadata = dict(cast(Mapping[str, Any], metadata_obj))
-            chunks_by_id[chunk_id] = {
-                _DATAPOINT_ID_KEY: chunk_id,
-                _CHUNK_TEXT_KEY: text,
-                _CHUNK_METADATA_KEY: metadata,
-            }
+            chunks_by_id[chunk_id] = dict(record)
     if not chunks_by_id:
         raise RuntimeError(f"No chunk records loaded from {source}")
     return chunks_by_id

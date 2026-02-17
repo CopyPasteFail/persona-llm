@@ -108,8 +108,8 @@ Heuristic mapping for common cases:
 
 ## Examples (from SCHEMA.md)
 
-Use the current `schema_version` const from `backend/schema/chunk.schema.json` in all examples below.
-The value `0` is a placeholder and must be replaced with the schema const.
+`schema_version` must equal the const in `backend/schema/chunk.schema.json`.
+Example 1 uses `3` as an illustrative value; verify the schema file before generating output.
 
 ### Example 1: Summary (omit `extras.type`)
 
@@ -120,7 +120,7 @@ The value `0` is a placeholder and must be replaced with the schema const.
 
 ```json
 {
-  "schema_version": 0,
+  "schema_version": 3,
   "doc_id": "cv-infra-2025",
   "chunk_id": "infra-001",
   "position": 1,
@@ -151,7 +151,6 @@ The value `0` is a placeholder and must be replaced with the schema const.
 
 ```json
 {
-  "schema_version": 0,
   "doc_id": "cv-infra-2025",
   "chunk_id": "infra-010",
   "position": 10,
@@ -182,7 +181,6 @@ The value `0` is a placeholder and must be replaced with the schema const.
 
 ```json
 {
-  "schema_version": 0,
   "doc_id": "cv-infra-2025",
   "chunk_id": "infra-020",
   "position": 20,
@@ -214,6 +212,6 @@ The value `0` is a placeholder and must be replaced with the schema const.
 The output `chunks.jsonl` file contains one JSON object per line. Here is an example with two lines:
 
 ```jsonl
-{"schema_version":0,"doc_id":"cv-infra-2025","chunk_id":"infra-001","position":1,"text":"DevOps/SRE engineer experienced in automating infrastructure, running Kubernetes in production, and improving observability.","profile":"infra","topics":["devops","sre","automation","kubernetes","observability"],"tags":["profile:infra","topic:devops","topic:sre","topic:automation","topic:kubernetes","topic:observability"],"section":"Summary","start_year":2025,"end_year":2025,"lang":"en","updated_at":"2025-09-02T20:00:00Z","source_uri":"gs://bucket/cv-infra-2025.docx","permissions":["public"],"extras":{"employer":"","tech":["Kubernetes","Prometheus","Terraform"]}}
-{"schema_version":0,"doc_id":"cv-infra-2025","chunk_id":"infra-002","position":2,"text":"Skills: Kubernetes, Terraform, Argo CD, Prometheus, Grafana, AWS, GCP.","profile":"infra","topics":["kubernetes","terraform","argocd","prometheus","grafana","aws","gcp"],"tags":["profile:infra","topic:kubernetes","topic:terraform","topic:argocd","topic:prometheus","topic:grafana","topic:aws","topic:gcp"],"section":"Skills","start_year":2025,"end_year":2025,"lang":"en","updated_at":"2025-09-02T20:00:00Z","source_uri":"gs://bucket/cv-infra-2025.docx","permissions":["public"],"extras":{"employer":"","tech":["Kubernetes","Terraform","Argo CD","Prometheus","Grafana","AWS","GCP"]}}
+{"schema_version":3,"doc_id":"cv-infra-2025","chunk_id":"infra-001","position":1,"text":"DevOps/SRE engineer experienced in automating infrastructure, running Kubernetes in production, and improving observability.","profile":"infra","topics":["devops","sre","automation","kubernetes","observability"],"tags":["profile:infra","topic:devops","topic:sre","topic:automation","topic:kubernetes","topic:observability"],"section":"Summary","start_year":2025,"end_year":2025,"lang":"en","updated_at":"2025-09-02T20:00:00Z","source_uri":"gs://bucket/cv-infra-2025.docx","permissions":["public"],"extras":{"employer":"","tech":["Kubernetes","Prometheus","Terraform"]}}
+{"doc_id":"cv-infra-2025","chunk_id":"infra-002","position":2,"text":"Skills: Kubernetes, Terraform, Argo CD, Prometheus, Grafana, AWS, GCP.","profile":"infra","topics":["kubernetes","terraform","argocd","prometheus","grafana","aws","gcp"],"tags":["profile:infra","topic:kubernetes","topic:terraform","topic:argocd","topic:prometheus","topic:grafana","topic:aws","topic:gcp"],"section":"Skills","start_year":2025,"end_year":2025,"lang":"en","updated_at":"2025-09-02T20:00:00Z","source_uri":"gs://bucket/cv-infra-2025.docx","permissions":["public"],"extras":{"employer":"","tech":["Kubernetes","Terraform","Argo CD","Prometheus","Grafana","AWS","GCP"]}}
 ```

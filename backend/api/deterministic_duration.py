@@ -353,7 +353,7 @@ def _extract_experience_stints(
     current_year: int,
     canonical_labels: frozenset[str],
 ) -> list[DurationStint]:
-    """Extract and deduplicate Experience stints from chunk metadata.
+    """Extract and deduplicate Experience stints from flat chunk records.
 
     Inputs:
     - chunks_by_id: Chunk-store snapshot keyed by chunk id.
@@ -365,26 +365,21 @@ def _extract_experience_stints(
 
     Edge cases:
     - Ignores chunks that are not ``section == "Experience"``.
-    - Ignores chunks with missing employer/title/years/stint_domains metadata.
+    - Ignores chunks with missing employer/title/years/stint_domains fields.
     - Deduplicates by ``(doc_id, employer, title, start_year, end_year)``.
     """
 
     deduplicated_stints: dict[tuple[str, str, str, int, int | None], _MutableStint] = {}
 
     for chunk in chunks_by_id.values():
-        metadata_object = chunk.get("metadata")
-        if not isinstance(metadata_object, Mapping):
-            continue
-        metadata = metadata_object
-
-        if metadata.get("section") != SECTION_EXPERIENCE:
+        if chunk.get("section") != SECTION_EXPERIENCE:
             continue
 
-        interval = _resolve_interval(metadata, current_year=current_year)
+        interval = _resolve_interval(chunk, current_year=current_year)
         if interval is None:
             continue
 
-        extras_object = metadata.get(EXTRAS_KEY)
+        extras_object = chunk.get(EXTRAS_KEY)
         if not isinstance(extras_object, Mapping):
             continue
         extras = extras_object
@@ -403,7 +398,7 @@ def _extract_experience_stints(
 
         normalized_employer = employer.lower()
         normalized_title = title.lower()
-        doc_id = _normalized_optional_string(metadata.get("doc_id"))
+        doc_id = _normalized_optional_string(chunk.get("doc_id"))
         dedupe_key = (
             doc_id,
             normalized_employer,
@@ -504,14 +499,14 @@ def _resolve_stint_domains(
 
 
 def _resolve_interval(
-    metadata: Mapping[str, Any],
+    chunk: Mapping[str, Any],
     *,
     current_year: int,
 ) -> _ResolvedInterval | None:
-    """Resolve a valid closed interval from chunk metadata years.
+    """Resolve a valid closed interval from flat chunk year fields.
 
     Inputs:
-    - metadata: Chunk metadata mapping.
+    - chunk: Flat chunk mapping.
     - current_year: Year used when ``end_year`` is missing.
 
     Output:
@@ -522,11 +517,11 @@ def _resolve_interval(
     - End year is clamped to ``current_year`` to avoid future-count drift.
     """
 
-    start_year_value = metadata.get("start_year")
+    start_year_value = chunk.get("start_year")
     if not isinstance(start_year_value, int):
         return None
 
-    end_year_value = metadata.get("end_year")
+    end_year_value = chunk.get("end_year")
     resolved_end_year = current_year
     if isinstance(end_year_value, int):
         resolved_end_year = end_year_value
