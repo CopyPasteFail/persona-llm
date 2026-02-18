@@ -178,11 +178,11 @@ test-int: $(VENV)/bin/activate
 		$(PY) scripts/create_access_key.py revoke --key-id "$$key_id" >/dev/null; \
 	}; \
 	trap cleanup EXIT INT TERM; \
-	RUN_INTEGRATION_TESTS=1 ACCESS_KEY_PLAINTEXT="$$key_plaintext" \
+	RUN_INTEGRATION_TESTS=1 NEXT_PUBLIC_API_URL="$(NEXT_PUBLIC_API_URL)" ACCESS_KEY_PLAINTEXT="$$key_plaintext" \
 		$(PY) -m pytest -q -rs -m integration tests/test_integration_real_backend.py
 
 test-int-local: $(VENV)/bin/activate
-	NEXT_PUBLIC_API_URL=http://localhost:8080 $(MAKE) test-int
+	$(MAKE) test-int NEXT_PUBLIC_API_URL=http://localhost:8080
 
 test-cors-deploy: $(VENV)/bin/activate
 	$(PY) -m pytest -q -rs -s -m integration tests/test_cors_deployment.py
