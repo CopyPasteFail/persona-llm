@@ -470,57 +470,59 @@ Static export on Firebase Hosting. API served by Cloud Run.
 
 > Note: ensure `secrets/backend.env` and `secrets/frontend.env` are set in your private repo.
 
-1) Create Artifact Registry once:
-   ```bash
-   make gcp-create-artifact-registry
-   ```
+**One-time setup**
+- Once per GCP project: create Artifact Registry
+  ```bash
+  make gcp-create-artifact-registry
+  ```
+- Once per developer machine (only if you use local Docker builds): auth to Artifact Registry
+  ```bash
+  make gcp-auth-registry
+  ```
 
-2) Build and push the backend image (pick one path only):
+**Deploy**
+1) Build and push the backend image (pick one path only):
    - Option A: Cloud Build (no local Docker):
      ```bash
      make gcp-cloud-build
      ```
    - Option B: Local Docker + push (Docker needed):
-     - One-time per machine: auth to Artifact Registry
-       ```bash
-       make gcp-auth-registry
-       ```
      - Per build: build locally and push
        ```bash
        make be-docker-build
        make gcp-push-backend
        ```
 
-3) Deploy to Cloud Run and note the service URL:
+2) Deploy to Cloud Run and note the service URL:
    ```bash
    make gcp-cloud-run-deploy
    ```
    Set `NEXT_PUBLIC_API_URL` to that URL for the frontend. Drop `--allow-unauthenticated` in the Makefile if you want a private service.
 
-4) Build the static export:
+3) Build the static export:
    ```bash
    make fe-build
    ```
 
-5) Optional: preview locally:
+4) Optional: preview locally:
    ```bash
    make fe-preview
    ```
 
-6) Deploy Hosting:
+5) Deploy Hosting:
    ```bash
    make fe-firebase:deploy
    ```
 
-7) Manage Access keys
-  Access keys for the integrated backend live in Firestore. You can view them in the console [here](https://console.cloud.google.com/firestore/databases/-default-/data/panel).
+6) Manage access keys:
+   Access keys for the integrated backend live in Firestore. You can view them in the console [here](https://console.cloud.google.com/firestore/databases/-default-/data/panel).
 
-  For managing the keys, see [admin CLI access key management](backend/README.md#admin-cli--access-keys).
+   For managing the keys, see [admin CLI access key management](backend/README.md#admin-cli--access-keys).
 
-3) Verify the deployed API (point at the Cloud Run URL from deploy):
-  ```bash
-  PYTEST_ADDOPTS="-s" make be-test-int
-  ```
+7) Verify the deployed API (point at the Cloud Run URL from deploy):
+   ```bash
+   PYTEST_ADDOPTS="-s" make be-test-int
+   ```
 
 
 ## Undeploy / Teardown
