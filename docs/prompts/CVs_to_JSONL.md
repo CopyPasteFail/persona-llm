@@ -23,6 +23,7 @@ If both are attached:
 * Use `chunk.schema.json` as the source of truth for required fields, types, and allowed enum values.
 * Parse `experience_domain_config.json` as JSON and load:
   * `allowed_stint_domains` = `experience_domain_config.json.canonical_labels` (array of strings).
+  * `domain_families` = `experience_domain_config.json.families` (object).
 * `allowed_stint_domains` is the only allowed value set for `extras.stint_domains` in Experience chunks.
 If anything in this prompt conflicts with the JSON schema, the JSON schema wins.
 
@@ -31,6 +32,8 @@ If anything in this prompt conflicts with the JSON schema, the JSON schema wins.
 * Output a plain JSONL file named `chunks.jsonl` (one JSON object per line).
 * Each line must be a valid JSON object, no commas, no brackets, no Markdown.
 * Deliver the result as a downloadable file, not inline text.
+
+Additionally, output a second downloadable JSON file named `experience_domain_gaps.json` that contains ONLY the gap report described in the “Experience stint_domains rules” section below.
 
 ## Schema
 
@@ -64,19 +67,45 @@ For every chunk where `section == "Experience"`:
 * Every value in `extras.stint_domains` must be one of `allowed_stint_domains`.
 * Do not invent new stint domain labels.
 
-### Edge case: industry or channel labels (repair, do not print)
+### How to assign stint_domains (LLM decides, config is a mandatory check)
 
-Some CV content describes an industry or channel rather than a role-domain label (examples: "ecommerce", "e-commerce", "amazon", "fba", "fintech", "healthcare", "retail").
-These must not appear in `extras.stint_domains`.
+For each Experience stint (employer + title + years + bullets), do this:
 
-If you encounter such a label:
-1) Move it into `topics` (normalized lowercase token).
-2) Choose the closest matching canonical role labels from `allowed_stint_domains` for `extras.stint_domains`.
-3) Keep `extras.stint_domains` non-empty.
+1) **Decide domains (your reasoning)**
+   * Pick 1–4 labels from `allowed_stint_domains` that best describe the role work.
+   * Do NOT use industry/channel terms as stint domains (examples: "ecommerce", "e-commerce", "amazon", "fba", "fintech", "healthcare", "retail"). These belong in `topics`.
 
-Heuristic mapping for common cases:
-* "ecommerce" / "amazon" / "fba" / "private label" → include `["sales","marketing","product"]` (add `"data"` only if analytics-heavy).
-* "entrepreneurship" / "business owner" → include `["product","sales"]` (add `"marketing"` if relevant).
+2) **Mandatory config check (guardrail)**
+   * Scan the stint text (title + bullets) for any matches to `domain_families[*].query_aliases` (case-insensitive phrase/word matches).
+   * For each chosen `extras.stint_domains` label, determine whether it is supported by:
+     - A matching family that contains that label in `members`, OR
+     - Clear direct evidence in the stint text (tools or responsibilities that unmistakably imply that label).
+
+3) **Gap marking and “what to change” suggestions (for next time)**
+   * If you had to rely on your judgment because there was no relevant alias coverage in `experience_domain_config.json`, or you used evidence not covered by aliases, you MUST add an entry to `experience_domain_gaps.json` with:
+     - `stint_key`: `{employer,title,start_year,end_year}` (strings/ints)
+     - `chosen_domains`: the final `extras.stint_domains`
+     - `why_config_did_not_cover`: short explanation
+     - `evidence_phrases`: 2–8 short phrases copied from the stint text that drove the decision (no long quotes)
+     - `suggested_config_edits`: a list of concrete edits, each with:
+       - `json_path`: where to edit (example: `$.families.mobile_dev.query_aliases`)
+       - `action`: `add_alias` | `create_family` | `add_canonical_label`
+       - `value`: the exact alias/label/family snippet to add
+
+Do not print the gap report in the JSONL. Put it only in `experience_domain_gaps.json`.
+
+### extras.tech rules
+
+For Experience chunks only, if you include `extras.tech`:
+
+* `extras.tech` is stint-scoped: it applies only within the same stint identified by (`extras.employer`, `extras.title`, `start_year`, `end_year`). Never copy tech across different stints.
+* Allowed evidence sources for `extras.tech` (either is sufficient):
+  1) tech explicitly mentioned in that chunk’s `text` (case-insensitive substring match), OR
+  2) tech tokens present in that stint’s header line (e.g., “Intel | C | Real-time Embedded”), for that same stint.
+  Do not require both.
+* Tech tokens listed in the Skills section never count as evidence for Experience `extras.tech`.
+* Do not infer tech from the employer name, role title, profile, `stint_domains`, or other metadata when neither (1) nor (2) provides evidence.
+* If neither the chunk text nor the stint header provides any tech tokens, omit `extras.tech` (preferred) or set it to `[]`.
 
 ## Tags
 

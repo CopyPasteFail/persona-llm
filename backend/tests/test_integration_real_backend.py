@@ -1,6 +1,7 @@
 """Integration tests that hit an integrated backend using Firestore credentials and config."""
 
 import os
+from typing import Any
 from typing import Generator
 
 import httpx
@@ -33,6 +34,18 @@ KEY_LOGIN_MAX_ATTEMPTS_PER_FINGERPRINT = 5
 CHAT_RATE_LIMIT_MAX_PER_MINUTE = 10
 CHAT_RATE_LIMIT_ATTEMPT_BUFFER = 5
 DUMMY_ACCESS_KEY = "rate-limit-dummy-key"
+GATING_QUERY_CASES: tuple[tuple[str, str], ...] = (
+    ("hi", "Hi, happy to chat."),
+    ("good morning", "Hi, happy to chat."),
+    ("מה הניסיון שלך בדבאופס?", "TLDR: I support English input only right now."),
+    ("How many years of experience?", "TLDR: I have about"),
+    ("How much of experience do you have in CI/CD?", "TLDR: I have about"),
+    ("How many years of experience do you have in CI/CD?", "TLDR: I have about"),
+    ("How many years of experience do you have with WordPress?", "TLDR: I have about"),
+    ("How many years of experience do you have with C++?", "TLDR: I have about"),
+    ("How long have you worked in DevOps?", "TLDR: I have about"),
+)
+NON_GATED_LLM_QUERY = "What did you do with Kubernetes at Cognyte?"
 pytestmark = pytest.mark.integration
 
 def _get_base_url() -> str:
@@ -66,6 +79,37 @@ def _login_for_token(http_client: httpx.Client, base_url: str) -> str:
     )
     assert login_response.status_code == HTTP_OK_STATUS, login_response.text
     return login_response.json()[ACCESS_TOKEN_FIELD]
+
+
+def _send_chat_question(
+    http_client: httpx.Client,
+    *,
+    base_url: str,
+    token: str,
+    question: str,
+) -> dict[str, Any]:
+    """Send a chat request and return the parsed response payload.
+
+    Inputs:
+        http_client: Shared integration HTTP client.
+        base_url: Integrated backend base URL.
+        token: Bearer token from key-login.
+        question: User-facing chat question to send.
+
+    Outputs:
+        Parsed JSON response payload from /chat.
+
+    Edge cases:
+        Fails with assertion context when status is not 200.
+    """
+    chat_response = http_client.post(
+        f"{base_url}{CHAT_PATH}",
+        headers={AUTH_HEADER_NAME: f"Bearer {token}"},
+        json={"question": question},
+        timeout=CHAT_TIMEOUT_SECONDS,
+    )
+    assert chat_response.status_code == HTTP_OK_STATUS, chat_response.text
+    return chat_response.json()
 
 
 @pytest.fixture(scope="module")
@@ -127,6 +171,71 @@ def test_real_backend_first_person(base_url: str, http_client: httpx.Client) -> 
     assert TLDR_MARKER in answer_text and WRAP_MARKER in answer_text
     # In integrated mode, response should include first-person pronouns.
     assert any(pronoun in answer_text for pronoun in FIRST_PERSON_PRONOUNS)
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(("question_text", "expected_answer_marker"), GATING_QUERY_CASES)
+def test_real_backend_chat_gated_queries_bypass_llm(
+    base_url: str,
+    http_client: httpx.Client,
+    question_text: str,
+    expected_answer_marker: str,
+) -> None:
+    """Verify deterministic gate queries bypass the LLM in integrated mode.
+
+    What is tested:
+        Greeting, non-English, and duration-intent prompts that must route through
+        deterministic no-LLM paths.
+    How it's tested:
+        Log in once per test case, call /chat with each gating query, and assert
+        response fields without relying on internal gate-reason logs.
+    Expected result format:
+        Status is 200, llm_called is false, citations are empty, and answer text
+        includes the deterministic marker for that gate path.
+    """
+    token = _login_for_token(http_client, base_url)
+    response_body = _send_chat_question(
+        http_client,
+        base_url=base_url,
+        token=token,
+        question=question_text,
+    )
+
+    assert response_body.get("llm_called") is False
+    assert response_body.get("citations") == []
+    answer_text = str(response_body.get(ANSWER_FIELD, ""))
+    assert expected_answer_marker in answer_text
+
+
+@pytest.mark.integration
+def test_real_backend_chat_non_gated_query_calls_llm(
+    base_url: str,
+    http_client: httpx.Client,
+) -> None:
+    """Verify a normal in-domain query still calls the LLM in integrated mode.
+
+    What is tested:
+        A regular knowledge question that should use retrieval + LLM rather than
+        deterministic gate bypass paths.
+    How it's tested:
+        Call /chat with a Kubernetes/Cognyte question and validate response shape.
+    Expected result format:
+        Status is 200, llm_called is true, answer has TLDR/Wrap markers, and
+        citations are present.
+    """
+    token = _login_for_token(http_client, base_url)
+    response_body = _send_chat_question(
+        http_client,
+        base_url=base_url,
+        token=token,
+        question=NON_GATED_LLM_QUERY,
+    )
+
+    assert response_body.get("llm_called") is True
+    answer_text = str(response_body.get(ANSWER_FIELD, ""))
+    assert TLDR_MARKER in answer_text and WRAP_MARKER in answer_text
+    citations = response_body.get("citations")
+    assert isinstance(citations, list) and len(citations) > 0
 
 
 @pytest.mark.integration

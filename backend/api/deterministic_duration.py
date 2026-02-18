@@ -13,9 +13,32 @@ EXTRAS_KEY = "extras"
 EXTRAS_EMPLOYER_KEY = "employer"
 EXTRAS_TITLE_KEY = "title"
 EXTRAS_STINT_DOMAINS_KEY = "stint_domains"
+EXTRAS_TECH_KEY = "tech"
+_TOKEN_PATTERN = re.compile(r"[a-z0-9][a-z0-9+#/.-]*")
+_UNMAPPED_SKILL_STOPWORDS = frozenset(
+    {
+        "how",
+        "much",
+        "many",
+        "years",
+        "year",
+        "experience",
+        "do",
+        "you",
+        "have",
+        "of",
+        "the",
+        "a",
+        "an",
+        "total",
+        "overall",
+        "all",
+    }
+)
 _DURATION_INTENT_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"\bhow many years\b", re.IGNORECASE),
     re.compile(r"\byears of experience\b", re.IGNORECASE),
+    re.compile(r"\bhow much\b.*\bexperience\b", re.IGNORECASE),
     re.compile(r"\bhow long\b", re.IGNORECASE),
     re.compile(r"\btotal years\b", re.IGNORECASE),
 )
@@ -52,6 +75,7 @@ class DurationStint:
     - end_year: Raw end year (None means present).
     - resolved_end_year: End year normalized using injected current year.
     - stint_domains: Canonical fine-grained domain labels.
+    - evidence_terms: Normalized metadata terms used for strict alias filtering.
 
     Output:
     - Immutable stint payload consumed by union and family computations.
@@ -64,6 +88,7 @@ class DurationStint:
     end_year: int | None
     resolved_end_year: int
     stint_domains: frozenset[str]
+    evidence_terms: frozenset[str]
 
 
 @dataclass(frozen=True)
@@ -130,6 +155,7 @@ class _MutableStint:
     end_year: int | None
     resolved_end_year: int
     stint_domains: set[str]
+    evidence_terms: set[str]
 
 
 def is_duration_intent(question: str) -> bool:
@@ -196,6 +222,14 @@ def compute_duration_for_question(
         canonical_labels=config.canonical_labels,
     )
     resolved_family_keys = tuple(resolve_families_for_question(question))
+    family_specific_aliases = _resolve_non_generic_aliases_by_family(
+        question=question,
+        resolved_family_keys=resolved_family_keys,
+    )
+    unmapped_required_terms = _resolve_required_skill_terms_for_unmapped_query(
+        question=question,
+        resolved_family_keys=resolved_family_keys,
+    )
 
     if resolved_family_keys:
         union_labels: set[str] = set()
@@ -209,16 +243,24 @@ def compute_duration_for_question(
             for label in stint.stint_domains
             if label in config.canonical_labels
         }
-        breakdown_family_keys = [
-            family_key
-            for family_key in config.families
-            if _family_has_matching_stints(stints, family_key=family_key)
-        ]
+        breakdown_family_keys: list[str] = []
+        if not unmapped_required_terms:
+            breakdown_family_keys = [
+                family_key
+                for family_key in config.families
+                if _family_has_matching_stints(stints, family_key=family_key)
+            ]
 
     union_matched_stints = tuple(
         stint
         for stint in stints
-        if stint.stint_domains & union_labels
+        if _stint_matches_selected_families(
+            stint,
+            resolved_family_keys=resolved_family_keys,
+            union_labels=union_labels,
+            family_specific_aliases=family_specific_aliases,
+            unmapped_required_terms=unmapped_required_terms,
+        )
     )
     union_intervals = _merge_intervals(
         [
@@ -230,10 +272,13 @@ def compute_duration_for_question(
     family_breakdown: list[FamilyDurationBreakdown] = []
     for family_key in breakdown_family_keys:
         accepted_labels = duration_domain_config.accepted_labels_for_family(family_key)
+        required_aliases = family_specific_aliases.get(family_key, ())
         matched_stints = [
             stint
             for stint in stints
             if stint.stint_domains & accepted_labels
+            and _stint_matches_any_alias(stint, required_aliases)
+            and _stint_matches_unmapped_terms(stint, unmapped_required_terms)
         ]
         merged_intervals = _merge_intervals(
             [
@@ -395,6 +440,7 @@ def _extract_experience_stints(
         )
         if not stint_domains:
             continue
+        evidence_terms = _extract_evidence_terms(chunk=chunk, extras=extras)
 
         normalized_employer = employer.lower()
         normalized_title = title.lower()
@@ -416,10 +462,12 @@ def _extract_experience_stints(
                 end_year=interval.end_year,
                 resolved_end_year=interval.resolved_end_year,
                 stint_domains=set(stint_domains),
+                evidence_terms=set(evidence_terms),
             )
             continue
 
         existing_stint.stint_domains.update(stint_domains)
+        existing_stint.evidence_terms.update(evidence_terms)
 
     sorted_stints = sorted(
         deduplicated_stints.values(),
@@ -440,9 +488,271 @@ def _extract_experience_stints(
             end_year=stint.end_year,
             resolved_end_year=stint.resolved_end_year,
             stint_domains=frozenset(stint.stint_domains),
+            evidence_terms=frozenset(stint.evidence_terms),
         )
         for stint in sorted_stints
     ]
+
+
+def _extract_evidence_terms(
+    *,
+    chunk: Mapping[str, Any],
+    extras: Mapping[str, Any],
+) -> set[str]:
+    """Extract normalized terms used for alias-level stint filtering.
+
+    Inputs:
+    - chunk: Source chunk used in stint aggregation.
+    - extras: Chunk extras mapping.
+
+    Output:
+    - Normalized token set derived from text and metadata.
+
+    Edge cases:
+    - Missing fields produce an empty set.
+    - Non-string list entries are ignored.
+    """
+
+    evidence_terms: set[str] = set()
+    for token in _tokenize_text(chunk.get("text")):
+        evidence_terms.add(token)
+
+    topics_value = chunk.get("topics")
+    if isinstance(topics_value, (list, tuple, set, frozenset)):
+        for topic in topics_value:
+            if not isinstance(topic, str):
+                continue
+            for token in _tokenize_text(topic):
+                evidence_terms.add(token)
+
+    tags_value = chunk.get("tags")
+    if isinstance(tags_value, (list, tuple, set, frozenset)):
+        for tag in tags_value:
+            if not isinstance(tag, str):
+                continue
+            normalized_tag = tag.strip().lower()
+            if ":" in normalized_tag:
+                normalized_tag = normalized_tag.split(":", maxsplit=1)[1]
+            for token in _tokenize_text(normalized_tag):
+                evidence_terms.add(token)
+
+    tech_value = extras.get(EXTRAS_TECH_KEY)
+    if isinstance(tech_value, (list, tuple, set, frozenset)):
+        for tech_item in tech_value:
+            if not isinstance(tech_item, str):
+                continue
+            for token in _tokenize_text(tech_item):
+                evidence_terms.add(token)
+
+    return evidence_terms
+
+
+def _resolve_non_generic_aliases_by_family(
+    *,
+    question: str,
+    resolved_family_keys: tuple[str, ...],
+) -> dict[str, tuple[str, ...]]:
+    """Resolve question aliases that require stricter per-stint evidence.
+
+    Inputs:
+    - question: User question text.
+    - resolved_family_keys: Families already matched for this question.
+
+    Output:
+    - Mapping of family key to matched non-generic aliases.
+
+    Edge cases:
+    - Generic family/member aliases do not activate strict evidence filtering.
+    - Families with no non-generic matched aliases are omitted.
+    """
+
+    normalized_phrase_text, token_set = _normalize_question_tokens(question)
+    config = duration_domain_config.get_config()
+    family_aliases: dict[str, tuple[str, ...]] = {}
+
+    for family_key in resolved_family_keys:
+        family_config = config.families[family_key]
+        matched_aliases: list[str] = []
+        for alias in family_config.query_aliases:
+            if _is_generic_family_alias(
+                alias=alias,
+                family_key=family_key,
+                family_members=family_config.members,
+            ):
+                continue
+            if _alias_matches_tokens(
+                alias=alias,
+                normalized_phrase_text=normalized_phrase_text,
+                token_set=token_set,
+            ):
+                matched_aliases.append(alias)
+        if matched_aliases:
+            family_aliases[family_key] = tuple(matched_aliases)
+
+    return family_aliases
+
+
+def _normalize_question_tokens(question: str) -> tuple[str, set[str]]:
+    """Normalize question text into phrase and token-set forms."""
+
+    question_tokens = _TOKEN_PATTERN.findall((question or "").strip().lower())
+    normalized_phrase_text = " ".join(question_tokens)
+    return normalized_phrase_text, set(question_tokens)
+
+
+def _is_generic_family_alias(
+    *,
+    alias: str,
+    family_key: str,
+    family_members: frozenset[str],
+) -> bool:
+    """Return True when an alias is a family/member synonym and not skill-specific."""
+
+    normalized_alias = alias.strip().lower()
+    if normalized_alias == family_key:
+        return True
+    if normalized_alias == family_key.replace("_", " "):
+        return True
+    if normalized_alias in family_members:
+        return True
+    return normalized_alias in {member.replace("_", " ") for member in family_members}
+
+
+def _alias_matches_tokens(
+    *,
+    alias: str,
+    normalized_phrase_text: str,
+    token_set: set[str],
+) -> bool:
+    """Return whether an alias matches tokenized text using config matching rules."""
+
+    alias_tokens = _TOKEN_PATTERN.findall(alias)
+    if not alias_tokens:
+        return False
+    if len(alias_tokens) == 1:
+        return alias_tokens[0] in token_set
+    alias_phrase = " ".join(alias_tokens)
+    return bool(alias_phrase) and alias_phrase in normalized_phrase_text
+
+
+def _stint_matches_selected_families(
+    stint: DurationStint,
+    *,
+    resolved_family_keys: tuple[str, ...],
+    union_labels: set[str],
+    family_specific_aliases: dict[str, tuple[str, ...]],
+    unmapped_required_terms: frozenset[str],
+) -> bool:
+    """Return whether a stint should contribute to union totals for this question.
+
+    Inputs:
+    - stint: Candidate stint.
+    - resolved_family_keys: Families resolved from the question.
+    - union_labels: Union of accepted labels across selected families.
+    - family_specific_aliases: Non-generic aliases requiring evidence matches.
+
+    Output:
+    - True when the stint should be counted in the union total.
+
+    Edge cases:
+    - Generic duration prompts with no resolved families use union labels only.
+    - Family-specific aliases require explicit per-stint metadata evidence.
+    """
+
+    if not (stint.stint_domains & union_labels):
+        return False
+    if not resolved_family_keys:
+        return _stint_matches_unmapped_terms(stint, unmapped_required_terms)
+
+    for family_key in resolved_family_keys:
+        family_labels = duration_domain_config.accepted_labels_for_family(family_key)
+        if not (stint.stint_domains & family_labels):
+            continue
+        required_aliases = family_specific_aliases.get(family_key, ())
+        if _stint_matches_any_alias(stint, required_aliases):
+            return True
+    return False
+
+
+def _stint_matches_any_alias(stint: DurationStint, aliases: tuple[str, ...]) -> bool:
+    """Return whether stint evidence matches any required alias.
+
+    Inputs:
+    - stint: Candidate stint with metadata-derived evidence terms.
+    - aliases: Alias list that must be matched; empty means no strict filtering.
+
+    Output:
+    - True when no aliases are required, or at least one alias matches.
+    """
+
+    if not aliases:
+        return True
+
+    for alias in aliases:
+        alias_tokens = _TOKEN_PATTERN.findall(alias)
+        if not alias_tokens:
+            continue
+        if all(token in stint.evidence_terms for token in alias_tokens):
+            return True
+    return False
+
+
+def _tokenize_text(value: object) -> list[str]:
+    """Tokenize a free-form value into normalized alphanumeric tokens."""
+
+    if not isinstance(value, str):
+        return []
+    return _TOKEN_PATTERN.findall(value.strip().lower())
+
+
+def _resolve_required_skill_terms_for_unmapped_query(
+    *,
+    question: str,
+    resolved_family_keys: tuple[str, ...],
+) -> frozenset[str]:
+    """Resolve explicit skill tokens for unmapped duration prompts.
+
+    Inputs:
+    - question: User question text.
+    - resolved_family_keys: Families matched by config aliases.
+
+    Output:
+    - Required normalized terms when no family was matched; empty otherwise.
+
+    Edge cases:
+    - Generic prompts (for example "how many years of experience") return empty.
+    - Keeps symbolic tokens such as ``ci/cd`` and ``c++``.
+    """
+
+    if resolved_family_keys:
+        return frozenset()
+
+    normalized_question = (question or "").strip().lower()
+    for marker in (" with ", " in ", " on ", " for ", " about "):
+        marker_index = normalized_question.find(marker)
+        if marker_index < 0:
+            continue
+        tail_text = normalized_question[marker_index + len(marker):]
+        tail_tokens = _TOKEN_PATTERN.findall(tail_text)
+        required_terms = {
+            token
+            for token in tail_tokens
+            if token not in _UNMAPPED_SKILL_STOPWORDS and len(token) > 1
+        }
+        return frozenset(required_terms)
+
+    return frozenset()
+
+
+def _stint_matches_unmapped_terms(
+    stint: DurationStint,
+    required_terms: frozenset[str],
+) -> bool:
+    """Return whether a stint matches strict required terms for unmapped queries."""
+
+    if not required_terms:
+        return True
+    return all(term in stint.evidence_terms for term in required_terms)
 
 
 def _family_has_matching_stints(
