@@ -128,18 +128,68 @@ See [backend/README.md#curl-examples](../backend/README.md#curl-examples) for ru
 - `api/llm_backends.py`: Vertex LLM vs deterministic mock backend selection.
 - `api/ops_routes.py` + `api/ops_security.py`: `/ops/vector/status` and `/ops/vector/reload` with header auth + rate limiting.
 
+### Dataset cache lifecycle
+- Purpose:
+  - Keep a validated, in-memory snapshot of dataset artifacts so chat requests do not read pointer/manifests/chunks/datapoints on every call.
+  - Provide atomic dataset version cutover after pointer updates.
+  - Fail startup or reload early when dataset artifacts are incompatible.
+- Input contract:
+  - Pointer file: `datasets/current.json` with `{ "dataset_version": "vNN" }`.
+  - Version folder: `datasets/<version>/manifest.json`, `datasets/<version>/chunks.jsonl.gz`, `datasets/<version>/datapoints.jsonl`.
+- Load sequence:
+  1. Read pointer and resolve `dataset_version`.
+  2. Read and validate `manifest.json`.
+  3. Read `chunks.jsonl.gz` and construct `chunks_by_id`.
+  4. Read `datapoints.jsonl`, validate vectors, and ensure IDs map to chunks.
+  5. Atomically swap the global cache reference.
+- Validation guards:
+  - `manifest.dataset_version` must match pointer version.
+  - `manifest.chunk_schema_version` must equal runtime supported chunk schema version.
+  - `manifest.embedding_model` must match runtime embedding model setting.
+  - If `DATAPOINTS_DIMENSIONS` is set, it must match `manifest.dimensions`.
+  - Datapoint vectors must be present, have expected dimensions, and be approximately unit-norm.
+  - Every datapoint ID must exist in chunks.
+- Concurrency model:
+  - Cache build happens before lock acquisition for the global pointer swap.
+  - Global cache pointer replacement is protected by a lock to avoid torn reads.
+  - Readers get either the previous full cache or the new full cache, never a partial state.
+- Startup and readiness behavior:
+  - Integrated app startup (`api.main:app`) loads cache during lifespan initialization.
+  - `/ready` returns 503 until initialization completes successfully.
+  - Schema/version/manifest mismatches keep service unready and surface structured diagnostics in `/ready`.
+- Retrieval integration:
+  - `api/retrieval.py` uses the cache-backed chunk store and builds BM25 index in memory from loaded chunks.
+  - When `DATASET_POINTER_PATH` is configured, dataset-cache load failure is treated as hard failure (no silent fallback).
+- Operational note:
+  - Updating `datasets/current.json` does not update running instances until reload/startup path runs.
+  - Use the reload endpoint (`/ops/vector/reload`) or restart rollout to pick up new dataset pointer targets.
+
 ### Retrieval internals (current behavior)
 - Query embedding path: normalize question -> `embed_query(...)` -> L2-normalized vector search (`search_vector_store(...)`).
 - Hybrid scoring (`apply_filters_and_boosting(...)`):
   - `vector_score = 1 / (1 + distance)`
   - `bm25_norm = bm25 / (bm25 + 1)` for positive BM25 scores
   - `weighted_score = RETRIEVAL_VECTOR_WEIGHT * vector_score + RETRIEVAL_BM25_WEIGHT * bm25_norm`
-  - Plus fixed metadata boosts (`role` match and topic overlap).
+  - Plus fixed metadata boosts (`profile` match and topic overlap).
 - BM25 tokenization/indexing:
   - token pattern: lowercase alphanumeric (`[a-z0-9]+`)
   - token filter: remove tokens shorter than 3 chars and stopword/template terms
   - indexed fields per chunk: `text`, `metadata.section`, `metadata.topics[]`, `metadata.tags[]`
   - BM25 index is built in memory whenever chunk store is configured or reloaded.
+
+### Deterministic duration routing
+- Runs in `api/rag_chat_orchestrator.py` after non-English/greeting guards and before retrieval.
+- Trigger requirements:
+  - `is_duration_intent(question)` is true.
+  - Duration families are resolved from `backend/config/experience_domain_config.json`.
+- Data source:
+  - Uses `retrieval.get_chunk_store_snapshot()` and computes years from metadata intervals, not from top-k retrieval results.
+  - Only `section == "Experience"` metadata is included.
+- Behavior:
+  - Returns a deterministic answer and bypasses LLM calls.
+  - Supports combined-domain questions with a union total and per-family breakdown.
+  - Emits `llm_gate_reason=duration_bypass`.
+  - Returns empty citations (same deterministic-bypass convention as other pre-LLM routes).
 
 ### Thinking gate methodology (deterministic)
 - Scope:
@@ -225,9 +275,9 @@ For a human-readable guide explaining the meaning, use cases, benefits, and trad
 
 ### Overall scheme
 
-- **One CV per Role**: one infra (DevOps/SRE/Platform) and one product (PM/TPM/PO).
+- **One profile per CV**: each chunk keeps a single `profile` string for restricts/boosts.
 - **Tags**:
-  - Always add `role:infra` or `role:product`.
+  - Always add `profile:<profile>`.
   - Optionally add `topic:*` for precision (`topic:kubernetes`, `topic:roadmap`).
 - **Chunks**: store as JSONL lines with text + metadata; keep gzipped in GCS as `datasets/<version>/chunks.jsonl.gz` and switch versions via `datasets/current.json`.
 - **Vectors**: embeddings from each chunk → local cosine search by default; optional upsert to **Vertex AI Matching Engine** for semantic search.
@@ -237,7 +287,7 @@ For a human-readable guide explaining the meaning, use cases, benefits, and trad
 
 1. **Chunking**
    - Split CV docs into ~450-token chunks (could be generated via an LLM for the initial corpus; keep source material private).
-   - Attach `role` + optional `topic` tags.
+   - Attach `profile` and tags (`profile:<profile>` + optional `topic:*`).
    - Validate against `chunk.schema.json`.
 2. **Packaging**
    - Write `chunks.jsonl.gz` into `datasets/<version>/`.
@@ -265,12 +315,12 @@ This section applies only when `VECTOR_BACKEND=matching_engine`.
    - Build in-memory BM25 inverted index (tokenize chunks, compute idf, etc.).
 2. **Query flow**
    - **First-person normalization** (convert “Omer Reznik” → “I”).
-   - **Role classification**: keyword-hint heuristic -> `role=infra` or `role=product`. Leave unclassified for mixed queries.
+   - **Profile classification**: keyword-hint heuristic can bias `infra`/`product`; other profiles remain neutral.
    - **Vector search**: embed query, run local cosine search by default or call Vertex Matching Engine when configured.
    - **BM25 scoring**: run query tokens against the in-memory BM25 index over chunk text/section/topics/tags.
    - **Rerank/boost**:
-     - Weight scores with env-configured vector/BM25 weights and fixed role/topic boosts.
-     - If classified, boost chunks with matching role tag.
+     - Weight scores with env-configured vector/BM25 weights and fixed profile/topic boosts.
+     - If classified, boost chunks with matching profile tag.
    - **Trim**: keep at most 8 chunks after reranking (candidate depth comes from `TOP_K`, default 4).
    - **Prompt LLM**: feed selected reranked chunks into Gemini Flash, generate strict, grounded first-person answer.
    - **Return**: `{answer, citations, usage}` JSON.

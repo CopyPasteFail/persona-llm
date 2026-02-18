@@ -42,16 +42,19 @@ def vector_status() -> Dict[str, Any]:
     pointer = dataset_cache.get_pointer_info()
     cache = dataset_cache.get_cache_snapshot()
     payload: Dict[str, Any] = {
-        "pointer_version": pointer.version,
+        "pointer_dataset_version": pointer.dataset_version,
         "pointer_generation": pointer.generation,
+        "supported_chunk_schema_version": dataset_cache.get_supported_chunk_schema_version(),
     }
     if cache is None:
-        payload["loaded_version"] = None
+        payload["loaded_dataset_version"] = None
+        payload["loaded_chunk_schema_version"] = None
         return payload
 
     payload.update(
         {
-            "loaded_version": cache.version,
+            "loaded_dataset_version": cache.dataset_version,
+            "loaded_chunk_schema_version": cache.chunk_schema_version,
             "loaded_at": cache.loaded_at,
             "datapoints_generation": cache.datapoints_generation,
             "chunks_generation": cache.chunks_generation,
@@ -70,7 +73,9 @@ def vector_reload() -> Dict[str, Any]:
     cache = dataset_cache.reload_cache()
     retrieval.configure_chunk_store(cache.chunks_by_id)
     return {
-        "loaded_version": cache.version,
+        "loaded_dataset_version": cache.dataset_version,
+        "loaded_chunk_schema_version": cache.chunk_schema_version,
+        "supported_chunk_schema_version": dataset_cache.get_supported_chunk_schema_version(),
         "loaded_at": cache.loaded_at,
         "datapoints_generation": cache.datapoints_generation,
         "chunks_generation": cache.chunks_generation,

@@ -20,5 +20,6 @@ class ChatResponse(BaseModel):
     answer: str
     citations: List[Citation]
     usage: Usage
+    llm_called: bool
     input_token_limit: Optional[int] = None
     model: Optional[str] = None

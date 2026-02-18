@@ -6,12 +6,12 @@ This guide explains each field: what it signifies, how the app uses it, the bene
 
 ## Core Identity
 
-### `schema_version` (integer; const: 2)
+### `schema_version` (integer; const from `backend/schema/chunk.schema.json`)
 - **Meaning**: Version tag for this schema.
 - **Use**: Lets the backend to handle logic/migrations safely.
 - **Benefit**: Future evolution without breaking old data.
-- **Example**: `2`
-- **If dropped**: Harder to migrate or validate mixed versions.
+- **Example**: See the Summary example below for an illustrative value; always verify the current const in `backend/schema/chunk.schema.json`.
+- **If dropped**: Harder to migrate or validate across schema versions.
 
 ### `doc_id` (string)
 - **Meaning**: Stable ID for the source document.
@@ -22,7 +22,7 @@ This guide explains each field: what it signifies, how the app uses it, the bene
 
 ### `chunk_id` (string)
 - **Meaning**: Unique ID per chunk (primary key for retrieval).
-- **Use**: Key in vector index; join back to text/metadata.
+- **Use**: Key in vector index; join back to text and structured fields.
 - **Benefit**: Stable citations and debugging.
 - **Example**: `"infra-014"`
 - **If dropped**: Can’t map ANN hits back to exact text.
@@ -49,13 +49,13 @@ This guide explains each field: what it signifies, how the app uses it, the bene
 
 ---
 
-## Role & Topics
+## Profile & Topics
 
-### `role` (enum: `infra` | `product`)
-- **Meaning**: Collapsed persona mode for this chunk.
-- **Use**: Retrieval biasing (infra vs product) at query-time.
+### `profile` (string)
+- **Meaning**: Canonical persona profile for this chunk.
+- **Use**: Retrieval biasing via the `profile` restrict namespace and query-time boosts.
 - **Benefit**: One persona voice, precise evidence selection.
-- **Example**: `"infra"`
+- **Example**: `"infra"` (also valid: `"marketing"`, `"sales"`, `"product"`)
 - **If dropped**: Harder to steer retrieval; more cross-contamination.
 
 ### `topics` (array<string>)
@@ -67,10 +67,28 @@ This guide explains each field: what it signifies, how the app uses it, the bene
 
 ### `tags` (array<string>)
 - **Meaning**: Flattened metadata for fast vector-DB filtering.
-- **Use**: ANN pre-filter (e.g., tags contains `role:infra`).
+- **Use**: ANN pre-filter (e.g., tags contains `profile:infra`).
 - **Benefit**: Efficient, simple metadata filters in the vector store.
-- **Example**: `["role:infra","topic:kubernetes","topic:terraform"]`
+- **Example**: `["profile:infra","topic:kubernetes","topic:terraform"]`
 - **If dropped**: Must fetch broadly then post-filter in backend (slower, costlier).
+
+---
+
+## No Nested `metadata` Object
+
+This schema intentionally does **not** allow a nested `metadata` object (for example `chunk["metadata"]["section"]`).
+All chunk attributes live at the top level (`profile`, `section`, `topics`, `tags`, `permissions`, and `extras.*`).
+
+Practical reasons:
+
+- **One canonical shape**: Avoids dual-source fields (`section` vs `metadata.section`) and the “which one wins?” ambiguity that causes silent drift and bugs.
+- **Prevent BM25 + heuristic leakage**: Nested metadata tends to accumulate “junk text” (`doc_id`, `source_uri`, ad-hoc keywords) that can accidentally influence token-based scoring and gates, creating false positives (e.g., the dentistry case).
+- **Stricter validation, faster failures**: Rejecting legacy `metadata` at load time makes incorrect artifacts fail loudly at startup rather than producing confusing retrieval behavior later.
+- **Better portability and clearer contracts**: Storage format, runtime format, and vector-datapoint mapping stay consistent: `chunk_id` plus flat keys everywhere, no adapters.
+- **Performance and simplicity**: Flat records are cheaper to validate, serialize, snapshot, and debug (no nested traversal, fewer conditionals).
+- **Easier schema evolution**: Bumping versions is simpler when there is one definitive record layout; nested metadata otherwise becomes a dumping ground of semi-supported keys.
+
+Note: “Vector DB metadata” is a separate concept. It’s fine (and expected) to push **flat** fields like `tags` into the vector store’s metadata for fast filtering; the chunk JSONL itself stays flat and strongly validated.
 
 ---
 
@@ -120,7 +138,7 @@ This guide explains each field: what it signifies, how the app uses it, the bene
 - **Use**: Filter restricted chunks at retrieval time.
 - **Benefit**: Safe multi-tenant or public demos.
 - **Example**: `["public"]` or `["team:eng","internal"]`
-- **If dropped**: No access control via metadata.
+- **If dropped**: No access control label to filter on.
 
 ---
 
@@ -133,12 +151,24 @@ This guide explains each field: what it signifies, how the app uses it, the bene
 - **Example**: `"Acme Inc."`
 - **If dropped**: Less specific provenance in answers.
 
+### `extras.title` (string)
+- **Meaning**: Job title for the stint represented by the chunk.
+- **Use**: Better stint dedupe and clearer deterministic duration summaries.
+- **Benefit**: Reduces over-counting when multiple chunks mirror one profile.
+- **Example**: `"Senior SRE"`
+
 ### `extras.tech` (array<string>)
 - **Meaning**: Raw, human-friendly tech names as written in the CV.
 - **Use**: UI display (“Tech: Kubernetes (K8s), Terraform, Argo CD”).
 - **Benefit**: Polished presentation separate from normalized `topics`.
 - **Example**: `["Kubernetes (K8s)","Terraform","Argo CD"]`
 - **If dropped**: You can still rely on `text` for raw wording, but you lose the easy, pretty, de-duplicated tech list.
+
+### `extras.stint_domains` (array<string>)
+- **Meaning**: Fine-grained stint labels used by deterministic duration routing.
+- **Use**: Duration answers with family mapping from `backend/config/experience_domain_config.json`.
+- **Benefit**: Deterministic years-of-experience responses without LLM calls.
+- **Example**: `["devops"]` or `["sre","platform"]`
 
 ### `extras.type` (enum: `achievement` | `experience`) — *Experience-only*
 - **Meaning**: Semantic kind of Experience bullet (either a responsibility or a highlight).
@@ -152,17 +182,20 @@ This guide explains each field: what it signifies, how the app uses it, the bene
 
 ## Examples
 
+`schema_version` must equal the const in `backend/schema/chunk.schema.json`.
+The Summary example includes `3` as an illustrative value; verify the schema file before generating datasets.
+
 ### Summary (omit `extras.type`)
 ```json
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "doc_id": "cv-infra-2025",
   "chunk_id": "infra-001",
   "position": 1,
   "text": "DevOps/SRE engineer experienced in automating infrastructure, running Kubernetes in production, and improving observability.",
-  "role": "infra",
+  "profile": "infra",
   "topics": ["devops","sre","automation","kubernetes","observability"],
-  "tags": ["role:infra","topic:devops","topic:sre","topic:automation","topic:kubernetes","topic:observability"],
+  "tags": ["profile:infra","topic:devops","topic:sre","topic:automation","topic:kubernetes","topic:observability"],
   "section": "Summary",
   "start_year": 2025,
   "end_year": 2025,
@@ -180,14 +213,13 @@ This guide explains each field: what it signifies, how the app uses it, the bene
 ### Skills (omit `extras.type`)
 ```json
 {
-  "schema_version": 2,
   "doc_id": "cv-infra-2025",
   "chunk_id": "infra-010",
   "position": 10,
   "text": "Skills: Kubernetes, Terraform, Argo CD, Prometheus, Grafana, AWS, GCP.",
-  "role": "infra",
+  "profile": "infra",
   "topics": ["kubernetes","terraform","argocd","prometheus","grafana","aws","gcp"],
-  "tags": ["role:infra","topic:kubernetes","topic:terraform","topic:argocd","topic:prometheus","topic:grafana","topic:aws","topic:gcp"],
+  "tags": ["profile:infra","topic:kubernetes","topic:terraform","topic:argocd","topic:prometheus","topic:grafana","topic:aws","topic:gcp"],
   "section": "Skills",
   "start_year": 2025,
   "end_year": 2025,
@@ -205,14 +237,13 @@ This guide explains each field: what it signifies, how the app uses it, the bene
 ### Experience (optionally set `extras.type`)
 ```json
 {
-  "schema_version": 2,
   "doc_id": "cv-infra-2025",
   "chunk_id": "infra-020",
   "position": 20,
   "text": "At Acme Inc., managed production EKS clusters with Terraform and Argo CD, improved monitoring with Prometheus and Grafana, and defined SLOs to improve reliability.",
-  "role": "infra",
+  "profile": "infra",
   "topics": ["eks","terraform","argocd","prometheus","grafana","slo","reliability"],
-  "tags": ["role:infra","topic:eks","topic:terraform","topic:argocd","topic:prometheus","topic:grafana","topic:slo","topic:reliability"],
+  "tags": ["profile:infra","topic:eks","topic:terraform","topic:argocd","topic:prometheus","topic:grafana","topic:slo","topic:reliability"],
   "section": "Experience",
   "start_year": 2019,
   "end_year": 2021,
@@ -222,6 +253,8 @@ This guide explains each field: what it signifies, how the app uses it, the bene
   "permissions": ["public"],
   "extras": {
     "employer": "Acme Inc.",
+    "title": "Senior SRE",
+    "stint_domains": ["platform","sre"],
     "tech": ["EKS","Terraform","Argo CD","Prometheus","Grafana"],
     "type": "experience"
   }

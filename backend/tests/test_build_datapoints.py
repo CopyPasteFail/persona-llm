@@ -4,7 +4,7 @@ These tests exercise the private helpers in ``jobs.build_datapoints`` so that
 future refactors stay compatible with Vertex AI Matching Engine expectations.
 Checks include:
   * Namespace restriction mapping via ``_build_restricts``.
-  * JSON line emission with metadata and feature vectors via ``_write_datapoints``.
+  * JSON line emission with flat chunk fields and feature vectors via ``_write_datapoints``.
   * Optional gzip output path to ensure compression stays supported.
 """
 
@@ -24,13 +24,14 @@ GZIP_OUTPUT_FILENAME = "datapoints.jsonl.gz"
 ID_FIELD = "id"
 JSON_LINES_FILENAME = "datapoints.jsonl"
 KUBERNETES_TOPIC = "kubernetes"
-METADATA_FIELD = "metadata"
 NAMESPACE_FIELD = "namespace"
 PROFILE_SECTION = "profile"
 PROD_TAG = "prod"
 RESTRICTS_FIELD = "restricts"
-ROLE_FIELD = "role"
-ROLE_VALUE = "infra"
+PROFILE_NAMESPACE = "profile"
+PROFILE_INFRA_VALUE = "infra"
+PROFILE_FIELD = "profile"
+PROFILE_MARKETING_VALUE = "marketing"
 SECTION_FIELD = "section"
 TAG_NAMESPACE = "tag"
 TAG_FIELD = "tags"
@@ -83,15 +84,16 @@ def test_build_restricts_includes_all_supported_namespaces() -> None:
     """Verify restricts include all supported namespaces.
 
     What is tested:
-        _build_restricts mapping for role, doc_id, topics, and tags.
+        _build_restricts mapping for profile, doc_id, topics, and tags.
     How it's tested:
         Build metadata with all supported fields and compare restricts output.
     Expected result format:
         The restricts list matches the expected namespace/token mapping order.
     """
     metadata: Metadata = {
-        ROLE_FIELD: ROLE_VALUE,
+        PROFILE_FIELD: PROFILE_INFRA_VALUE,
         DOC_ID_FIELD: DOC_ID_VALUE,
+        SECTION_FIELD: PROFILE_SECTION,
         TOPICS_FIELD: [KUBERNETES_TOPIC, GKE_TOPIC],
         TAG_FIELD: [PROD_TAG, HIGHLIGHTS_TAG],
     }
@@ -99,8 +101,9 @@ def test_build_restricts_includes_all_supported_namespaces() -> None:
     restricts = build_datapoints._build_restricts(metadata) # pyright: ignore[reportPrivateUsage]
 
     assert restricts == [
-        {NAMESPACE_FIELD: ROLE_FIELD, ALLOW_TOKENS_FIELD: [ROLE_VALUE]},
+        {NAMESPACE_FIELD: PROFILE_NAMESPACE, ALLOW_TOKENS_FIELD: [PROFILE_INFRA_VALUE]},
         {NAMESPACE_FIELD: DOC_ID_FIELD, ALLOW_TOKENS_FIELD: [DOC_ID_VALUE]},
+        {NAMESPACE_FIELD: SECTION_FIELD, ALLOW_TOKENS_FIELD: [PROFILE_SECTION]},
         {
             NAMESPACE_FIELD: TOPIC_NAMESPACE,
             ALLOW_TOKENS_FIELD: [KUBERNETES_TOPIC, GKE_TOPIC],
@@ -112,11 +115,24 @@ def test_build_restricts_includes_all_supported_namespaces() -> None:
     ]
 
 
+def test_build_restricts_uses_profile_namespace() -> None:
+    """Verify profile is the only source for the profile restrict namespace."""
+    metadata: Metadata = {
+        PROFILE_FIELD: PROFILE_MARKETING_VALUE,
+    }
+
+    restricts = build_datapoints._build_restricts(metadata) # pyright: ignore[reportPrivateUsage]
+
+    assert restricts == [
+        {NAMESPACE_FIELD: PROFILE_NAMESPACE, ALLOW_TOKENS_FIELD: [PROFILE_MARKETING_VALUE]}
+    ]
+
+
 def test_write_datapoints_emits_expected_json_lines(tmp_path: Path) -> None:
     """Verify JSONL datapoints include IDs, restricts, and embeddings.
 
     What is tested:
-        _write_datapoints JSONL output for a single record with metadata.
+        _write_datapoints JSONL output for a single record with flat fields.
     How it's tested:
         Write one record to disk, read the JSON line, and inspect fields.
     Expected result format:
@@ -126,14 +142,12 @@ def test_write_datapoints_emits_expected_json_lines(tmp_path: Path) -> None:
 
     records: list[Record] = [
         {
-            ID_FIELD: CHUNK_ID_ONE,
-            METADATA_FIELD: {
-                SECTION_FIELD: PROFILE_SECTION,
-                ROLE_FIELD: ROLE_VALUE,
-                DOC_ID_FIELD: DOC_ID_VALUE,
-                TOPICS_FIELD: [KUBERNETES_TOPIC],
-                TAG_FIELD: [PROD_TAG],
-            },
+            "chunk_id": CHUNK_ID_ONE,
+            SECTION_FIELD: PROFILE_SECTION,
+            PROFILE_FIELD: PROFILE_INFRA_VALUE,
+            DOC_ID_FIELD: DOC_ID_VALUE,
+            TOPICS_FIELD: [KUBERNETES_TOPIC],
+            TAG_FIELD: [PROD_TAG],
         }
     ]
     embeddings = EMBEDDINGS_FOR_SINGLE_RECORD
@@ -158,8 +172,9 @@ def test_write_datapoints_emits_expected_json_lines(tmp_path: Path) -> None:
     _assert_float_vectors_close(datapoint[FEATURE_VECTOR_FIELD], normalized_vector)
     assert datapoint[CROWDING_TAG_FIELD] == PROFILE_SECTION
     assert datapoint[RESTRICTS_FIELD] == [
-        {NAMESPACE_FIELD: ROLE_FIELD, ALLOW_TOKENS_FIELD: [ROLE_VALUE]},
+        {NAMESPACE_FIELD: PROFILE_NAMESPACE, ALLOW_TOKENS_FIELD: [PROFILE_INFRA_VALUE]},
         {NAMESPACE_FIELD: DOC_ID_FIELD, ALLOW_TOKENS_FIELD: [DOC_ID_VALUE]},
+        {NAMESPACE_FIELD: SECTION_FIELD, ALLOW_TOKENS_FIELD: [PROFILE_SECTION]},
         {
             NAMESPACE_FIELD: TOPIC_NAMESPACE,
             ALLOW_TOKENS_FIELD: [KUBERNETES_TOPIC],
@@ -183,7 +198,7 @@ def test_write_datapoints_handles_gzip_output(tmp_path: Path) -> None:
     """
     output_path = tmp_path / GZIP_OUTPUT_FILENAME
 
-    records: list[Record] = [{ID_FIELD: CHUNK_ID_TWO, METADATA_FIELD: {}}]
+    records: list[Record] = [{"chunk_id": CHUNK_ID_TWO}]
     embeddings = GZIP_EMBEDDINGS
 
     build_datapoints._write_datapoints( # pyright: ignore[reportPrivateUsage]

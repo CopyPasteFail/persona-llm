@@ -12,13 +12,17 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple, cast
 
+from .dataset_schema import (
+    get_supported_chunk_schema_version as _get_supported_chunk_schema_version,
+)
 from .settings import settings
 
 _DATASET_FOLDER = "datasets"
 _DATASET_POINTER_PATH = f"{_DATASET_FOLDER}/current.json"
-_DATASET_POINTER_KEY = "version"
+_DATASET_POINTER_DATASET_VERSION_KEY = "dataset_version"
 _MANIFEST_REQUIRED_KEYS = {
-    "version",
+    "dataset_version",
+    "chunk_schema_version",
     "created_at",
     "datapoints_file",
     "chunks_file",
@@ -41,8 +45,8 @@ _MANIFEST_FILENAME = "manifest.json"
 _DATAPOINT_ID_KEY = "id"
 _DATAPOINT_ALT_ID_KEY = "datapointId"
 _DATAPOINT_VECTOR_KEY = "featureVector"
+_CHUNK_ID_KEY = "chunk_id"
 _CHUNK_TEXT_KEY = "text"
-_CHUNK_METADATA_KEY = "metadata"
 
 _GCS_URI_PREFIX = "gs://"
 _FILE_URI_PREFIX = "file:"
@@ -55,12 +59,37 @@ _cache_lock = threading.Lock()
 _dataset_cache: Optional["DatasetCache"] = None
 
 
+class ChunkSchemaVersionError(RuntimeError):
+    """Error raised when a dataset manifest chunk schema version is unsupported.
+
+    Attributes:
+        expected_chunk_schema_version: Integer chunk schema version supported by this codebase.
+        found_chunk_schema_version: Integer chunk schema version found in the manifest, when present.
+
+    Edge cases:
+        `found_chunk_schema_version` is None when the manifest omitted
+        chunk_schema_version.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        expected_chunk_schema_version: int,
+        found_chunk_schema_version: Optional[int],
+    ) -> None:
+        super().__init__(message)
+        self.expected_chunk_schema_version = expected_chunk_schema_version
+        self.found_chunk_schema_version = found_chunk_schema_version
+
+
 @dataclass(frozen=True)
 class DatasetCache:
     """In-memory dataset snapshot built from a versioned dataset location.
 
     Attributes:
-        version: Dataset version resolved from the pointer file.
+        dataset_version: Dataset version resolved from the pointer file.
+        chunk_schema_version: Dataset manifest chunk schema version.
         loaded_at: UTC ISO-8601 timestamp when the cache was built.
         embedding_model: Embedding model name from the manifest.
         dimensions: Embedding dimensionality from the manifest.
@@ -73,7 +102,8 @@ class DatasetCache:
         chunks_by_id: Chunk payloads keyed by datapoint id.
     """
 
-    version: str
+    dataset_version: str
+    chunk_schema_version: int
     loaded_at: str
     embedding_model: str
     dimensions: int
@@ -91,11 +121,11 @@ class PointerInfo:
     """Dataset pointer information resolved from the pointer file.
 
     Attributes:
-        version: Dataset version string from the pointer.
+        dataset_version: Dataset version string from the pointer.
         generation: Optional GCS generation for the pointer blob.
     """
 
-    version: str
+    dataset_version: str
     generation: Optional[str]
 
 
@@ -110,6 +140,18 @@ def get_cache_snapshot() -> Optional[DatasetCache]:
     """
     with _cache_lock:
         return _dataset_cache
+
+
+def get_supported_chunk_schema_version() -> int:
+    """Return the chunk schema version supported by this runtime.
+
+    Returns:
+        Integer chunk schema version expected in dataset manifests.
+
+    Concurrency:
+        Reads from a cached schema-version helper with no mutable state here.
+    """
+    return _get_supported_chunk_schema_version()
 
 
 def get_or_load_cache() -> DatasetCache:
@@ -162,17 +204,20 @@ def get_pointer_info() -> PointerInfo:
     except json.JSONDecodeError as exc:
         raise RuntimeError(f"Pointer file is not valid JSON: {pointer_path}") from exc
 
-    version = payload.get(_DATASET_POINTER_KEY)
-    if not isinstance(version, str) or not version.strip():
-        raise RuntimeError(f"Pointer file missing '{_DATASET_POINTER_KEY}': {pointer_path}")
-    return PointerInfo(version=version.strip(), generation=generation)
+    dataset_version = payload.get(_DATASET_POINTER_DATASET_VERSION_KEY)
+    if not isinstance(dataset_version, str) or not dataset_version.strip():
+        raise RuntimeError(
+            "Pointer file missing "
+            f"'{_DATASET_POINTER_DATASET_VERSION_KEY}': {pointer_path}"
+        )
+    return PointerInfo(dataset_version=dataset_version.strip(), generation=generation)
 
 
 def _load_cache_from_pointer() -> DatasetCache:
     """Resolve the pointer to a dataset version and load its artifacts.
 
     Returns:
-        A DatasetCache containing ids, embeddings, and chunk metadata for the
+        A DatasetCache containing ids, embeddings, and flat chunk records for the
         resolved dataset version.
 
     Raises:
@@ -180,10 +225,10 @@ def _load_cache_from_pointer() -> DatasetCache:
             validation against the manifest.
     """
     pointer_info = get_pointer_info()
-    version = pointer_info.version
+    dataset_version = pointer_info.dataset_version
 
     version_prefix = _DATASET_FOLDER
-    base_prefix = f"{version_prefix}/{version}/"
+    base_prefix = f"{version_prefix}/{dataset_version}/"
 
     manifest_path = f"{base_prefix}{_MANIFEST_FILENAME}"
     datapoints_path = f"{base_prefix}{_DATAPOINTS_FILENAME}"
@@ -196,7 +241,7 @@ def _load_cache_from_pointer() -> DatasetCache:
     manifest = _parse_manifest(
         manifest_data,
         manifest_path=manifest_path,
-        expected_version=version,
+        expected_dataset_version=dataset_version,
     )
 
     _validate_manifest_filenames(manifest)
@@ -227,7 +272,8 @@ def _load_cache_from_pointer() -> DatasetCache:
 
     loaded_at = _utc_now_isoformat()
     return DatasetCache(
-        version=version,
+        dataset_version=dataset_version,
+        chunk_schema_version=int(manifest["chunk_schema_version"]),
         loaded_at=loaded_at,
         embedding_model=str(manifest["embedding_model"]),
         dimensions=int(manifest["dimensions"]),
@@ -259,14 +305,14 @@ def _parse_manifest(
     data: bytes,
     *,
     manifest_path: str,
-    expected_version: str,
+    expected_dataset_version: str,
 ) -> Dict[str, Any]:
     """Parse and validate the manifest JSON structure.
 
     Args:
         data: Raw manifest bytes.
         manifest_path: Path used for error context.
-        expected_version: Version string expected from the pointer.
+        expected_dataset_version: Dataset version string expected from the pointer.
 
     Returns:
         A dict with string keys matching the manifest schema.
@@ -282,6 +328,7 @@ def _parse_manifest(
 
     if not isinstance(loaded, Mapping):
         raise RuntimeError(f"Manifest must be a JSON object: {manifest_path}")
+    supported_chunk_schema_version = get_supported_chunk_schema_version()
     manifest = {
         str(key): value
         for key, value in cast(Mapping[str, Any], loaded).items()
@@ -291,6 +338,12 @@ def _parse_manifest(
     if keys != _MANIFEST_REQUIRED_KEYS:
         missing = sorted(_MANIFEST_REQUIRED_KEYS - keys)
         extra = sorted(keys - _MANIFEST_REQUIRED_KEYS)
+        if "chunk_schema_version" in missing:
+            raise ChunkSchemaVersionError(
+                "Manifest chunk_schema_version is missing; chunk schema is unsupported",
+                expected_chunk_schema_version=supported_chunk_schema_version,
+                found_chunk_schema_version=None,
+            )
         detail: List[str] = []
         if missing:
             detail.append(f"missing {missing}")
@@ -298,11 +351,30 @@ def _parse_manifest(
             detail.append(f"extra {extra}")
         raise RuntimeError(f"Manifest schema mismatch ({'; '.join(detail)}): {manifest_path}")
 
-    version_value = manifest.get("version")
-    if not isinstance(version_value, str) or version_value.strip() != expected_version:
+    chunk_schema_version_value = manifest.get("chunk_schema_version")
+    if not isinstance(chunk_schema_version_value, int):
+        raise ChunkSchemaVersionError(
+            "Manifest chunk_schema_version must be an integer",
+            expected_chunk_schema_version=supported_chunk_schema_version,
+            found_chunk_schema_version=None,
+        )
+    if chunk_schema_version_value != supported_chunk_schema_version:
+        raise ChunkSchemaVersionError(
+            "Unsupported chunk schema version: "
+            f"supported={supported_chunk_schema_version} "
+            f"manifest={chunk_schema_version_value}",
+            expected_chunk_schema_version=supported_chunk_schema_version,
+            found_chunk_schema_version=chunk_schema_version_value,
+        )
+
+    dataset_version_value = manifest.get("dataset_version")
+    if (
+        not isinstance(dataset_version_value, str)
+        or dataset_version_value.strip() != expected_dataset_version
+    ):
         raise RuntimeError(
-            "Manifest version mismatch: "
-            f"pointer={expected_version} manifest={version_value}"
+            "Manifest dataset_version mismatch: "
+            f"pointer={expected_dataset_version} manifest={dataset_version_value}"
         )
     return manifest
 
@@ -558,7 +630,7 @@ def _load_chunks(data: bytes, source: str) -> Dict[str, Dict[str, Any]]:
         source: Source path used for error context.
 
     Returns:
-        Mapping of chunk id to chunk payload (id, text, metadata).
+        Mapping of chunk id to flat chunk payload.
 
     Raises:
         RuntimeError: If no valid chunks are loaded from the payload.
@@ -571,19 +643,17 @@ def _load_chunks(data: bytes, source: str) -> Dict[str, Dict[str, Any]]:
             if not line:
                 continue
             record: Dict[str, Any] = json.loads(line)
-            chunk_id = str(record.get(_DATAPOINT_ID_KEY) or "")
+            if "metadata" in record:
+                raise RuntimeError(
+                    "Invalid chunk record in "
+                    f"{source}: found disallowed 'metadata'. "
+                    "Rebuild dataset artifacts with pack_and_push (flat schema-v3 chunks)."
+                )
+            chunk_id = record.get(_CHUNK_ID_KEY)
             text = record.get(_CHUNK_TEXT_KEY)
-            if not chunk_id or not isinstance(text, str):
+            if not isinstance(chunk_id, str) or not chunk_id or not isinstance(text, str):
                 continue
-            metadata_obj = record.get(_CHUNK_METADATA_KEY)
-            metadata: Dict[str, Any] = {}
-            if isinstance(metadata_obj, Mapping):
-                metadata = dict(cast(Mapping[str, Any], metadata_obj))
-            chunks_by_id[chunk_id] = {
-                _DATAPOINT_ID_KEY: chunk_id,
-                _CHUNK_TEXT_KEY: text,
-                _CHUNK_METADATA_KEY: metadata,
-            }
+            chunks_by_id[chunk_id] = dict(record)
     if not chunks_by_id:
         raise RuntimeError(f"No chunk records loaded from {source}")
     return chunks_by_id

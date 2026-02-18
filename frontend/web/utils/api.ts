@@ -213,6 +213,15 @@ export async function getHealth(timeoutMs = 800): Promise<boolean> {
   }
 }
 
+export type RuntimeStatusResponse = {
+  ready: boolean;
+  startup_error_code: string | null;
+  startup_error_message: string | null;
+  loaded_dataset_version: string | null;
+  supported_chunk_schema_version: number | null;
+  loaded_chunk_schema_version: number | null;
+};
+
 export type ChatRequest = {
   question: string;
   role?: string | null;
@@ -222,8 +231,9 @@ export type ChatRequest = {
 
 export type ChatResponse = {
   answer: string;
-  citations?: Array<{ id: string; title?: string; url?: string }>;
+  citations?: Array<{ id: string; text?: string }>;
   usage?: { input_tokens?: number; output_tokens?: number; thoughts_tokens?: number };
+  llm_called?: boolean;
   input_token_limit?: number;
   model?: string;
 };
@@ -235,6 +245,88 @@ export type KeyLoginResponse = {
   model?: string;
   input_token_limit?: number;
 };
+
+/**
+ * Retrieves runtime readiness and startup diagnostics, including schema support.
+ *
+ * Inputs: optional timeout in milliseconds (default 800).
+ * Outputs: normalized runtime status object for UI consumption.
+ * Edge cases: tolerates both 200 and 503 /ready payloads; returns a fallback
+ *   status on network failures or malformed responses.
+ * Concurrency/atomicity: creates a per-call AbortController; no shared state.
+ */
+export async function getRuntimeStatus(timeoutMs = 800): Promise<RuntimeStatusResponse> {
+  const abortController = new AbortController();
+  const timeoutHandle = setTimeout(() => abortController.abort(), timeoutMs);
+  const fallbackStatus: RuntimeStatusResponse = {
+    ready: false,
+    startup_error_code: null,
+    startup_error_message: null,
+    loaded_dataset_version: null,
+    supported_chunk_schema_version: null,
+    loaded_chunk_schema_version: null,
+  };
+  try {
+    const response = await fetch(`${API_URL}/ready`, {
+      cache: "no-store",
+      signal: abortController.signal,
+    });
+    const rawBody = await response.text();
+    let payload: any = null;
+    if (rawBody) {
+      try {
+        payload = JSON.parse(rawBody);
+      } catch {
+        payload = null;
+      }
+    }
+
+    if (response.ok) {
+      return {
+        ready: true,
+        startup_error_code: null,
+        startup_error_message: null,
+        loaded_dataset_version:
+          payload && typeof payload.loaded_dataset_version === "string"
+            ? payload.loaded_dataset_version
+            : null,
+        supported_chunk_schema_version:
+          payload && typeof payload.supported_chunk_schema_version === "number"
+            ? payload.supported_chunk_schema_version
+            : null,
+        loaded_chunk_schema_version:
+          payload && typeof payload.loaded_chunk_schema_version === "number"
+            ? payload.loaded_chunk_schema_version
+            : null,
+      };
+    }
+
+    const detail = payload && typeof payload.detail === "object" ? payload.detail : null;
+    return {
+      ready: false,
+      startup_error_code:
+        detail && typeof detail.code === "string" ? detail.code : null,
+      startup_error_message:
+        detail && typeof detail.message === "string" ? detail.message : null,
+      loaded_dataset_version:
+        detail && typeof detail.loaded_dataset_version === "string"
+          ? detail.loaded_dataset_version
+          : null,
+      supported_chunk_schema_version:
+        detail && typeof detail.supported_chunk_schema_version === "number"
+          ? detail.supported_chunk_schema_version
+          : null,
+      loaded_chunk_schema_version:
+        detail && typeof detail.loaded_chunk_schema_version === "number"
+          ? detail.loaded_chunk_schema_version
+          : null,
+    };
+  } catch {
+    return fallbackStatus;
+  } finally {
+    clearTimeout(timeoutHandle);
+  }
+}
 
 /**
  * Builds the Authorization header for bearer-token mode.

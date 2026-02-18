@@ -60,8 +60,8 @@ def test_build_llm_prompt_contract_includes_persona_and_context():
         Two messages exist, persona appears in system prompt, and context is listed.
     """
     context_chunks: list[dict[str, str]] = [
-        {"id": FIRST_CHUNK_ID, "text": "Worked on distributed systems."},
-        {"id": SECOND_CHUNK_ID, "text": "Shipped data pipelines."},
+        {"chunk_id": FIRST_CHUNK_ID, "text": "Worked on distributed systems."},
+        {"chunk_id": SECOND_CHUNK_ID, "text": "Shipped data pipelines."},
     ]
 
     payload = cast(
@@ -101,8 +101,8 @@ def test_trim_chunks_to_budget_truncates_first_chunk_when_tight():
     system_prompt = SYSTEM_PROMPT_PLACEHOLDER
     question = QUESTION_PLACEHOLDER
     context_chunks: list[dict[str, str]] = [
-        {"id": FIRST_CHUNK_ID, "text": "A" * LONG_CHUNK_LENGTH},
-        {"id": SECOND_CHUNK_ID, "text": "B" * LONG_CHUNK_LENGTH},
+        {"chunk_id": FIRST_CHUNK_ID, "text": "A" * LONG_CHUNK_LENGTH},
+        {"chunk_id": SECOND_CHUNK_ID, "text": "B" * LONG_CHUNK_LENGTH},
     ]
 
     base_user = (
@@ -122,7 +122,7 @@ def test_trim_chunks_to_budget_truncates_first_chunk_when_tight():
     )
 
     assert len(trimmed) == 1
-    assert trimmed[0]["id"] == FIRST_CHUNK_ID
+    assert trimmed[0]["chunk_id"] == FIRST_CHUNK_ID
     assert trimmed[0]["text"] == "A" * ESTIMATED_CHARS_PER_TOKEN
 
 
@@ -139,8 +139,8 @@ def test_trim_chunks_to_budget_keeps_first_full_chunk_when_budget_exact():
     system_prompt = SYSTEM_PROMPT_PLACEHOLDER
     question = QUESTION_PLACEHOLDER
     context_chunks: list[dict[str, str]] = [
-        {"id": FIRST_CHUNK_ID, "text": "A" * SHORT_CHUNK_LENGTH},
-        {"id": SECOND_CHUNK_ID, "text": "B" * SHORT_CHUNK_LENGTH},
+        {"chunk_id": FIRST_CHUNK_ID, "text": "A" * SHORT_CHUNK_LENGTH},
+        {"chunk_id": SECOND_CHUNK_ID, "text": "B" * SHORT_CHUNK_LENGTH},
     ]
 
     base_user = (

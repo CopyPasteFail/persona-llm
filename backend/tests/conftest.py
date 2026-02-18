@@ -29,6 +29,12 @@ DOC_ID_PREFIX = "doc-"
 DEFAULT_EXPIRATION_HOURS = 1
 DEFAULT_INCREMENT = 1
 MAX_FINGERPRINT_MATCHES = 2
+RUN_INTEGRATION_TESTS_ENV_VAR = "RUN_INTEGRATION_TESTS"
+INTEGRATION_SKIP_REASON = (
+    f"Integration tests are skipped by default. Set {RUN_INTEGRATION_TESTS_ENV_VAR}=1 to enable."
+)
+INTEGRATION_TEST_FILE_PREFIX = "test_integration_"
+INTEGRATION_MARKER = "integration"
 
 os.environ.setdefault("PERSONA_NAME", PERSONA_NAME_DEFAULT)  # ≤ 4 words, ≤ 50 chars
 
@@ -49,10 +55,83 @@ os.environ.setdefault("MAX_INPUT_TOKENS", MAX_INPUT_TOKENS_DEFAULT)
 os.environ.setdefault("MAX_OUTPUT_TOKENS", MAX_OUTPUT_TOKENS_DEFAULT)
 os.environ.setdefault("REQ_TIMEOUT_MS", REQUEST_TIMEOUT_MS_DEFAULT)
 
+# Keep core tests deterministic and independent of developer shell env.
+# Some test suites assert citations exist in the deterministic mock flow; that
+# expectation assumes LLM-call gating is disabled.
+os.environ["ENABLE_LLM_CALL_GATING"] = "0"
+
 from api import keys
 
 
 DocumentPayload = dict[str, object]
+
+
+def _find_unmarked_integration_file_tests(collected_items: list[pytest.Item]) -> list[str]:
+    """Return node ids for tests in integration-named files missing marker.
+
+    Inputs:
+    - collected_items: Pytest items discovered during test collection.
+
+    Outputs:
+    - Node-id strings for tests whose filename begins with
+      ``test_integration_`` but that are missing ``@pytest.mark.integration``.
+
+    Edge cases:
+    - Uses basename-only matching so absolute/relative path differences do not
+      affect enforcement.
+    """
+
+    violations: list[str] = []
+    for collected_item in collected_items:
+        path_attr = getattr(collected_item, "path", None)
+        item_path = (
+            Path(str(path_attr))
+            if path_attr is not None
+            else Path(str(collected_item.fspath))
+        )
+        if not item_path.name.startswith(INTEGRATION_TEST_FILE_PREFIX):
+            continue
+        if INTEGRATION_MARKER in collected_item.keywords:
+            continue
+        violations.append(collected_item.nodeid)
+    return violations
+
+
+def pytest_collection_modifyitems(
+    session: pytest.Session,
+    config: pytest.Config,
+    items: list[pytest.Item],
+) -> None:
+    """Skip integration tests unless explicitly enabled via environment variable.
+
+    Inputs:
+    - items: Collected pytest items for the current run.
+
+    Outputs:
+    - None. Applies skip markers in-place when integration tests are disabled.
+
+    Edge cases:
+    - When RUN_INTEGRATION_TESTS=1, no skip markers are applied.
+    """
+
+    del session
+    del config
+
+    unmarked_integration_tests = _find_unmarked_integration_file_tests(items)
+    if unmarked_integration_tests:
+        raise pytest.UsageError(
+            "All tests in files named 'test_integration_*.py' must be marked with "
+            "@pytest.mark.integration. Missing marker on: "
+            f"{', '.join(unmarked_integration_tests)}"
+        )
+
+    if os.getenv(RUN_INTEGRATION_TESTS_ENV_VAR) == "1":
+        return
+
+    skip_integration_marker = pytest.mark.skip(reason=INTEGRATION_SKIP_REASON)
+    for collected_item in items:
+        if INTEGRATION_MARKER in collected_item.keywords:
+            collected_item.add_marker(skip_integration_marker)
 
 
 class _FakeDocument:

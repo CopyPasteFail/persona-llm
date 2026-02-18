@@ -1,0 +1,209 @@
+{
+  "canonical_labels": [
+    "devops",
+    "sre",
+    "platform",
+    "software_engineering",
+    "backend",
+    "frontend",
+    "mobile",
+    "design",
+    "uiux",
+    "project_management",
+    "marketing",
+    "sales",
+    "product",
+    "data"
+  ],
+  "families": {
+    "infra_ops": {
+      "members": ["devops", "sre", "platform"],
+      "query_aliases": [
+        "devops",
+        "dev ops",
+        "sre",
+        "site reliability",
+        "platform engineering",
+        "infrastructure",
+        "infra",
+        "on-call",
+        "oncall",
+        "kubernetes",
+        "k8s",
+        "terraform",
+        "helm",
+        "ansible",
+        "ci/cd",
+        "cicd",
+        "jenkins",
+        "github actions",
+        "gitlab ci",
+        "argocd",
+        "argo cd",
+        "prometheus",
+        "grafana",
+        "pagerduty"
+      ]
+    },
+    "software_engineering": {
+      "members": ["software_engineering", "backend", "frontend"],
+      "query_aliases": [
+        "software engineer",
+        "developer",
+        "programmer",
+        "backend",
+        "back-end",
+        "frontend",
+        "front-end",
+        "fullstack",
+        "full stack",
+        "api",
+        "microservices",
+        "rest",
+        "graphql"
+      ]
+    },
+    "mobile_dev": {
+      "members": ["mobile", "software_engineering", "frontend"],
+      "query_aliases": [
+        "android",
+        "kotlin",
+        "java (android)",
+        "mobile",
+        "ios",
+        "swift",
+        "react native",
+        "flutter",
+        "play store",
+        "app store",
+        "firebase",
+        "gradle"
+      ]
+    },
+    "design_uiux": {
+      "members": ["design", "uiux", "product"],
+      "query_aliases": [
+        "ui/ux",
+        "ui ux",
+        "ux",
+        "ui",
+        "user experience",
+        "user interface",
+        "product design",
+        "interaction design",
+        "wireframe",
+        "wireframes",
+        "prototype",
+        "prototypes",
+        "design system",
+        "figma",
+        "sketch",
+        "adobe xd",
+        "usability testing"
+      ]
+    },
+    "project_management": {
+      "members": ["project_management", "product"],
+      "query_aliases": [
+        "project manager",
+        "project management",
+        "program manager",
+        "program management",
+        "delivery manager",
+        "scrum master",
+        "agile",
+        "sprint planning",
+        "backlog",
+        "roadmap",
+        "stakeholders",
+        "jira"
+      ]
+    },
+    "commerce": {
+      "members": ["sales", "marketing", "product"],
+      "query_aliases": [
+        "ecommerce",
+        "e-commerce",
+        "amazon",
+        "fba",
+        "private label",
+        "shopify",
+        "listing",
+        "listings",
+        "inventory",
+        "supplier",
+        "fulfillment",
+        "ppc",
+        "ads",
+        "conversion rate",
+        "product listing",
+        "brand",
+        "pricing"
+      ]
+    },
+    "marketing": {
+      "members": ["marketing"],
+      "query_aliases": [
+        "marketing",
+        "demand gen",
+        "demand generation",
+        "seo",
+        "content marketing",
+        "lifecycle",
+        "growth"
+      ]
+    },
+    "sales": {
+      "members": ["sales"],
+      "query_aliases": [
+        "sales",
+        "closing",
+        "pipeline",
+        "leads",
+        "prospecting",
+        "account management",
+        "crm"
+      ]
+    },
+    "product": {
+      "members": ["product"],
+      "query_aliases": [
+        "product manager",
+        "product management",
+        "requirements",
+        "user stories",
+        "product strategy",
+        "go-to-market",
+        "gtm"
+      ]
+    },
+    "data": {
+      "members": ["data"],
+      "query_aliases": [
+        "analytics",
+        "sql",
+        "dashboard",
+        "bi",
+        "ab testing",
+        "a/b testing",
+        "experimentation"
+      ]
+    },
+    "web_cms": {
+      "members": ["software_engineering", "frontend", "product"],
+      "query_aliases": [
+        "wordpress",
+        "wp",
+        "woocommerce",
+        "cms",
+        "content management",
+        "plugin",
+        "plugins",
+        "theme",
+        "themes",
+        "elementor",
+        "gutenberg"
+      ]
+    }
+  }
+}

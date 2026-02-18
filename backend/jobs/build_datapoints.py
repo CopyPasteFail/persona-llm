@@ -14,14 +14,36 @@ from typing import (
     Iterator,
     List,
     Mapping,
-    MutableMapping,
     Protocol,
     Sequence,
     cast,
 )
 
-from google import genai  # type: ignore[import-not-found]
-from google.genai import types  # type: ignore[import-not-found]
+try:
+    from google import genai  # type: ignore[import-not-found]
+    from google.genai import types  # type: ignore[import-not-found]
+except ImportError:  # pragma: no cover - exercised in environments without SDK
+    genai = None  # type: ignore[assignment]
+
+    class _EmbedContentConfigFallback:
+        """Fallback EmbedContentConfig used when google-genai is unavailable."""
+
+        def __init__(self, **kwargs: object) -> None:
+            self.kwargs = kwargs
+
+    class _HttpOptionsFallback:
+        """Fallback HttpOptions used when google-genai is unavailable."""
+
+        def __init__(self, **kwargs: object) -> None:
+            self.kwargs = kwargs
+
+    class _TypesFallback:
+        """Fallback namespace matching the small subset of SDK types used here."""
+
+        EmbedContentConfig = _EmbedContentConfigFallback
+        HttpOptions = _HttpOptionsFallback
+
+    types = _TypesFallback()  # type: ignore[assignment]
 
 CURRENT_DIR = Path(__file__).resolve().parent
 PARENT_DIR = CURRENT_DIR.parent
@@ -34,6 +56,7 @@ from jobs.pack_and_push import (
     maybe_set_service_account,
     resolve_existing_path,
 )
+from api.dataset_schema import get_supported_chunk_schema_version
 
 _DEFAULT_EMBEDDING_MODEL = "text-embedding-004"
 _MODEL_DEFAULT_DIMENSIONS: dict[str, int] = {
@@ -75,15 +98,17 @@ _DEFAULT_GCP_PROJECT_ENV_KEYS = (
 )
 _TRUTHY_ENV_VALUES = {"1", "true", "yes", "on"}
 
-_METADATA_ROLE_KEY = "role"
+_METADATA_PROFILE_KEY = "profile"
 _METADATA_DOC_ID_KEY = "doc_id"
 _METADATA_TOPICS_KEY = "topics"
 _METADATA_TAGS_KEY = "tags"
 _METADATA_SECTION_KEY = "section"
+_RECORD_CHUNK_ID_KEY = "chunk_id"
 _RECORD_TEXT_KEY = "text"
 
-_RESTRICT_NAMESPACE_ROLE = "role"
+_RESTRICT_NAMESPACE_PROFILE = "profile"
 _RESTRICT_NAMESPACE_DOC_ID = "doc_id"
+_RESTRICT_NAMESPACE_SECTION = "section"
 _RESTRICT_NAMESPACE_TOPIC = "topic"
 _RESTRICT_NAMESPACE_TAG = "tag"
 
@@ -181,11 +206,11 @@ def _batched(
         yield items[start : start + size]
 
 
-def _build_restricts(metadata: Mapping[str, object]) -> list[dict[str, object]]:
-    """Build Matching Engine restricts from persona metadata.
+def _build_restricts(record: Mapping[str, object]) -> list[dict[str, object]]:
+    """Build Matching Engine restricts from flat persona chunk fields.
 
     Inputs:
-    - metadata: Mapping of persona metadata fields.
+    - record: Mapping of persona chunk fields.
 
     Output:
     - List of restrict dicts suitable for Vertex AI Matching Engine.
@@ -196,27 +221,56 @@ def _build_restricts(metadata: Mapping[str, object]) -> list[dict[str, object]]:
     """
     restricts: list[dict[str, object]] = []
 
-    role = metadata.get(_METADATA_ROLE_KEY)
-    if isinstance(role, str) and role:
-        restricts.append({"namespace": _RESTRICT_NAMESPACE_ROLE, "allowTokens": [role]})
+    profile_value = _resolve_profile_for_restricts(record)
+    if profile_value is not None:
+        restricts.append(
+            {
+                "namespace": _RESTRICT_NAMESPACE_PROFILE,
+                "allowTokens": [profile_value],
+            }
+        )
 
-    doc_id = metadata.get(_METADATA_DOC_ID_KEY)
+    doc_id = record.get(_METADATA_DOC_ID_KEY)
     if isinstance(doc_id, str) and doc_id:
         restricts.append(
             {"namespace": _RESTRICT_NAMESPACE_DOC_ID, "allowTokens": [doc_id]}
         )
 
-    topics = metadata.get(_METADATA_TOPICS_KEY)
+    section = record.get(_METADATA_SECTION_KEY)
+    if isinstance(section, str) and section:
+        restricts.append(
+            {"namespace": _RESTRICT_NAMESPACE_SECTION, "allowTokens": [section]}
+        )
+
+    topics = record.get(_METADATA_TOPICS_KEY)
     if isinstance(topics, list) and topics:
         restricts.append(
             {"namespace": _RESTRICT_NAMESPACE_TOPIC, "allowTokens": topics}
         )
 
-    tags = metadata.get(_METADATA_TAGS_KEY)
+    tags = record.get(_METADATA_TAGS_KEY)
     if isinstance(tags, list) and tags:
         restricts.append({"namespace": _RESTRICT_NAMESPACE_TAG, "allowTokens": tags})
 
     return restricts
+
+
+def _resolve_profile_for_restricts(record: Mapping[str, object]) -> str | None:
+    """Resolve canonical profile value for datapoint restrict metadata.
+
+    Inputs:
+    - record: Flat chunk mapping.
+
+    Output:
+    - Lowercase profile string used in the `profile` restrict namespace, or None.
+
+    Edge cases:
+    - Returns None when `profile` is missing or blank.
+    """
+    profile_value = record.get(_METADATA_PROFILE_KEY)
+    if isinstance(profile_value, str) and profile_value.strip():
+        return profile_value.strip().lower()
+    return None
 
 
 def _embedding_values(embedding: object) -> List[float]:
@@ -299,7 +353,7 @@ def _write_datapoints(
 
     Edge cases:
     - Writes nothing when `records` is empty.
-    - Records with missing metadata fall back to empty metadata.
+    - Records with missing optional fields emit only required datapoint payload keys.
 
     Concurrency/atomicity:
     - This function writes sequentially to a single file handle and is not
@@ -309,18 +363,13 @@ def _write_datapoints(
     mode = "wt"
     with handle_fn(output_path, mode, encoding="utf-8") as handle:
         for record, vector in zip(records, embeddings):
-            metadata_value = record.get("metadata")
-            metadata_dict: MutableMapping[str, object]
-            if metadata_value is None:
-                metadata_dict = {}
-            elif isinstance(metadata_value, Mapping):
-                metadata_mapping = cast(Mapping[str, object], metadata_value)
-                metadata_dict = dict(metadata_mapping)
-            else:
-                metadata_dict = {}
-
-            restricts = _build_restricts(metadata_dict)
-            datapoint_id = str(record[_DATAPOINT_ID_FIELD])
+            restricts = _build_restricts(record)
+            chunk_id = record[_RECORD_CHUNK_ID_KEY]
+            if not isinstance(chunk_id, str) or not chunk_id:
+                raise RuntimeError(
+                    f"Record missing required {_RECORD_CHUNK_ID_KEY} for datapoint id"
+                )
+            datapoint_id = chunk_id
             # Vertex AI batch updates require `id`, while the retrieval path still
             # reads `datapointId`; emit both and keep them identical.
             datapoint: dict[str, object] = {
@@ -328,7 +377,7 @@ def _write_datapoints(
                 _DATAPOINT_ID_FIELD: datapoint_id,
                 _DATAPOINT_FEATURE_VECTOR_FIELD: _l2_normalize(vector),
             }
-            section = metadata_dict.get(_METADATA_SECTION_KEY)
+            section = record.get(_METADATA_SECTION_KEY)
             if isinstance(section, str) and section:
                 datapoint[_DATAPOINT_CROWDING_TAG_FIELD] = section
             if restricts:
@@ -340,14 +389,16 @@ def _write_datapoints(
 def _write_dataset_manifest(
     *,
     output_dir: Path,
-    version: str,
+    dataset_version: str,
     embedding_model: str,
     dimensions: int,
     num_datapoints: int,
 ) -> Path:
     """Write the dataset manifest required by the runtime loader."""
+    supported_chunk_schema_version = get_supported_chunk_schema_version()
     manifest: dict[str, object] = {
-        "version": version,
+        "dataset_version": dataset_version,
+        "chunk_schema_version": supported_chunk_schema_version,
         "created_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         "datapoints_file": _DATASET_DATAPOINTS_FILENAME,
         "chunks_file": _DATASET_CHUNKS_FILENAME,
@@ -460,6 +511,11 @@ def main() -> None:
             f"{_ENV_DATAPOINTS_DIMENSIONS} must be a positive integer"
         )
     print(f"Embedding model '{model_name}' @ {dimensions} dims")
+    if genai is None:
+        raise RuntimeError(
+            "google-genai is required to build datapoints. Install backend dependencies "
+            "or run this job in an environment with the SDK available."
+        )
     http_options = types.HttpOptions(
         timeout=_env_int(_ENV_REQ_TIMEOUT_MS, _DEFAULT_REQ_TIMEOUT_MS)
     )
@@ -541,7 +597,7 @@ def main() -> None:
         )
     manifest_path = _write_dataset_manifest(
         output_dir=dataset_dir,
-        version=dataset_version,
+        dataset_version=dataset_version,
         embedding_model=model_name,
         dimensions=observed_dimension_count,
         num_datapoints=total,

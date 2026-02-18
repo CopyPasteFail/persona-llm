@@ -122,13 +122,13 @@ class _GreetingAwareRetrievalSpy:
         self, embedding: Optional[Sequence[float]], top_k: int
     ) -> List[Dict[str, Any]]:
         self.search_called = True
-        return [{"id": "chunk-1", "distance": 0.1}]
+        return [{"chunk_id": "chunk-1", "distance": 0.1}]
 
     def apply_filters_and_boosting(
         self, candidates: List[Dict[str, Any]]
     ) -> List[Dict[str, Any]]:
         self.apply_called = True
-        return [{"id": "chunk-1", "text": "stub chunk", "metadata": {}}]
+        return [{"chunk_id": "chunk-1", "text": "stub chunk"}]
 
     def has_selected_chunks(self, selected: List[Dict[str, Any]]) -> bool:
         return bool(selected)

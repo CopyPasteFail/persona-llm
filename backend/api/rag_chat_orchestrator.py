@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from dataclasses import dataclass
 import re
 import unicodedata
-from typing import Any, Dict, List, Optional, Protocol, Sequence, TypedDict
+from typing import Any, Dict, List, Mapping, Optional, Protocol, Sequence, TypedDict
 
+from . import deterministic_duration
 from . import llm
 from .llm_backends import LlmBackend
 from .settings import (
@@ -92,6 +94,7 @@ llm_gate_reason_BM25_BELOW_THRESHOLD = "bm25_below"
 llm_gate_reason_NO_CANDIDATES = "no_candidates"
 llm_gate_reason_GREETING_BYPASS = "greeting_bypass"
 llm_gate_reason_NON_ENGLISH_INPUT = "non_english_input"
+llm_gate_reason_DURATION_BYPASS = "duration_bypass"
 # Gating status label, not sensitive data.
 llm_gate_reason_PASS = "pass"  # noqa: S105  # nosec B105
 MIN_WEIGHTED_CONSENSUS_COUNT = DEFAULT_WEIGHTED_CONSENSUS_COUNT
@@ -120,6 +123,8 @@ class RetrievalPipeline(Protocol):
     ) -> List[Dict[str, Any]]: ...
 
     def has_selected_chunks(self, selected: List[Dict[str, Any]]) -> bool: ...
+
+    def get_chunk_store_snapshot(self) -> Mapping[str, Mapping[str, Any]]: ...
 
 
 @dataclass(frozen=True)
@@ -252,6 +257,7 @@ def run_rag_chat(
                 answer=ENGLISH_INPUT_ONLY_ANSWER,
                 citations=[],
                 usage=english_only_usage,
+                llm_called=False,
                 input_token_limit=max_input_tokens,
             ),
             selected_chunks=[],
@@ -285,6 +291,7 @@ def run_rag_chat(
                 answer=GREETING_ONLY_ANSWER,
                 citations=[],
                 usage=greeting_usage,
+                llm_called=False,
                 input_token_limit=max_input_tokens,
             ),
             selected_chunks=[],
@@ -308,6 +315,18 @@ def run_rag_chat(
             weighted_score_threshold=float(weighted_score_threshold),
             bm25_score_threshold=float(bm25_score_threshold),
         )
+    duration_routed_result = _route_duration_question_if_supported(
+        normalized_question=normalized_question,
+        retrieval=retrieval,
+        max_input_tokens=max_input_tokens,
+        enable_thinking_gating=enable_thinking_gating,
+        default_thinking_budget_tokens=default_thinking_budget_tokens,
+        enable_llm_call_gating=enable_llm_call_gating,
+        weighted_score_threshold=weighted_score_threshold,
+        bm25_score_threshold=bm25_score_threshold,
+    )
+    if duration_routed_result is not None:
+        return duration_routed_result
 
     query_embedding = retrieval.embed_query(normalized_question)
     candidate_chunks = retrieval.search_vector_store(query_embedding, top_k=top_k)
@@ -340,6 +359,7 @@ def run_rag_chat(
                 answer=answer,
                 citations=[],
                 usage=usage,
+                llm_called=False,
                 input_token_limit=max_input_tokens,
             ),
             selected_chunks=[],
@@ -388,6 +408,7 @@ def run_rag_chat(
             answer=answer_final,
             citations=citations,
             usage=usage,
+            llm_called=True,
             input_token_limit=max_input_tokens,
         ),
         selected_chunks=selected_chunks,
@@ -865,7 +886,7 @@ def _chunk_to_citation(chunk: Dict[str, Any]) -> Citation:
     Concurrency/atomicity:
     - Pure computation with no side effects.
     """
-    chunk_id = str(chunk.get("id") or "")
+    chunk_id = str(chunk.get("chunk_id") or "")
     text = str(chunk.get("text") or "").strip()
     snippet = " ".join(text.split())
     if snippet and len(snippet) > SNIPPET_CHAR_LIMIT:
@@ -910,6 +931,92 @@ def compute_llm_gate_decision(
         bm25_score_threshold=bm25_score_threshold,
         weighted_consensus_count=weighted_consensus_count,
         question_is_in_domain=question_is_in_domain,
+    )
+
+
+def _route_duration_question_if_supported(
+    *,
+    normalized_question: str,
+    retrieval: RetrievalPipeline,
+    max_input_tokens: Optional[int],
+    enable_thinking_gating: bool,
+    default_thinking_budget_tokens: int | None,
+    enable_llm_call_gating: bool,
+    weighted_score_threshold: float,
+    bm25_score_threshold: float,
+) -> ChatResult | None:
+    """Route duration questions to deterministic metadata-only answers.
+
+    Inputs:
+    - normalized_question: Already-normalized user question text.
+    - retrieval: Retrieval pipeline object, optionally exposing chunk snapshot access.
+    - max_input_tokens: Input token limit echoed in the ChatResponse.
+    - enable_thinking_gating: Flag for deterministic thinking-budget gating.
+    - default_thinking_budget_tokens: Configured default thinking budget.
+    - enable_llm_call_gating: Flag indicating whether LLM-call gating is enabled.
+    - weighted_score_threshold: Weighted-score threshold used for telemetry fields.
+    - bm25_score_threshold: BM25 threshold used for telemetry fields.
+
+    Output:
+    - ChatResult when duration routing applies; otherwise None to continue normal flow.
+
+    Edge cases:
+    - Returns None when question is not duration intent or chunk snapshot access
+      is unavailable.
+    """
+
+    if not deterministic_duration.is_duration_intent(normalized_question):
+        return None
+
+    snapshot_accessor = getattr(retrieval, "get_chunk_store_snapshot", None)
+    if not callable(snapshot_accessor):
+        return None
+
+    chunk_store_snapshot = snapshot_accessor()
+    current_year = datetime.now(timezone.utc).year
+    duration_result = deterministic_duration.compute_duration_for_question(
+        chunk_store_snapshot,
+        question=normalized_question,
+        current_year=current_year,
+    )
+    answer_text = deterministic_duration.format_duration_answer(duration_result)
+    if duration_result.union_matched_stints:
+        based_on_text = deterministic_duration.format_based_on_stints(
+            duration_result.union_matched_stints
+        )
+        answer_text = f"{answer_text}\n- {based_on_text}"
+    usage = Usage(
+        input_tokens=max(1, len(normalized_question) // APPROX_CHARS_PER_TOKEN),
+        output_tokens=max(1, len(answer_text) // APPROX_CHARS_PER_TOKEN),
+    )
+    return ChatResult(
+        response=ChatResponse(
+            answer=answer_text,
+            citations=[],
+            usage=usage,
+            llm_called=False,
+            input_token_limit=max_input_tokens,
+        ),
+        selected_chunks=[],
+        normalized_question=normalized_question,
+        usage_detail=_empty_usage_detail(),
+        thinking_budget_tokens_effective=_resolve_thinking_budget_tokens(
+            normalized_question,
+            selected_chunks_count=0,
+            enable_thinking_gating=enable_thinking_gating,
+            default_thinking_budget_tokens=default_thinking_budget_tokens,
+        ),
+        llm_gate_enabled=enable_llm_call_gating,
+        would_call_llm_if_gated=False,
+        llm_gate_reason=llm_gate_reason_DURATION_BYPASS,
+        top1_weighted_score=None,
+        top1_bm25_score=None,
+        top1_vector_score=None,
+        best_weighted_score=None,
+        best_bm25_score=None,
+        weighted_consensus_count=0,
+        weighted_score_threshold=float(weighted_score_threshold),
+        bm25_score_threshold=float(bm25_score_threshold),
     )
 
 

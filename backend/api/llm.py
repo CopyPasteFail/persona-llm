@@ -174,12 +174,12 @@ def _trim_chunks_to_budget(
             max_chars = max(1, remaining * APPROX_CHARS_PER_TOKEN)
             truncated = text[:max_chars].rstrip()
             if truncated:
+                truncated_chunk = dict(chunk)
+                truncated_chunk["text"] = truncated
+                truncated_chunk.pop("id", None)
+                truncated_chunk.pop("metadata", None)
                 trimmed.append(
-                    {
-                        "id": chunk.get("id"),
-                        "text": truncated,
-                        "metadata": chunk.get("metadata"),
-                    }
+                    truncated_chunk
                 )
         break
 

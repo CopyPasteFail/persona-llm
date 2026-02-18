@@ -21,7 +21,7 @@ EXPECTED_MISSING_TOKEN_ERROR = "missing_token"
 TEST_KEY_LABEL = "test"
 
 _DETERMINISTIC_CHUNKS: list[dict[str, Any]] = [
-    {"id": "mock:1", "text": "deterministic mock chunk", "metadata": {}}
+    {"chunk_id": "mock:1", "text": "deterministic mock chunk"}
 ]
 
 
@@ -43,7 +43,7 @@ class _DeterministicVectorClient:
     def query(
         self, embedding: Sequence[float], *, top_k: int
     ) -> list[dict[str, Any]]:
-        return [{"id": "mock:1", "distance": 0.0}]
+        return [{"chunk_id": "mock:1", "distance": 0.0}]
 
 
 @pytest_asyncio.fixture

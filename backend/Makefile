@@ -5,6 +5,8 @@ VENV := .venv
 PY := $(VENV)/bin/python
 PIP := $(VENV)/bin/pip
 TEST_ENV ?= LLM_BACKEND=deterministic
+INTEGRATION_TEST_KEY_LABEL ?= test-int-ephemeral
+INTEGRATION_TEST_KEY_EXPIRES_IN_SECONDS ?= 600
 
 include ../make/env.mk
 
@@ -13,14 +15,14 @@ DATASET_VERSION ?= $(notdir $(patsubst %/,%,$(DATASET_DIR)))
 DATASET_FOLDER := datasets
 DATASET_GCS_PREFIX ?= $(DATASET_FOLDER)/$(DATASET_VERSION)
 
-.PHONY: help install security-install security security-static security-bandit security-deps security-semgrep run run-debug mock eval-gating test-smoke test-core test-voice test-int test-cors-deploy test-vector-live test-build_datapoints test-auth-key-login test-create-access-key-cli test-keys-store test-llm-prompt test-thinking-gating test-llm-gating test-main-chat-logging test-security-session test-load-backend-env test-pack-and-push-processing test-answer-deduplication test-retrieval-bm25 test-greeting-intent check envs clean build_datapoints create-access-key dataset-version-check dataset-chunks dataset-datapoints dataset-upload dataset-pointer-update
+.PHONY: help install security-install security security-static security-bandit security-deps security-semgrep run run-debug mock eval-gating test-smoke test-core test-voice test-int test-int-local test-cors-deploy test-vector-live test-build_datapoints test-auth-key-login test-create-access-key-cli test-keys-store test-llm-prompt test-thinking-gating test-llm-gating test-main-chat-logging test-security-session test-load-backend-env test-pack-and-push-processing test-answer-deduplication test-retrieval-bm25 test-greeting-intent check envs clean build_datapoints create-access-key dataset-version-check dataset-chunks dataset-datapoints dataset-upload dataset-pointer-update
 
 help:
 	@echo "Targets:"
 	@echo "  install      - create venv and install deps"
 	@echo "  security-install - install pinned security tooling into venv"
 	@echo "  security     - run local backend security scans"
-	@echo "  security-static - run ruff security rules (S)"
+	@echo "  security-static - run ruff security rules (S) when ruff is available"
 	@echo "  security-bandit - run bandit over backend source"
 	@echo "  security-deps - run pip-audit on backend requirements"
 	@echo "  security-semgrep - run semgrep security scan if semgrep exists"
@@ -32,7 +34,8 @@ help:
 	@echo "  test-smoke   - run pytest smoke tests against mock app"
 	@echo "  test-core    - run all mock-safe backend tests"
 	@echo "  test-voice   - run persona voice + normalization tests (mock)"
-	@echo "  test-int     - run integration tests against cloud backend (requires GCP + uvicorn)"
+	@echo "  test-int     - run integration tests against NEXT_PUBLIC_API_URL using an ephemeral access key"
+	@echo "  test-int-local - run integration tests against local integrated backend at http://localhost:8080"
 	@echo "  test-cors-deploy - run deployed CORS integration checks (requires integrated backend URL)"
 	@echo "  test-auth-key-login - run auth key login tests"
 	@echo "  test-create-access-key-cli - run access key CLI tests"
@@ -74,7 +77,11 @@ security-install: $(VENV)/bin/activate
 security: security-static security-bandit security-deps
 
 security-static: security-install
-	$(PY) -m ruff check --select S api jobs scripts
+	@if $(PY) -m ruff --version >/dev/null 2>&1; then \
+		$(PY) -m ruff check --select S api jobs scripts; \
+	else \
+		echo "ruff is not installed in $(VENV); skipping ruff security checks."; \
+	fi
 
 security-bandit: security-install
 	$(PY) -m bandit -q -r api jobs scripts -x tests
@@ -124,7 +131,7 @@ eval-gating: $(VENV)/bin/activate
 	$(PY) scripts/eval_gating.py $(ARGS)
 
 pack_and_push: $(VENV)/bin/activate
-	$(PY) jobs/pack_and_push.py
+	$(PY) -m jobs.pack_and_push
 
 build_datapoints: $(VENV)/bin/activate
 	$(PY) jobs/build_datapoints.py
@@ -134,7 +141,7 @@ dataset-version-check:
 	@printf "%s" "$(DATASET_VERSION)" | grep -Eq '^v[0-9A-Za-z_-]+$$' || { echo "Invalid DATASET_VERSION '$(DATASET_VERSION)'; expected v followed by [0-9A-Za-z_-]."; exit 1; }
 
 dataset-chunks: dataset-version-check $(VENV)/bin/activate
-	$(PY) jobs/pack_and_push.py --output-dir "$(DATASET_DIR)" --skip-upload
+	$(PY) -m jobs.pack_and_push --output-dir "$(DATASET_DIR)" --skip-upload
 
 dataset-datapoints: dataset-version-check $(VENV)/bin/activate
 	$(PY) jobs/build_datapoints.py
@@ -146,7 +153,7 @@ dataset-upload:
 	@echo "GCS browser: https://console.cloud.google.com/storage/browser/$(BUCKET_NAME)"
 
 dataset-pointer-update:
-	printf '{ "version": "%s" }\n' "$(DATASET_VERSION)" | gcloud storage cp - "gs://$(BUCKET_NAME)/$(DATASET_FOLDER)/current.json"
+	printf '{ "dataset_version": "%s" }\n' "$(DATASET_VERSION)" | gcloud storage cp - "gs://$(BUCKET_NAME)/$(DATASET_FOLDER)/current.json"
 
 test-build_datapoints: $(VENV)/bin/activate
 	$(TEST_ENV) $(PY) -m pytest -q tests/test_build_datapoints.py
@@ -154,13 +161,28 @@ test-build_datapoints: $(VENV)/bin/activate
 test-smoke: $(VENV)/bin/activate
 	LLM_BACKEND=deterministic $(PY) -m pytest -q $(PYTEST_ARGS) tests/test_smoke.py
 
-test-core: test-smoke test-voice test-auth-key-login test-security-session test-keys-store test-llm-prompt test-create-access-key-cli test-build_datapoints test-retrieval-vector test-thinking-gating test-llm-gating test-main-chat-logging test-load-backend-env test-pack-and-push-processing test-answer-deduplication test-retrieval-bm25 test-greeting-intent
+test-core: test-smoke test-voice test-auth-key-login test-security-session test-keys-store test-llm-prompt test-create-access-key-cli test-build_datapoints test-retrieval-vector test-thinking-gating test-llm-gating test-main-chat-logging test-load-backend-env test-pack-and-push-processing test-answer-deduplication test-retrieval-bm25 test-greeting-intent test-duration-domain-config test-duration-routing test-duration-interval-merge test-rag-duration-deterministic-flow
 
 test-voice: $(VENV)/bin/activate
 	$(TEST_ENV) $(PY) -m pytest -q tests/test_persona_voice.py tests/test_normalize_question_punct.py
 
 test-int: $(VENV)/bin/activate
-	$(PY) -m pytest -q -rs -m integration tests/test_integration_real_backend.py
+	@set -eu; \
+	key_json="$$( $(PY) scripts/create_access_key.py create \
+		--expires-in "$(INTEGRATION_TEST_KEY_EXPIRES_IN_SECONDS)" \
+		--label "$(INTEGRATION_TEST_KEY_LABEL)" \
+		--print-json )"; \
+	key_id="$$(printf '%s' "$$key_json" | $(PY) -c 'import json,sys; print(json.load(sys.stdin)["key_id"])')"; \
+	key_plaintext="$$(printf '%s' "$$key_json" | $(PY) -c 'import json,sys; print(json.load(sys.stdin)["key_plaintext"])')"; \
+	cleanup() { \
+		$(PY) scripts/create_access_key.py revoke --key-id "$$key_id" >/dev/null; \
+	}; \
+	trap cleanup EXIT INT TERM; \
+	RUN_INTEGRATION_TESTS=1 NEXT_PUBLIC_API_URL="$(NEXT_PUBLIC_API_URL)" ACCESS_KEY_PLAINTEXT="$$key_plaintext" \
+		$(PY) -m pytest -q -rs -m integration tests/test_integration_real_backend.py
+
+test-int-local: $(VENV)/bin/activate
+	$(MAKE) test-int NEXT_PUBLIC_API_URL=http://localhost:8080
 
 test-cors-deploy: $(VENV)/bin/activate
 	$(PY) -m pytest -q -rs -s -m integration tests/test_cors_deployment.py
@@ -214,6 +236,18 @@ test-retrieval-bm25: $(VENV)/bin/activate
 
 test-greeting-intent: $(VENV)/bin/activate
 	$(TEST_ENV) $(PY) -m pytest -q tests/test_greeting_intent.py
+
+test-duration-domain-config: $(VENV)/bin/activate
+	$(TEST_ENV) $(PY) -m pytest -q tests/test_duration_domain_config.py
+
+test-duration-routing: $(VENV)/bin/activate
+	$(TEST_ENV) $(PY) -m pytest -q tests/test_duration_routing.py
+
+test-duration-interval-merge: $(VENV)/bin/activate
+	$(TEST_ENV) $(PY) -m pytest -q tests/test_duration_interval_merge.py
+
+test-rag-duration-deterministic-flow: $(VENV)/bin/activate
+	$(TEST_ENV) $(PY) -m pytest -q tests/test_rag_duration_deterministic_flow.py
 
 check: $(VENV)/bin/activate
 	$(PY) -c "import api.main, api.mock, api.retrieval, api.llm, api.settings"

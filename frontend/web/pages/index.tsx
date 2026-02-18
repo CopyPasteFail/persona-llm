@@ -4,6 +4,7 @@ import {
   ApiError,
   clearStoredSessionToken,
   getSessionToken,
+  getRuntimeStatus,
   isCookieMode,
   keyLogin,
   logout,
@@ -22,6 +23,9 @@ const CONNECTIVITY_BANNER_MESSAGE =
 const COOKIES_BLOCKED_MESSAGE =
   "Your browser blocked the sign-in cookie. Enable cookies for this site and sign in again.";
 const SESSION_EXPIRED_MESSAGE = "Session expired. Enter a new access key.";
+const SCHEMA_HARD_FAIL_FALLBACK_MESSAGE =
+  "Unsupported chunk schema. Rebuild or republish the dataset with a supported chunk schema version.";
+const REPOSITORY_URL = "https://github.com/CopyPasteFail/persona-llm";
 
 export default function IndexPage() {
   const [ready, setReady] = useState(true);
@@ -36,8 +40,12 @@ export default function IndexPage() {
   const [cookieSessionActive, setCookieSessionActive] = useState(false);
   const [sessionModelName, setSessionModelName] = useState<string | null>(null);
   const [sessionInputTokenLimit, setSessionInputTokenLimit] = useState<number | null>(null);
+  const [loadedDatasetVersion, setLoadedDatasetVersion] = useState<string | null>(null);
+  const [supportedChunkSchemaVersion, setSupportedChunkSchemaVersion] = useState<number | null>(null);
+  const [loadedChunkSchemaVersion, setLoadedChunkSchemaVersion] = useState<number | null>(null);
+  const [startupStatusMessage, setStartupStatusMessage] = useState<string | null>(null);
   const [messages, setMessages] = useState<
-    Array<{ role: "user" | "assistant"; content: string; usage?: Usage }>
+    Array<{ role: "user" | "assistant"; content: string; usage?: Usage; llmCalled?: boolean }>
   >([]);
 
   const isCookieSession = isCookieMode();
@@ -47,9 +55,10 @@ export default function IndexPage() {
   const shouldShowWarmupBanner =
     !error && !ready && !loading && !authLoading && !hasSession && messages.length === 0;
   const shouldShowConnectivityBanner =
-    !error && !ready && !loading && !authLoading && hasSession;
+    !error && !startupStatusMessage && !ready && !loading && !authLoading && hasSession;
   const bannerMessage =
     error ??
+    startupStatusMessage ??
     (shouldShowWarmupBanner
       ? WARMUP_BANNER_MESSAGE
       : shouldShowConnectivityBanner
@@ -75,13 +84,24 @@ export default function IndexPage() {
     let stop = false;
     async function probe() {
       try {
-        const ctl = new AbortController();
-        const t = setTimeout(() => ctl.abort(), 800);
-        const r = await fetch(`${API}/health`, { signal: ctl.signal });
-        clearTimeout(t);
-        if (!stop) setReady(r.ok);
+        const runtimeStatus = await getRuntimeStatus(800);
+        if (stop) {
+          return;
+        }
+        setReady(runtimeStatus.ready);
+        setLoadedDatasetVersion(runtimeStatus.loaded_dataset_version);
+        setLoadedChunkSchemaVersion(runtimeStatus.loaded_chunk_schema_version);
+        setSupportedChunkSchemaVersion(runtimeStatus.supported_chunk_schema_version);
+        if (runtimeStatus.startup_error_code === "chunk_schema_unsupported") {
+          const startupMessage = runtimeStatus.startup_error_message || SCHEMA_HARD_FAIL_FALLBACK_MESSAGE;
+          setStartupStatusMessage(startupMessage);
+          return;
+        }
+        setStartupStatusMessage(null);
       } catch {
-        if (!stop) setReady(false);
+        if (!stop) {
+          setReady(false);
+        }
       }
     }
     probe();
@@ -128,6 +148,7 @@ export default function IndexPage() {
         role: "assistant",
         content: data.answer,
         usage: data.usage,
+        llmCalled: data.llm_called,
       }]);
       if (data.model) {
         setSessionModelName(data.model);
@@ -184,7 +205,8 @@ export default function IndexPage() {
     return [
       "Summarize your Kubernetes experience in two sentences.",
       "How would you explain your SRE approach to a non-technical recruiter?",
-      "Which CI/CD choices do you usually make and why?",
+      "Which programming languages do you know?",
+      "How many years of experience do you have in DevOps?",
     ];
   }
 
@@ -203,6 +225,22 @@ export default function IndexPage() {
           {isLocal && (
             <span className="rounded-full border border-zinc-700 px-2 py-1 text-[11px] text-zinc-400 leading-none">
               Local backend
+            </span>
+          )}
+          <span className="rounded-full border border-zinc-700 px-2 py-1 text-[11px] text-zinc-400 leading-none">
+            Dataset: {loadedDatasetVersion ?? "—"}
+          </span>
+          <span className="rounded-full border border-zinc-700 px-2 py-1 text-[11px] text-zinc-400 leading-none">
+            Chunk schema: v
+            {typeof loadedChunkSchemaVersion === "number"
+              ? loadedChunkSchemaVersion
+              : typeof supportedChunkSchemaVersion === "number"
+                ? supportedChunkSchemaVersion
+                : "—"}
+          </span>
+          {typeof supportedChunkSchemaVersion === "number" && (
+            <span className="rounded-full border border-zinc-700 px-2 py-1 text-[11px] text-zinc-400 leading-none">
+              Chunk schema support: v{supportedChunkSchemaVersion}
             </span>
           )}
           {hasSession && (
@@ -227,7 +265,7 @@ export default function IndexPage() {
       )}
 
       {/* Main area */}
-      <div className="flex-1 flex flex-col mx-auto w-full max-w-4xl px-4 py-4 overflow-hidden">
+      <div className="flex-1 flex flex-col mx-auto w-full max-w-4xl px-4 pt-4 pb-0 overflow-hidden">
         {!hasSession ? (
           <div className="flex-1 flex items-center justify-center">
             <form
@@ -268,9 +306,9 @@ export default function IndexPage() {
             {/* Conversation box */}
             <div
               ref={streamRef}
-              className="flex-1 overflow-y-auto rounded-2xl border border-zinc-800 bg-zinc-900/30 p-4 space-y-4"
+              className="flex-1 overflow-y-auto rounded-2xl border border-zinc-800 bg-zinc-900/30 px-4 pb-4 pt-0 space-y-4"
             >
-              <div className="sticky top-0 z-10 -mx-4 -mt-4 mb-3 border-b border-zinc-800/80 bg-zinc-950/90 px-4 py-2 text-[11px] text-zinc-400 backdrop-blur">
+              <div className="sticky top-0 z-10 -mx-4 mb-3 border-b border-zinc-800/80 bg-zinc-950/90 px-4 py-2 text-[11px] text-zinc-400 backdrop-blur">
                 <div className="flex flex-wrap items-center gap-3">
                   <span className="uppercase tracking-wide text-zinc-500">Session</span>
                   <span>Model: {sessionModelName ?? "—"}</span>
@@ -297,7 +335,7 @@ export default function IndexPage() {
                 </div>
               )}
               {messages.map((m, i) => (
-                <Bubble key={i} role={m.role} usage={m.usage}>
+                <Bubble key={i} role={m.role} usage={m.usage} llmCalled={m.llmCalled}>
                   {m.content}
                 </Bubble>
               ))}
@@ -342,6 +380,16 @@ export default function IndexPage() {
           </>
         )}
       </div>
+      <footer className="px-4 pb-4 text-center text-xs text-zinc-500">
+        <a
+          href={REPOSITORY_URL}
+          target="_blank"
+          rel="noreferrer"
+          className="underline underline-offset-4 hover:text-zinc-300"
+        >
+          Source on GitHub
+        </a>
+      </footer>
     </div>
   );
 }
@@ -350,10 +398,12 @@ function Bubble({
   role,
   children,
   usage,
+  llmCalled,
 }: {
   role: "user" | "assistant";
   children: any;
   usage?: Usage;
+  llmCalled?: boolean;
 }) {
   const isUser = role === "user";
   return (
@@ -365,11 +415,16 @@ function Bubble({
         ].join(" ")}
       >
         <div className="whitespace-pre-wrap">{children}</div>
-        {usage && (
+        {(usage || !isUser) && (
           <div className="mt-2 flex gap-2 text-[10px] text-zinc-500">
-            <span>in: {usage.input_tokens}</span>
-            <span>out: {usage.output_tokens}</span>
-            <span>thoughts: {usage.thoughts_tokens ?? 0}</span>
+            {usage && (
+              <>
+                <span>In: {usage.input_tokens}</span>
+                <span>Out: {usage.output_tokens}</span>
+                <span>Thoughts: {usage.thoughts_tokens ?? 0}</span>
+              </>
+            )}
+            {!isUser && <span>LLM called: {llmCalled === true ? "yes" : "no"}</span>}
           </div>
         )}
       </div>

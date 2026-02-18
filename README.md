@@ -247,12 +247,18 @@ Place `chunks.jsonl` in your private overlay (default: `$PRIVATE_DIR/persona/dat
 The runtime loads `datasets/current.json` and expects a coupled dataset folder:
 `datasets/<version>/{datapoints.jsonl, chunks.jsonl.gz, manifest.json}`.
 
+Input source:
+- `$PRIVATE_DIR/persona/data/chunks.jsonl`
 
-Local build (example `v13`). Default input: `$PRIVATE_DIR/persona/data/chunks.jsonl`.
+Before running the dataset build commands, set the target dataset version in
+`private/secrets/backend.env`.
 
-Set these in private/secrets/backend.env
+Use a **new** version (for example, if current is `v04`, create `v05`).
 ```bash
-DATASET_VERSION=v13
+# target version to create now (must be new)
+DATASET_VERSION=v05
+
+# output path for generated datapoints in that version folder
 DATAPOINTS_FILE=$(PRIVATE_DIR)/persona/data/datasets/$(DATASET_VERSION)/datapoints.jsonl
 ```
 
@@ -267,14 +273,15 @@ make be-dataset-datapoints
 # 3) upload dataset folder to GCS
 make be-dataset-upload
 
-# 4) atomically update pointer
+# 4) atomically update pointer at gs://$BUCKET_NAME/datasets/current.json
 make be-dataset-pointer-update
 ```
 
-Atomic update order (locked):
-1) Upload `datasets/vNN/datapoints.jsonl`, `datasets/vNN/chunks.jsonl.gz`, `datasets/vNN/manifest.json`
-2) Update `datasets/current.json` to `{ "version": "vNN" }`
-3) Call `POST /ops/vector/reload` (or restart service)
+How it works:
+- `be-dataset-chunks` writes `chunks.jsonl.gz` into the folder derived from `DATAPOINTS_FILE`.
+- `be-dataset-datapoints` writes `datapoints.jsonl` + `manifest.json` to that same folder.
+- `be-dataset-upload` uploads that version folder to `datasets/<version>/` in GCS.
+- `be-dataset-pointer-update` updates the field `{ "version": "vNN" }` in `datasets/current.json` to the new version.
 
 For `local-integrated` with a local dataset root (`DATASET_URI=file:/...`), also update the local pointer file used by that root (for example `$PRIVATE_DIR/persona/data/datasets/current.json`) to the same version.
 
@@ -463,57 +470,59 @@ Static export on Firebase Hosting. API served by Cloud Run.
 
 > Note: ensure `secrets/backend.env` and `secrets/frontend.env` are set in your private repo.
 
-1) Create Artifact Registry once:
-   ```bash
-   make gcp-create-artifact-registry
-   ```
+**One-time setup**
+- Once per GCP project: create Artifact Registry
+  ```bash
+  make gcp-create-artifact-registry
+  ```
+- Once per developer machine (only if you use local Docker builds): auth to Artifact Registry
+  ```bash
+  make gcp-auth-registry
+  ```
 
-2) Build and push the backend image (pick one path only):
+**Deploy**
+1) Build and push the backend image (pick one path only):
    - Option A: Cloud Build (no local Docker):
      ```bash
      make gcp-cloud-build
      ```
    - Option B: Local Docker + push (Docker needed):
-     - One-time per machine: auth to Artifact Registry
-       ```bash
-       make gcp-auth-registry
-       ```
      - Per build: build locally and push
        ```bash
        make be-docker-build
        make gcp-push-backend
        ```
 
-3) Deploy to Cloud Run and note the service URL:
+2) Deploy to Cloud Run and note the service URL:
    ```bash
    make gcp-cloud-run-deploy
    ```
    Set `NEXT_PUBLIC_API_URL` to that URL for the frontend. Drop `--allow-unauthenticated` in the Makefile if you want a private service.
 
-4) Build the static export:
+3) Build the static export:
    ```bash
    make fe-build
    ```
 
-5) Optional: preview locally:
+4) Optional: preview locally:
    ```bash
    make fe-preview
    ```
 
-6) Deploy Hosting:
+5) Deploy Hosting:
    ```bash
    make fe-firebase:deploy
    ```
 
-7) Manage Access keys
-  Access keys for the integrated backend live in Firestore. You can view them in the console [here](https://console.cloud.google.com/firestore/databases/-default-/data/panel).
+6) Manage access keys:
+   Access keys for the integrated backend live in Firestore. You can view them in the console [here](https://console.cloud.google.com/firestore/databases/-default-/data/panel).
 
-  For managing the keys, see [admin CLI access key management](backend/README.md#admin-cli--access-keys).
+   For managing the keys, see [admin CLI access key management](backend/README.md#admin-cli--access-keys).
 
-3) Verify the deployed API (point at the Cloud Run URL from deploy):
-  ```bash
-  PYTEST_ADDOPTS="-s" make be-test-int
-  ```
+7) Verify the deployed API (point at the Cloud Run URL from deploy):
+   ```bash
+   PYTEST_ADDOPTS="-s" make be-test-int
+   ```
 
 
 ## Undeploy / Teardown

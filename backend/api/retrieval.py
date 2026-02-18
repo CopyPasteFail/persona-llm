@@ -23,6 +23,7 @@ import threading
 from collections import defaultdict
 from contextvars import ContextVar
 from pathlib import Path
+from types import MappingProxyType
 from typing import (
     Any,
     Dict,
@@ -47,7 +48,7 @@ _APOS = r"[’']"
 # Business-tuned thresholds and weights.
 _DEFAULT_TOP_K = 8
 _MAX_CONTEXT_CHUNKS = 8
-_ROLE_BOOST = 0.05
+_PROFILE_BOOST = 0.05
 _TOPIC_BOOST = 0.02
 _MAX_TOPIC_BOOST = 0.06
 _DEBUG_NEIGHBOR_SAMPLE = 5
@@ -610,57 +611,52 @@ def _normalize_bm25(score: float) -> float:
     return score / (score + 1.0)
 
 
-def _chunk_role(metadata: Mapping[str, Any]) -> Optional[str]:
+def _chunk_profile(chunk: Mapping[str, Any]) -> Optional[str]:
     """
-    Extract a role label from chunk metadata.
+    Extract the profile label from a flat chunk record.
 
     Inputs:
-        metadata: Metadata mapping for a chunk.
+        chunk: Chunk mapping.
     Outputs:
-        A lowercase role string, or None if not present.
+        A lowercase profile string, or None if not present.
     Edge cases:
-        Supports both "role" field and "role:" tag prefixes.
+        Returns None when `profile` is missing or blank.
     """
-    role = metadata.get("role")
-    if isinstance(role, str) and role:
-        return role.lower()
-
-    tags = metadata.get("tags")
-    if isinstance(tags, Iterable):
-        for tag in cast(Iterable[Any], tags):
-            if isinstance(tag, str) and tag.startswith("role:"):
-                return tag.split(":", 1)[1].lower()
+    profile = chunk.get("profile")
+    if isinstance(profile, str) and profile:
+        return profile.lower()
     return None
 
 
-def _chunk_topics(metadata: Mapping[str, Any]) -> Set[str]:
+def _chunk_topics(chunk: Mapping[str, Any]) -> Set[str]:
     """
-    Extract topic labels from chunk metadata.
+    Extract topic labels from a flat chunk record.
 
     Inputs:
-        metadata: Metadata mapping for a chunk.
+        chunk: Chunk mapping.
     Outputs:
         A set of lowercase topic strings.
     Edge cases:
         Supports both "topics" field and "topic:" tag prefixes.
     """
     topics: Set[str] = set()
-    raw_topics = metadata.get("topics")
-    if isinstance(raw_topics, Iterable):
+    raw_topics = chunk.get("topics")
+    if isinstance(raw_topics, (list, tuple, set)):
         for topic in cast(Iterable[Any], raw_topics):
             if isinstance(topic, str):
                 topics.add(topic.lower())
-    tags = metadata.get("tags")
-    if isinstance(tags, Iterable):
+    tags = chunk.get("tags")
+    if isinstance(tags, (list, tuple, set)):
         for tag in cast(Iterable[Any], tags):
             if isinstance(tag, str) and tag.startswith("topic:"):
                 topics.add(tag.split(":", 1)[1].lower())
+
     return topics
 
 
-def _classify_query_role(question: str) -> Optional[str]:
+def _classify_query_profile(question: str) -> Optional[str]:
     """
-    Classify a query as infra or product based on keyword hints.
+    Classify a query as infra or product profile based on keyword hints.
 
     Inputs:
         question: Raw user question.
@@ -668,6 +664,7 @@ def _classify_query_role(question: str) -> Optional[str]:
         "infra", "product", or None if ambiguous.
     Edge cases:
         Returns None when tokens overlap or are empty.
+        Non-{"infra","product"} chunk profiles are treated as neutral.
     """
     tokens = set(_tokenize(question))
     if not tokens:
@@ -684,41 +681,126 @@ def _classify_query_role(question: str) -> Optional[str]:
 
 def _extract_chunk_tokens(chunk: Mapping[str, Any]) -> List[str]:
     """
-    Extract searchable tokens from chunk text and metadata.
+    Extract searchable tokens from flat chunk text and selected fields.
 
     Inputs:
-        chunk: Chunk record containing text and metadata.
+        chunk: Chunk record containing text and selected flat fields.
     Outputs:
         A list of BM25-filtered tokens from text, section, topics, and tags.
     Edge cases:
-        Skips non-string fields and missing metadata entries.
+        Skips non-string fields and missing optional entries.
     """
     tokens: List[str] = []
     text = chunk.get("text")
     if isinstance(text, str):
         tokens.extend(_tokenize_for_bm25(text))
 
-    metadata_obj = chunk.get("metadata")
-    if isinstance(metadata_obj, Mapping):
-        metadata_mapping = cast(Mapping[str, Any], metadata_obj)
-        metadata_map: Dict[str, Any] = dict(metadata_mapping)
-        for field in ("section",):
-            value = metadata_map.get(field)
-            if isinstance(value, str):
-                tokens.extend(_tokenize_for_bm25(value))
+    section_value = chunk.get("section")
+    if isinstance(section_value, str):
+        tokens.extend(_tokenize_for_bm25(section_value))
 
-        topics = metadata_map.get("topics")
-        if isinstance(topics, Iterable):
-            for topic in cast(Iterable[Any], topics):
-                if isinstance(topic, str):
-                    tokens.extend(_tokenize_for_bm25(topic))
+    topics_value = chunk.get("topics")
+    if isinstance(topics_value, (list, tuple, set)):
+        for topic in cast(Iterable[Any], topics_value):
+            if isinstance(topic, str):
+                tokens.extend(_tokenize_for_bm25(topic))
 
-        tags = metadata_map.get("tags")
-        if isinstance(tags, Iterable):
-            for tag in cast(Iterable[Any], tags):
-                if isinstance(tag, str):
-                    tokens.extend(_tokenize_for_bm25(tag))
+    tags_value = chunk.get("tags")
+    if isinstance(tags_value, (list, tuple, set)):
+        for tag in cast(Iterable[Any], tags_value):
+            if isinstance(tag, str):
+                tokens.extend(_tokenize_for_bm25(tag))
     return tokens
+
+
+def _normalize_chunk_record(
+    raw_chunk: Mapping[str, Any],
+) -> Optional[Dict[str, Any]]:
+    """
+    Normalize a chunk record to the canonical flat runtime shape.
+
+    Inputs:
+        raw_chunk: Raw chunk record from cache/test/side-store.
+    Outputs:
+        Flat chunk record with `chunk_id` and `text`.
+    Edge cases:
+        Raises RuntimeError when legacy `metadata` is present.
+        Allows legacy `id` only when it is a non-empty alias of `chunk_id`.
+        Raises RuntimeError when legacy `id` conflicts with `chunk_id`.
+        Returns None when required fields are missing.
+    """
+    chunk_id_value = raw_chunk.get("chunk_id")
+    if "metadata" in raw_chunk:
+        raise RuntimeError("Chunk records must be flat schema-v3 objects without metadata")
+    if "id" in raw_chunk:
+        legacy_id_value = raw_chunk.get("id")
+        if (
+            not isinstance(legacy_id_value, str)
+            or not legacy_id_value
+            or not isinstance(chunk_id_value, str)
+            or not chunk_id_value
+            or legacy_id_value != chunk_id_value
+        ):
+            raise RuntimeError(
+                "Chunk record legacy id conflicts with chunk_id "
+                f"(id={legacy_id_value!r}, chunk_id={chunk_id_value!r})"
+            )
+
+    text_value = raw_chunk.get("text")
+    if not isinstance(text_value, str):
+        return None
+
+    if not isinstance(chunk_id_value, str) or not chunk_id_value:
+        return None
+
+    normalized_record: Dict[str, Any] = dict(raw_chunk)
+    normalized_record["chunk_id"] = chunk_id_value
+    normalized_record["text"] = text_value
+    normalized_record.pop("id", None)
+    return normalized_record
+
+
+def _chunk_metadata_for_display(chunk: Mapping[str, Any]) -> Dict[str, Any]:
+    """
+    Build a lightweight metadata map for display from flat chunk fields.
+
+    Inputs:
+        chunk: Flat chunk record.
+    Outputs:
+        Metadata mapping with only display-relevant fields.
+    Edge cases:
+        Missing optional fields are omitted.
+    """
+    metadata: Dict[str, Any] = {}
+    for field_name in (
+        "doc_id",
+        "chunk_id",
+        "position",
+        "profile",
+        "section",
+        "start_year",
+        "end_year",
+        "topics",
+        "tags",
+        "lang",
+        "updated_at",
+        "source_uri",
+        "permissions",
+        "extras",
+    ):
+        field_value = chunk.get(field_name)
+        if field_value is None:
+            continue
+        if field_name in {"topics", "tags", "permissions"} and isinstance(
+            field_value, (list, tuple, set)
+        ):
+            metadata[field_name] = list(cast(Iterable[Any], field_value))
+            continue
+        if field_name == "extras" and isinstance(field_value, Mapping):
+            metadata[field_name] = dict(cast(Mapping[str, Any], field_value))
+            continue
+        metadata[field_name] = field_value
+    return metadata
 
 
 class _Bm25Index:
@@ -819,34 +901,50 @@ def configure_chunk_store(
         if isinstance(chunks, Mapping):
             typed_chunks = cast(Mapping[str, Mapping[str, Any]], chunks)
             for chunk_id, chunk in typed_chunks.items():
-                text = chunk.get("text")
-                if not chunk_id or not isinstance(text, str):
-                    continue
-                metadata_obj = chunk.get("metadata")
-                metadata_dict: Dict[str, Any] = {}
-                if isinstance(metadata_obj, Mapping):
-                    metadata_dict = dict(cast(Mapping[str, Any], metadata_obj))
-                mapping[chunk_id] = {
-                    "id": chunk_id,
-                    "text": text,
-                    "metadata": metadata_dict,
-                }
+                if not isinstance(chunk_id, str):
+                    raise RuntimeError("Chunk store mapping key must be a string chunk_id.")
+                normalized_record = _normalize_chunk_record(chunk)
+                if normalized_record is None:
+                    missing_fields: List[str] = []
+                    chunk_id_value = chunk.get("chunk_id")
+                    text_value = chunk.get("text")
+                    if not isinstance(chunk_id_value, str) or not chunk_id_value:
+                        missing_fields.append("chunk_id")
+                    if not isinstance(text_value, str):
+                        missing_fields.append("text")
+                    missing_fields_value = ", ".join(missing_fields) if missing_fields else "chunk_id, text"
+                    raise RuntimeError(
+                        "Invalid chunk record for mapping key "
+                        f"{chunk_id!r}: missing/invalid {missing_fields_value}."
+                    )
+                normalized_chunk_id = str(normalized_record.get("chunk_id"))
+                if chunk_id != normalized_chunk_id:
+                    raise RuntimeError(
+                        "Chunk store mapping key mismatch: mapping key "
+                        f"{chunk_id!r} does not match record chunk_id "
+                        f"{normalized_chunk_id!r}."
+                    )
+                mapping[normalized_chunk_id] = normalized_record
         else:
             for chunk in chunks:
-                chunk_id = str(chunk.get("id") or "")
-                text = chunk.get("text")
-                if not chunk_id or not isinstance(text, str):
-                    continue
-                metadata_obj = chunk.get("metadata")
-                metadata_dict: Dict[str, Any] = {}
-                if isinstance(metadata_obj, Mapping):
-                    metadata_dict = dict(cast(Mapping[str, Any], metadata_obj))
-                record: Dict[str, Any] = {
-                    "id": chunk_id,
-                    "text": text,
-                    "metadata": metadata_dict,
-                }
-                mapping[chunk_id] = record
+                normalized_record = _normalize_chunk_record(chunk)
+                if normalized_record is None:
+                    chunk_context_str = ""
+                    if isinstance(chunk, Mapping):
+                        chunk_id_ctx = chunk.get("chunk_id")
+                        if isinstance(chunk_id_ctx, str) and chunk_id_ctx:
+                            chunk_context_str = chunk_id_ctx
+                        else:
+                            chunk_context_str = repr(dict(chunk))
+                    else:
+                        chunk_context_str = repr(chunk)
+                    raise RuntimeError(
+                        "Invalid chunk record in iterable input: "
+                        f"{chunk_context_str}. Record must include chunk_id "
+                        "(non-empty string) and text (string)."
+                    )
+                normalized_chunk_id = str(normalized_record.get("chunk_id"))
+                mapping[normalized_chunk_id] = normalized_record
         _chunks_by_id = mapping
         _bm25_index = _Bm25Index(mapping) if mapping else None
 
@@ -867,6 +965,53 @@ def warm_chunk_store() -> bool:
     size = len(_chunks_by_id or {})
     logger.info(" Loaded %d persona chunks into memory", size)
     return bool(size)
+
+
+def _freeze_snapshot_value(value: Any) -> Any:
+    """
+    Recursively freeze a Python value into immutable containers.
+
+    Inputs:
+        value: Arbitrary JSON-like object.
+    Outputs:
+        Immutable clone: mapping -> MappingProxyType, list/tuple -> tuple, set -> frozenset.
+    Edge cases:
+        Scalars are returned unchanged.
+    """
+    if isinstance(value, Mapping):
+        frozen_mapping = {
+            key: _freeze_snapshot_value(inner_value) for key, inner_value in value.items()
+        }
+        return MappingProxyType(frozen_mapping)
+    if isinstance(value, (list, tuple)):
+        return tuple(_freeze_snapshot_value(item) for item in value)
+    if isinstance(value, set):
+        return frozenset(_freeze_snapshot_value(item) for item in value)
+    return value
+
+
+def get_chunk_store_snapshot() -> Mapping[str, Mapping[str, Any]]:
+    """
+    Return an immutable snapshot of the currently loaded chunk store.
+
+    Inputs:
+        None.
+    Outputs:
+        Mapping from chunk id to immutable chunk records.
+    Edge cases:
+        Returns an empty mapping when no chunks are loaded.
+    Concurrency:
+        Snapshot creation is protected by _chunk_lock.
+    """
+    _ensure_chunk_store_loaded()
+    with _chunk_lock:
+        chunks = _chunks_by_id or {}
+        frozen_chunks: Dict[str, Mapping[str, Any]] = {}
+        for chunk_id, chunk_record in chunks.items():
+            frozen_chunk = _freeze_snapshot_value(chunk_record)
+            if isinstance(frozen_chunk, Mapping):
+                frozen_chunks[chunk_id] = frozen_chunk
+        return MappingProxyType(frozen_chunks)
 
 
 def _resolve_local_chunks_path(name: str) -> Optional[Path]:
@@ -996,16 +1141,11 @@ def _ensure_chunk_store_loaded() -> None:
             )
         records: Dict[str, Dict[str, Any]] = {}
         for record in _iter_chunk_records():
-            chunk_id = str(record.get("id") or "")
-            text = record.get("text")
-            if not chunk_id or not isinstance(text, str):
+            normalized_record = _normalize_chunk_record(record)
+            if normalized_record is None:
                 continue
-            metadata_obj = record.get("metadata")
-            metadata: Dict[str, Any] = {}
-            if isinstance(metadata_obj, Mapping):
-                metadata = dict(cast(Mapping[str, Any], metadata_obj))
-            record_clean: Dict[str, Any] = {"id": chunk_id, "text": text, "metadata": metadata}
-            records[chunk_id] = record_clean
+            chunk_id = str(normalized_record["chunk_id"])
+            records[chunk_id] = normalized_record
 
         _chunks_by_id = records
         _bm25_index = _Bm25Index(records) if records else None
@@ -1013,10 +1153,10 @@ def _ensure_chunk_store_loaded() -> None:
 
 def apply_filters_and_boosting(candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
-    Apply hybrid scoring that weights ANN distance, BM25 lexical signal, and metadata boosts.
+    Apply hybrid scoring that weights ANN distance, BM25 lexical signal, and field/profile/topic boosts.
 
     Inputs:
-        candidates: Vector search results, each with at least id and distance.
+        candidates: Vector search results, each with at least chunk_id and distance.
     Outputs:
         A ranked list of chunk records enriched with score metadata.
     Edge cases:
@@ -1036,16 +1176,19 @@ def apply_filters_and_boosting(candidates: List[Dict[str, Any]]) -> List[Dict[st
     bm25_scores = (
         _bm25_index.score(_tokenize_for_bm25(question)) if _bm25_index and question else {}
     )
-    role_hint = _classify_query_role(question)
+    profile_hint = _classify_query_profile(question)
     topic_tokens = set(_tokenize(question))
     vector_weight = float(settings.RETRIEVAL_VECTOR_WEIGHT)
     bm25_weight = float(settings.RETRIEVAL_BM25_WEIGHT)
 
     ranked: List[Dict[str, Any]] = []
     for candidate in candidates:
-        chunk_id = str(candidate.get("id") or "")
-        if not chunk_id:
+        if "chunk_id" not in candidate:
             continue
+        chunk_id_value = candidate["chunk_id"]
+        if not isinstance(chunk_id_value, str) or not chunk_id_value:
+            continue
+        chunk_id = chunk_id_value
         chunk = chunks.get(chunk_id)
         if not chunk:
             continue
@@ -1057,27 +1200,22 @@ def apply_filters_and_boosting(candidates: List[Dict[str, Any]]) -> List[Dict[st
             bm25_raw
         )
 
-        metadata = cast(Dict[str, Any], chunk.get("metadata") or {})
-        role = _chunk_role(metadata)
-        if role_hint and role and role == role_hint:
-            weighted += _ROLE_BOOST
+        profile = _chunk_profile(chunk)
+        if profile_hint and profile and profile == profile_hint:
+            weighted += _PROFILE_BOOST
 
         if topic_tokens:
-            matches = len(_chunk_topics(metadata) & topic_tokens)
+            matches = len(_chunk_topics(chunk) & topic_tokens)
             if matches:
                 weighted += min(_TOPIC_BOOST * matches, _MAX_TOPIC_BOOST)
 
-        ranked.append(
-            {
-                "id": chunk_id,
-                "text": chunk["text"],
-                "metadata": metadata,
-                "distance": distance,
-                "vector_score": vector_score,
-                "bm25_score": bm25_raw,
-                "score": weighted,
-            }
-        )
+        ranked_record = dict(chunk)
+        ranked_record["chunk_id"] = chunk_id
+        ranked_record["distance"] = distance
+        ranked_record["vector_score"] = vector_score
+        ranked_record["bm25_score"] = bm25_raw
+        ranked_record["score"] = weighted
+        ranked.append(ranked_record)
 
     ranked.sort(key=lambda item: item["score"], reverse=True)
     if logger.isEnabledFor(logging.DEBUG):
@@ -1089,7 +1227,7 @@ def apply_filters_and_boosting(candidates: List[Dict[str, Any]]) -> List[Dict[st
                 "bm25_weight": bm25_weight,
                 "candidates": [
                     {
-                        "chunk_id": item["id"],
+                        "chunk_id": item["chunk_id"],
                         "bm25_score": item["bm25_score"],
                         "vector_score": item["vector_score"],
                         "score": item["score"],
@@ -1123,15 +1261,14 @@ def build_context_prompt(question: str, selected: List[Dict[str, Any]]) -> str:
         if not text:
             continue
 
-        metadata = cast(Dict[str, Any], chunk.get("metadata") or {})
         label_parts: List[str] = []
-        role = _chunk_role(metadata)
-        if role:
-            label_parts.append(role)
-        section = metadata.get("section")
+        profile = _chunk_profile(chunk)
+        if profile:
+            label_parts.append(profile)
+        section = chunk.get("section")
         if isinstance(section, str) and section:
             label_parts.append(section)
-        extras_obj = metadata.get("extras")
+        extras_obj = chunk.get("extras")
         if isinstance(extras_obj, Mapping):
             extras_map = cast(Mapping[str, Any], extras_obj)
             employer_value = extras_map.get("employer")

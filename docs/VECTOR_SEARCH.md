@@ -1,4 +1,4 @@
-# Vector Search Roles and Flows
+# Vector Search Profiles and Flows
 
 ## Backends (default: local)
 - `VECTOR_BACKEND=local|matching_engine`
@@ -17,7 +17,7 @@
   - `datasets/<version>/datapoints.jsonl`
   - `datasets/<version>/chunks.jsonl.gz`
 
-## Roles (Matching Engine only)
+## Profiles (Matching Engine only)
 - `INDEX_ID`: The vector index asset. Needed to deploy a new index and for batch refresh operations (`gcloud ai indexes update`). Not used for queries/upserts once deployed.
 - `INDEX_ENDPOINT_ID`: The serving endpoint. Stable “host” you deploy to and send traffic through.
 - `DEPLOYED_INDEX_ID`: Your chosen name for a specific deployment on that endpoint; used to route queries/upserts. It must start with a letter and only include letters, numbers, or underscores.

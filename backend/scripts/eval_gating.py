@@ -45,9 +45,8 @@ SUPPORTED_EXPECTED_LABELS = {
 DETERMINISTIC_CHUNK_ID = "mock:1"
 DETERMINISTIC_CHUNKS: list[dict[str, Any]] = [
     {
-        "id": DETERMINISTIC_CHUNK_ID,
+        "chunk_id": DETERMINISTIC_CHUNK_ID,
         "text": "deterministic mock chunk",
-        "metadata": {},
     }
 ]
 DETERMINISTIC_REQUIRED_ENV_DEFAULTS: dict[str, str] = {
@@ -194,7 +193,7 @@ class DeterministicVectorClient:
     def query(self, embedding: Sequence[float], *, top_k: int) -> list[dict[str, Any]]:
         if top_k <= 0:
             return []
-        return [{"id": DETERMINISTIC_CHUNK_ID, "distance": 0.0}]
+        return [{"chunk_id": DETERMINISTIC_CHUNK_ID, "distance": 0.0}]
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -1040,9 +1039,9 @@ def _build_result_row(
     elapsed_ms = int((time.perf_counter() - start_time) * 1000)
 
     selected_chunk_ids = [
-        str(chunk.get("id") or "").strip()
+        str(chunk.get("chunk_id") or "").strip()
         for chunk in selected_chunks
-        if str(chunk.get("id") or "").strip()
+        if str(chunk.get("chunk_id") or "").strip()
     ]
     weighted_scores = _build_ranked_score_vector(
         selected_chunks,

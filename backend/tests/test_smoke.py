@@ -35,7 +35,7 @@ TOKEN_TYPE_BEARER = "bearer"
 EXPECTED_HEALTH_STATUS = "ok"
 
 _DETERMINISTIC_CHUNKS: list[dict[str, Any]] = [
-    {"id": "mock:1", "text": "deterministic mock chunk", "metadata": {}}
+    {"chunk_id": "mock:1", "text": "deterministic mock chunk"}
 ]
 
 
@@ -48,7 +48,7 @@ class _DeterministicVectorClient:
     def query(
         self, embedding: Sequence[float], *, top_k: int
     ) -> list[dict[str, Any]]:
-        return [{"id": "mock:1", "distance": 0.0}]
+        return [{"chunk_id": "mock:1", "distance": 0.0}]
 
 
 class AccessKeyStore(Protocol):
@@ -163,7 +163,7 @@ async def test_chat_basic(client: AsyncClient) -> None:
     assert response.status_code == HTTP_OK
     response_data: dict[str, Any] = response.json()
     # Contract
-    assert {"answer", "citations", "usage"}.issubset(response_data.keys())
+    assert {"answer", "citations", "usage", "llm_called"}.issubset(response_data.keys())
     assert isinstance(response_data["answer"], str)
     assert response_data["answer"]
     assert isinstance(response_data["citations"], list)
@@ -171,6 +171,7 @@ async def test_chat_basic(client: AsyncClient) -> None:
     assert "id" in response_data["citations"][0]
     assert isinstance(response_data["usage"]["output_tokens"], int)
     assert response_data["usage"]["output_tokens"] > 0
+    assert isinstance(response_data["llm_called"], bool)
 
     # Content sanity
     assert "TLDR:" in response_data["answer"]
@@ -244,3 +245,4 @@ async def test_chat_handles_gemini_empty_response(
     assert response.status_code == HTTP_OK, response.text
     response_data: dict[str, Any] = response.json()
     assert response_data["answer"] == main_app_module.TOKEN_STARVATION_MESSAGE
+    assert response_data["llm_called"] is True

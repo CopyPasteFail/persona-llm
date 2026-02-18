@@ -34,7 +34,7 @@ class _StaticRetrieval:
     def search_vector_store(
         self, embedding: Optional[Sequence[float]], top_k: int
     ) -> List[Dict[str, Any]]:
-        return [{"id": "chunk-1", "distance": 0.1}]
+        return [{"chunk_id": "chunk-1", "distance": 0.1}]
 
     def apply_filters_and_boosting(
         self, candidates: List[Dict[str, Any]]
@@ -74,9 +74,8 @@ def _build_chunk(
 ) -> Dict[str, Any]:
     """Build a minimal ranked chunk payload for llm-gating tests."""
     return {
-        "id": chunk_id,
+        "chunk_id": chunk_id,
         "text": "sample context",
-        "metadata": {},
         "score": score,
         "bm25_score": bm25_score,
         "vector_score": vector_score,

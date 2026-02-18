@@ -41,7 +41,7 @@ class LocalVectorBackend:
         candidates: List[Dict[str, Any]] = []
         for similarity, datapoint_id in top_scores:
             distance = _distance_from_similarity(similarity)
-            candidates.append({"id": datapoint_id, "distance": distance})
+            candidates.append({"chunk_id": datapoint_id, "distance": distance})
         return candidates
 
 
@@ -172,7 +172,7 @@ def _neighbor_to_candidate(neighbor: Any) -> Dict[str, Any]:
     datapoint = neighbor_dict.get("datapoint", {})
 
     candidate: Dict[str, Any] = {
-        "id": datapoint.get("datapointId")
+        "chunk_id": datapoint.get("datapointId")
         or neighbor_dict.get("datapointId")
         or neighbor_dict.get("id"),
         "distance": float(neighbor_dict.get("distance", 0.0)),
