@@ -5,6 +5,8 @@ VENV := .venv
 PY := $(VENV)/bin/python
 PIP := $(VENV)/bin/pip
 TEST_ENV ?= LLM_BACKEND=deterministic
+INTEGRATION_TEST_KEY_LABEL ?= test-int-ephemeral
+INTEGRATION_TEST_KEY_EXPIRES_IN_SECONDS ?= 600
 
 include ../make/env.mk
 
@@ -13,7 +15,7 @@ DATASET_VERSION ?= $(notdir $(patsubst %/,%,$(DATASET_DIR)))
 DATASET_FOLDER := datasets
 DATASET_GCS_PREFIX ?= $(DATASET_FOLDER)/$(DATASET_VERSION)
 
-.PHONY: help install security-install security security-static security-bandit security-deps security-semgrep run run-debug mock eval-gating test-smoke test-core test-voice test-int test-cors-deploy test-vector-live test-build_datapoints test-auth-key-login test-create-access-key-cli test-keys-store test-llm-prompt test-thinking-gating test-llm-gating test-main-chat-logging test-security-session test-load-backend-env test-pack-and-push-processing test-answer-deduplication test-retrieval-bm25 test-greeting-intent check envs clean build_datapoints create-access-key dataset-version-check dataset-chunks dataset-datapoints dataset-upload dataset-pointer-update
+.PHONY: help install security-install security security-static security-bandit security-deps security-semgrep run run-debug mock eval-gating test-smoke test-core test-voice test-int test-int-local test-cors-deploy test-vector-live test-build_datapoints test-auth-key-login test-create-access-key-cli test-keys-store test-llm-prompt test-thinking-gating test-llm-gating test-main-chat-logging test-security-session test-load-backend-env test-pack-and-push-processing test-answer-deduplication test-retrieval-bm25 test-greeting-intent check envs clean build_datapoints create-access-key dataset-version-check dataset-chunks dataset-datapoints dataset-upload dataset-pointer-update
 
 help:
 	@echo "Targets:"
@@ -32,7 +34,8 @@ help:
 	@echo "  test-smoke   - run pytest smoke tests against mock app"
 	@echo "  test-core    - run all mock-safe backend tests"
 	@echo "  test-voice   - run persona voice + normalization tests (mock)"
-	@echo "  test-int     - run integration tests against cloud backend (requires GCP + uvicorn)"
+	@echo "  test-int     - run integration tests against NEXT_PUBLIC_API_URL using an ephemeral access key"
+	@echo "  test-int-local - run integration tests against local integrated backend at http://localhost:8080"
 	@echo "  test-cors-deploy - run deployed CORS integration checks (requires integrated backend URL)"
 	@echo "  test-auth-key-login - run auth key login tests"
 	@echo "  test-create-access-key-cli - run access key CLI tests"
@@ -164,7 +167,22 @@ test-voice: $(VENV)/bin/activate
 	$(TEST_ENV) $(PY) -m pytest -q tests/test_persona_voice.py tests/test_normalize_question_punct.py
 
 test-int: $(VENV)/bin/activate
-	$(PY) -m pytest -q -rs -m integration tests/test_integration_real_backend.py
+	@set -eu; \
+	key_json="$$( $(PY) scripts/create_access_key.py create \
+		--expires-in "$(INTEGRATION_TEST_KEY_EXPIRES_IN_SECONDS)" \
+		--label "$(INTEGRATION_TEST_KEY_LABEL)" \
+		--print-json )"; \
+	key_id="$$(printf '%s' "$$key_json" | $(PY) -c 'import json,sys; print(json.load(sys.stdin)["key_id"])')"; \
+	key_plaintext="$$(printf '%s' "$$key_json" | $(PY) -c 'import json,sys; print(json.load(sys.stdin)["key_plaintext"])')"; \
+	cleanup() { \
+		$(PY) scripts/create_access_key.py revoke --key-id "$$key_id" >/dev/null; \
+	}; \
+	trap cleanup EXIT INT TERM; \
+	RUN_INTEGRATION_TESTS=1 ACCESS_KEY_PLAINTEXT="$$key_plaintext" \
+		$(PY) -m pytest -q -rs -m integration tests/test_integration_real_backend.py
+
+test-int-local: $(VENV)/bin/activate
+	NEXT_PUBLIC_API_URL=http://localhost:8080 $(MAKE) test-int
 
 test-cors-deploy: $(VENV)/bin/activate
 	$(PY) -m pytest -q -rs -s -m integration tests/test_cors_deployment.py

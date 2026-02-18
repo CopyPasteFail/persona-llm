@@ -205,18 +205,24 @@ make be-test-core
 
 > To skip integration tests in a broader run, use `-m "not integration"`
 
-#### Integrated backend integration
+#### Integrated backend tests
 Requirements:
 - Integrated backend running (for example `uvicorn api.main:app`)
-- `NEXT_PUBLIC_API_URL` pointing to the running backend
-- `ACCESS_KEY_PLAINTEXT` set to a valid access key
-  ```bash
-  export ACCESS_KEY_PLAINTEXT="your-access-key"
-  ```
+- `NEXT_PUBLIC_API_URL` pointing to the running backend (for `be-test-int`)
+- Firestore write permission to create/revoke temporary access keys
+
+Choose the command based on where your backend is running:
+- `make be-test-int`  
+  Uses the current `NEXT_PUBLIC_API_URL` value from your environment/secrets.
+- `make be-test-int-local`  
+  Forces `NEXT_PUBLIC_API_URL=http://localhost:8080` and targets local integrated backend.
 
 Commands:
 ```bash
 make be-test-int
+```
+```bash
+make be-test-int-local
 ```
 
 #### Deployed CORS integration
@@ -380,13 +386,18 @@ make be-test-voice
   Runs against an integrated backend (`uvicorn api.main:app`) with live credentials.
   Sub-tests:
   - `/health`: no access key required; no live vector required.
-  - `/auth/key-login`: requires `ACCESS_KEY_PLAINTEXT`; no live vector required.
-  - `/chat` response contract + first-person phrasing: requires `ACCESS_KEY_PLAINTEXT` and a live vector.
-  - `/chat` rate limiting (503 allowed until limiter triggers): requires `ACCESS_KEY_PLAINTEXT`; no live vector required.
-  Command:
+  - `/auth/key-login`: uses an ephemeral access key created at test start; no live vector required.
+  - `/chat` response contract + first-person phrasing: uses the ephemeral key and a live vector.
+  - `/chat` rate limiting (503 allowed until limiter triggers): uses the ephemeral key; no live vector required.
+  Commands:
   ```bash
   make be-test-int
   ```
+  Uses `NEXT_PUBLIC_API_URL` from env/secrets.
+  ```bash
+  make be-test-int-local
+  ```
+  Forces `NEXT_PUBLIC_API_URL=http://localhost:8080`.
 
 - `backend/tests/test_cors_deployment.py`  
   Checks CORS allow/deny behavior on a deployed backend using the configured Hosting origin.
