@@ -204,7 +204,6 @@ export default function IndexPage() {
   function buildSuggestions() {
     return [
       "Summarize your Kubernetes experience in two sentences.",
-      "How would you explain your SRE approach to a non-technical recruiter?",
       "Which programming languages do you know?",
       "How many years of experience do you have in DevOps?",
     ];
