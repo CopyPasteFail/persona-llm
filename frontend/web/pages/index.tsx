@@ -25,6 +25,7 @@ const COOKIES_BLOCKED_MESSAGE =
 const SESSION_EXPIRED_MESSAGE = "Session expired. Enter a new access key.";
 const SCHEMA_HARD_FAIL_FALLBACK_MESSAGE =
   "Unsupported chunk schema. Rebuild or republish the dataset with a supported chunk schema version.";
+const REPOSITORY_URL = "https://github.com/CopyPasteFail/persona-llm";
 
 export default function IndexPage() {
   const [ready, setReady] = useState(true);
@@ -264,7 +265,7 @@ export default function IndexPage() {
       )}
 
       {/* Main area */}
-      <div className="flex-1 flex flex-col mx-auto w-full max-w-4xl px-4 py-4 overflow-hidden">
+      <div className="flex-1 flex flex-col mx-auto w-full max-w-4xl px-4 pt-4 pb-0 overflow-hidden">
         {!hasSession ? (
           <div className="flex-1 flex items-center justify-center">
             <form
@@ -379,6 +380,16 @@ export default function IndexPage() {
           </>
         )}
       </div>
+      <footer className="px-4 pb-4 text-center text-xs text-zinc-500">
+        <a
+          href={REPOSITORY_URL}
+          target="_blank"
+          rel="noreferrer"
+          className="underline underline-offset-4 hover:text-zinc-300"
+        >
+          Source on GitHub
+        </a>
+      </footer>
     </div>
   );
 }
