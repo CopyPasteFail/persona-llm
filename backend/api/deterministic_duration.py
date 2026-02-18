@@ -45,6 +45,19 @@ _DURATION_INTENT_PATTERNS: tuple[re.Pattern[str], ...] = (
 ZERO_MATCH_EXPERIENCE_MESSAGE = (
     "I can't compute this from the Experience stints in the current dataset."
 )
+FAMILY_DISPLAY_NAMES: Mapping[str, str] = {
+    "infra_ops": "Infrastructure & Operations",
+    "software_engineering": "Software Engineering",
+    "mobile_dev": "Mobile Development",
+    "design_uiux": "Design & UX",
+    "project_management": "Project Management",
+    "commerce": "Commerce",
+    "marketing": "Marketing",
+    "sales": "Sales",
+    "product": "Product",
+    "data": "Data",
+    "web_cms": "Web/CMS",
+}
 
 
 @dataclass(frozen=True)
@@ -330,14 +343,18 @@ def format_duration_answer(result: DurationComputationResult) -> str:
 
     summary_target = ""
     if result.resolved_family_keys:
-        summary_target = f" across {', '.join(result.resolved_family_keys)}"
+        family_display_names = [
+            _format_family_display_name(family_key)
+            for family_key in result.resolved_family_keys
+        ]
+        summary_target = f" in {', '.join(family_display_names)}"
 
     union_ranges_text = ", ".join(
         _format_year_range(interval.start_year, interval.end_year)
         for interval in result.union_merged_intervals
     )
     family_parts = [
-        f"{family.family_key}: {family.total_years}"
+        f"{_format_family_display_name(family.family_key)}: {family.total_years}"
         for family in result.family_breakdown
     ]
     breakdown_line = "none"
@@ -346,15 +363,34 @@ def format_duration_answer(result: DurationComputationResult) -> str:
 
     answer_lines = [
         f"TLDR: I have about {result.union_total_years} years of experience{summary_target}.",
-        f"- Union total (deduplicated): {result.union_total_years} years.",
+        f"- Total experience: {result.union_total_years} years.",
         f"- Covered years: {union_ranges_text}.",
-        f"- Breakdown by family (years): {breakdown_line}.",
+        f"- By domain (years): {breakdown_line}.",
     ]
     if len(result.family_breakdown) > 1:
         answer_lines.append(
             "- Breakdown totals can overlap when one stint maps to multiple families."
         )
     return "\n".join(answer_lines)
+
+
+def _format_family_display_name(family_key: str) -> str:
+    """Return a user-facing label for an internal duration family key.
+
+    Inputs:
+    - family_key: Internal family key from duration-domain configuration.
+
+    Output:
+    - Human-readable family label suitable for end-user answers.
+
+    Edge cases:
+    - Unknown keys fall back to a title-cased underscore replacement.
+    """
+
+    configured_label = FAMILY_DISPLAY_NAMES.get(family_key)
+    if configured_label:
+        return configured_label
+    return family_key.replace("_", " ").title()
 
 
 def format_based_on_stints(

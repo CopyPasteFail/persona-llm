@@ -102,7 +102,7 @@ def test_run_rag_chat_duration_query_bypasses_retrieval_and_llm() -> None:
     assert result.llm_gate_reason == rag_chat_orchestrator.llm_gate_reason_DURATION_BYPASS
     assert result.response.citations == []
     assert f"{current_year - 2023 + 1}" in result.response.answer
-    assert "Union total" in result.response.answer
+    assert "Total non-overlapping experience" in result.response.answer
     assert "Based on:" in result.response.answer
     assert "Acme, SRE, 2023-present" in result.response.answer
     assert retrieval_spy.snapshot_called

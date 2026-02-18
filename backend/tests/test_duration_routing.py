@@ -82,7 +82,7 @@ def test_compute_duration_for_question_returns_union_and_breakdown_for_combined_
 
     assert result.resolved_family_keys == ("infra_ops", "marketing")
     assert result.union_total_years == 5
-    assert "Breakdown by family (years): infra_ops: 3; marketing: 5." in answer
+    assert "By domain (years): Infrastructure & Operations: 3; Marketing: 5." in answer
     assert "Breakdown totals can overlap" in answer
 
 

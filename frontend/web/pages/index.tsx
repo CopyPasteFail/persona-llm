@@ -204,7 +204,8 @@ export default function IndexPage() {
     return [
       "Summarize your Kubernetes experience in two sentences.",
       "How would you explain your SRE approach to a non-technical recruiter?",
-      "Which CI/CD choices do you usually make and why?",
+      "Which programming languages do you know?",
+      "How many years of experience do you have in DevOps?",
     ];
   }
 
